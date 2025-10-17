@@ -115,4 +115,33 @@ export class Agent<O> {
 
     throw new Error("MAX TURNS EXCEEDED");
   }
+
+  async cli() {
+    let history: ChatItem[] = [];
+    while (true) {
+      let text = prompt(">");
+      if (!text) break;
+      history.push({ type: "input_text", text });
+
+      const newResult = await this.run(history);
+      for (const item of newResult.history) {
+        if (item.type === "tool_use") {
+          console.log(
+            `[${item.id}]`,
+            "Calling",
+            item.name,
+            "with parameters",
+            item.input,
+          );
+        }
+        if (item.type === "tool_result") {
+          console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
+        }
+        if (item.type === "output_text") {
+          console.log(item.text);
+        }
+      }
+      history.push(...newResult.history);
+    }
+  }
 }

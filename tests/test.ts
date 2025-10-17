@@ -64,11 +64,9 @@ Deno.test("Tool calls can work", async () => {
       "You are a friendly assistant who can spit out a temperature guesstimate",
     tools: [search],
   });
-  const run = await agent.run([{
-    type: "input_text",
-    text: "Can you tell me what cat websites there are?",
-  }]);
+  const run = await agent.run("Can you tell me what cat websites there are?");
   assert(
     run.outputText.includes("bingus.com"),
   );
+  assertEquals(run.history.length, 3);
 });

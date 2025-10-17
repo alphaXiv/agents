@@ -29,7 +29,10 @@ export class TestingAdapter<O> {
         text: "How can I assist you today?",
       }];
     }
-    if (lastMessage.type === "input_text" && lastMessage.text === "Hello!") {
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.text.toLowerCase().includes("hello")
+    ) {
       return [{
         type: "output_text",
         text: "Hey! How are you doing?",
