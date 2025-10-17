@@ -50,7 +50,7 @@ Deno.test("Tool calls can work", async () => {
     name: "Searching the internet...",
     description: "Use when you want to search the internet",
     parameters: z.string().describe("Query parameter"),
-    execute: (param, metadata) => {
+    execute: ({ param }) => {
       if (param === "cats") {
         return JSON.stringify(["bingus.com", "bungus.com"]);
       }

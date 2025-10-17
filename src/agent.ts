@@ -70,7 +70,8 @@ export class Agent<O> {
             const tool = this.#tools.find((tool) => tool.name === toolUse.name);
             if (!tool) throw new Error("wtfrick model tried to use fake tool"); // TODO: handle this better
 
-            const result = await tool.execute(JSON.parse(toolUse.input), {
+            const result = await tool.execute({
+              param: JSON.parse(toolUse.input),
               toolUseId: toolUse.id,
             });
 
