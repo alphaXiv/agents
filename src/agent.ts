@@ -12,6 +12,11 @@ export type ModelString =
   | "openai:gpt-5-mini"
   | "openai:gpt-5-nano"
   | "openai:gpt-4.1"
+  | "google:gemini-2.5-pro"
+  | "google:gemini-2.5-flash"
+  | "google:gemini-2.5-flash-lite"
+  | "google:gemini-2.0-flash"
+  | "google:gemini-2.0-flash-lite"
   | (string & {});
 
 export interface AgentOptions<O> {

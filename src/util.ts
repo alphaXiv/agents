@@ -1,3 +1,4 @@
+import process from "node:process";
 import type { ChatItem, ChatLike } from "./types.ts";
 
 export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
@@ -33,4 +34,8 @@ export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
   }
 
   return chatLike;
+}
+
+export function crossPlatformEnv(key: string) {
+  return process.env[key];
 }

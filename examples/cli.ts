@@ -15,7 +15,7 @@ const search = new Tool({
 });
 
 const agent = new Agent({
-  model: "openai:gpt-5-nano",
+  model: "google:gemini-2.5-flash-lite",
   instructions: "You are a friendly assistant",
   tools: [search],
 });
