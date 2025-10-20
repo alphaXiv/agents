@@ -15,7 +15,7 @@ const search = new Tool({
 });
 
 const agent = new Agent({
-  model: "google:gemini-2.5-flash-lite",
+  model: "anthropic:claude-haiku-4-5",
   instructions: "You are a friendly assistant",
   tools: [search],
 });

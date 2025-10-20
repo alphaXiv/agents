@@ -17,6 +17,9 @@ export type ModelString =
   | "google:gemini-2.5-flash-lite"
   | "google:gemini-2.0-flash"
   | "google:gemini-2.0-flash-lite"
+  | "anthropic:claude-sonnet-4-5"
+  | "anthropic:claude-haiku-4-5"
+  | "anthropic:claude-opus-4-1"
   | (string & {});
 
 export interface AgentOptions<O> {
