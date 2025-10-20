@@ -124,9 +124,9 @@ export class Agent<O> {
   }
 
   async cli() {
-    let history: ChatItem[] = [];
+    const history: ChatItem[] = [];
     while (true) {
-      let text = prompt(">");
+      const text = prompt(">");
       if (!text) break;
       history.push({ type: "input_text", text });
 
@@ -145,7 +145,7 @@ export class Agent<O> {
           console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
         }
         if (item.type === "output_reasoning") {
-          console.log(`\x1b[90m${item.text}\x1b[0m`);
+          console.log(`\x1b[3m${item.text}\x1b[0m`);
         }
         if (item.type === "output_text") {
           console.log(item.text);
