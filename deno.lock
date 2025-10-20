@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/assert@^1.0.15": "1.0.15",
     "jsr:@std/internal@^1.0.12": "1.0.12",
-    "jsr:@zod/zod@4": "4.1.12"
+    "jsr:@zod/zod@4": "4.1.12",
+    "npm:openai@^6.6.0": "6.6.0"
   },
   "jsr": {
     "@std/assert@1.0.15": {
@@ -19,10 +20,17 @@
       "integrity": "5876ed4c6d44673faf5120f0a461a2ada2eb6c735329d3ebaf5ba1fc08387695"
     }
   },
+  "npm": {
+    "openai@6.6.0": {
+      "integrity": "sha512-1yWk4cBsHF5Bq9TreHYOHY7pbqdlT74COnm8vPx7WKn36StS+Hyk8DdAitnLaw67a5Cudkz5EmlFQjSrNnrA2w==",
+      "bin": true
+    }
+  },
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@^1.0.15",
-      "jsr:@zod/zod@4"
+      "jsr:@zod/zod@4",
+      "npm:openai@^6.6.0"
     ]
   }
 }

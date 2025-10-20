@@ -5,7 +5,14 @@ import { convertChatLikeToChatItem } from "./util.ts";
 
 const MAX_TURNS = 100;
 
-export type ModelString = "__testing:deterministic" | (string & {});
+export type ModelString =
+  | "__testing:deterministic"
+  | "openai:gpt-5-pro"
+  | "openai:gpt-5"
+  | "openai:gpt-5-mini"
+  | "openai:gpt-5-nano"
+  | "openai:gpt-4.1"
+  | (string & {});
 
 export interface AgentOptions<O> {
   model: ModelString;
@@ -136,6 +143,9 @@ export class Agent<O> {
         }
         if (item.type === "tool_result") {
           console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
+        }
+        if (item.type === "output_reasoning") {
+          console.log(`\x1b[90m${item.text}\x1b[0m`);
         }
         if (item.type === "output_text") {
           console.log(item.text);

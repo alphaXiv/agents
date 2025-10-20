@@ -15,7 +15,7 @@ const search = new Tool({
 });
 
 const agent = new Agent({
-  model: "__testing:deterministic",
+  model: "openai:gpt-5-nano",
   instructions: "You are a friendly assistant",
   tools: [search],
 });

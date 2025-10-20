@@ -1,9 +1,10 @@
 {
   "tasks": {
-    "dev": "deno run --watch main.ts"
+    "dev": "deno run --watch --env-file main.ts"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.15",
+    "openai": "npm:openai@^6.6.0",
     "zod": "jsr:@zod/zod@^4.0.0"
   }
 }
