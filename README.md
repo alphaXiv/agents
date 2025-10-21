@@ -7,6 +7,8 @@ uses of advanced LLM features.
 
 ### Deep research agent
 
+TODO: Make this work
+
 ```ts
 import z from "zod";
 import { Agent, Tool, mapAsync } from "@alphaxiv/agents";
