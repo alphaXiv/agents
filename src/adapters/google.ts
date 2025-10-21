@@ -7,7 +7,7 @@ import z from "zod";
 import { assert } from "@std/assert";
 import { Tool } from "../tool.ts";
 import type { ChatItem, ZodSchemaType } from "../types.ts";
-import { crossPlatformEnv } from "../util.ts";
+import { crossPlatformEnv, removeDollarSchema } from "../util.ts";
 
 export class GoogleAdapter<O> {
   #client: GoogleGenAI;
@@ -132,7 +132,9 @@ export class GoogleAdapter<O> {
           ? { includeThoughts: true }
           : undefined,
         responseMimeType: this.#output ? "application/json" : undefined,
-        responseSchema: this.#output ? z.toJSONSchema(this.#output) : undefined,
+        responseSchema: this.#output
+          ? removeDollarSchema(z.toJSONSchema(this.#output))
+          : undefined,
       },
     });
 

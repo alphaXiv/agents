@@ -39,3 +39,9 @@ export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
 export function crossPlatformEnv(key: string) {
   return process.env[key];
 }
+
+export function removeDollarSchema(schema: any) {
+  const { $schema: _$schema, ...result } = schema;
+
+  return result;
+}

@@ -124,7 +124,7 @@ export class AnthropicAdapter<O> {
       model: this.#model,
       system: systemPrompt +
         (this.#output
-          ? `\n\n<system-requirement>Your final output message must match this below JSON schema exactly, with nothing wrapping it. It should be parsable by passing it into JSON.parse (i.e. DO NOT PUT IT IN A CODE BLOCK):\n${
+          ? `\n\n<system-requirement>Your final output message must match this below JSON schema exactly. Wrap your response in a code block (i.e. \`\`\`json \`\`\`) :\n${
             z.toJSONSchema(this.#output)
           }</system-requirement>`
           : ""),
@@ -149,10 +149,19 @@ export class AnthropicAdapter<O> {
         });
         signatureMap.set(part.thinking, part.signature);
       } else if (part.type === "text") {
-        output.push({
-          type: "output_text",
-          text: part.text,
-        });
+        if (this.#output) {
+          const parsedBlock = part.text.split("```json")[1].split("```")[0]
+            .trim();
+          output.push({
+            type: "output_text",
+            text: parsedBlock,
+          });
+        } else {
+          output.push({
+            type: "output_text",
+            text: part.text,
+          });
+        }
       } else if (part.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
           tool.anthropic.name === part.name
