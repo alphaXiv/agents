@@ -6,6 +6,7 @@
     "jsr:@zod/zod@4": "4.1.12",
     "npm:@anthropic-ai/sdk@0.67": "0.67.0",
     "npm:@google/genai@^1.25.0": "1.25.0",
+    "npm:@types/node@*": "24.2.0",
     "npm:openai@^6.6.0": "6.6.0"
   },
   "jsr": {
@@ -38,6 +39,12 @@
       "dependencies": [
         "google-auth-library",
         "ws"
+      ]
+    },
+    "@types/node@24.2.0": {
+      "integrity": "sha512-3xyG3pMCq3oYCNg7/ZP+E1ooTaGB4cG8JWRsqqOYQdbWNY4zbaV0Ennrd7stjiJEFZCaybcIgpTjJWHRfBSIDw==",
+      "dependencies": [
+        "undici-types"
       ]
     },
     "agent-base@7.1.4": {
@@ -165,6 +172,9 @@
     },
     "ts-algebra@2.0.0": {
       "integrity": "sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw=="
+    },
+    "undici-types@7.10.0": {
+      "integrity": "sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag=="
     },
     "uuid@9.0.1": {
       "integrity": "sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==",

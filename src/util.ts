@@ -45,3 +45,19 @@ export function removeDollarSchema(schema: any) {
 
   return result;
 }
+
+export async function runWithRetries<T>(
+  func: () => Promise<T>,
+  retries: number,
+) {
+  let err: unknown;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await func();
+    } catch (error) {
+      err = error;
+      // no-op
+    }
+  }
+  throw err;
+}

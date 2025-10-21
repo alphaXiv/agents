@@ -1,7 +1,7 @@
 import { ADAPTERS } from "./adapters.ts";
 import { Tool } from "./tool.ts";
 import type { ChatItem, ChatLike, ZodSchemaType } from "./types.ts";
-import { convertChatLikeToChatItem } from "./util.ts";
+import { convertChatLikeToChatItem, runWithRetries } from "./util.ts";
 
 const MAX_TURNS = 100;
 
@@ -67,10 +67,12 @@ export class Agent<O> {
 
     const newHistory: ChatItem[] = [];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const result = await adapter.run({ // TODO: add retry here
-        systemPrompt: this.#instructions,
-        history: [...history, ...newHistory],
-      });
+      const result = await runWithRetries(() =>
+        adapter.run({
+          systemPrompt: this.#instructions,
+          history: [...history, ...newHistory],
+        }), 5);
+
       newHistory.push(...result);
 
       const toolUses = result.filter((chatItem) =>
