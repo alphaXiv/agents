@@ -1,6 +1,5 @@
 import z from "zod";
-import { Agent } from "../src/agent.ts";
-import { Tool } from "../src/tool.ts";
+import { Agent, Tool } from "../mod.ts";
 
 const search = new Tool({
   name: "Searching the internet...",

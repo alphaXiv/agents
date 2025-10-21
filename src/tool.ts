@@ -30,19 +30,19 @@ export class Tool<O> {
     this.#execute = execute;
   }
 
-  get name() {
+  get name(): string {
     return this.#name;
   }
 
-  get description() {
+  get description(): string {
     return this.#description;
   }
 
-  get parameters() {
+  get parameters(): ZodSchemaType<O> {
     return this.#parameters;
   }
 
-  get execute() {
+  get execute(): ExecuteFunc<O> {
     return this.#execute;
   }
 }
