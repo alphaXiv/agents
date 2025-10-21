@@ -1,6 +1,6 @@
 {
   "name": "@alphaxiv/agents",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "exports": "./mod.ts",
   "tasks": {
@@ -11,6 +11,6 @@
     "@google/genai": "npm:@google/genai@^1.25.0",
     "@std/assert": "jsr:@std/assert@^1.0.15",
     "openai": "npm:openai@^6.6.0",
-    "zod": "jsr:@zod/zod@^4.0.0"
+    "zod": "npm:zod@^4.0.0"
   }
 }
