@@ -29,7 +29,7 @@ export interface AgentOptions<O> {
   tools?: Tool<any>[];
 }
 
-type AgentRunResultOutput<O> = O extends unknown ? undefined : O;
+type AgentRunResultOutput<O> = unknown extends O ? undefined : O;
 export interface AgentRunResult<O> {
   history: ChatItem[];
   output: AgentRunResultOutput<O>;

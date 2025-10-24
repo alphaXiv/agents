@@ -42,7 +42,23 @@ Deno.test("Structured output works", async () => {
     type: "input_text",
     text: "Can you give me a temperature estimate?",
   }]);
+  run.output satisfies number;
   assert(typeof run.output === "number");
+});
+
+Deno.test("Structured output 2 works", async () => {
+  const agent = new Agent({
+    model: "__testing:deterministic",
+    instructions: "You are a friendly assistant who can name cats",
+    output: z.object({
+      name: z.string().describe("The cat's name"),
+    }),
+  });
+  const run = await agent.run([{
+    type: "input_text",
+    text: "Can you give me a cat name?",
+  }]);
+  assertEquals(run.output.name, "Bingus");
 });
 
 Deno.test("Tool calls can work", async () => {

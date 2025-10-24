@@ -48,6 +48,16 @@ export class TestingAdapter<O> {
 
     if (
       lastMessage.type === "input_text" &&
+      lastMessage.text === "Can you give me a cat name?"
+    ) {
+      return [{
+        type: "output_text",
+        text: JSON.stringify({ name: "Bingus" }),
+      }];
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
       lastMessage.text === "Can you tell me what cat websites there are?"
     ) {
       const searchTool = this.#tools[0];
