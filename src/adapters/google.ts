@@ -9,6 +9,7 @@ import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
 import { crossPlatformEnv, removeDollarSchema } from "../util.ts";
 
+// TODO: support both output schema and tools in same agent
 export class GoogleAdapter<zO, zI> {
   #client: GoogleGenAI;
   #model: string;
