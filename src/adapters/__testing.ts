@@ -1,16 +1,17 @@
-import { Tool } from "../tool.ts";
-import type { ChatItem, ZodSchemaType } from "../types.ts";
+import type z from "zod";
+import type { Tool } from "../tool.ts";
+import type { ChatItem } from "../types.ts";
 
-export class TestingAdapter<O> {
+export class TestingAdapter<zO, zI> {
   #model: string;
-  #output?: ZodSchemaType<O>;
-  #tools: Tool<unknown>[];
+  #output?: z.ZodType<zO, zI>;
+  #tools: Tool<unknown, unknown>[];
 
   constructor(
     { model, output, tools }: {
       model: string;
-      output?: ZodSchemaType<O>;
-      tools: Tool<unknown>[];
+      output?: z.ZodType<zO, zI>;
+      tools: Tool<unknown, unknown>[];
     },
   ) {
     this.#model = model;

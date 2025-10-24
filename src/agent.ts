@@ -1,6 +1,7 @@
+import type z from "zod";
 import { ADAPTERS } from "./adapters.ts";
-import { Tool } from "./tool.ts";
-import type { ChatItem, ChatLike, ZodSchemaType } from "./types.ts";
+import type { Tool } from "./tool.ts";
+import type { ChatItem, ChatLike } from "./types.ts";
 import { convertChatLikeToChatItem, runWithRetries } from "./util.ts";
 
 const MAX_TURNS = 100;
@@ -22,28 +23,28 @@ export type ModelString =
   | "anthropic:claude-opus-4-1"
   | (string & {});
 
-export interface AgentOptions<O> {
+export interface AgentOptions<zO, zI> {
   model: ModelString;
   instructions: string;
-  output?: ZodSchemaType<O>;
-  tools?: Tool<any>[];
+  output?: z.ZodType<zO, zI>;
+  tools?: Tool<any, any>[];
 }
 
-type AgentRunResultOutput<O> = unknown extends O ? undefined : O;
-export interface AgentRunResult<O> {
+type AgentRunResultOutput<zO, zI> = unknown extends zO ? undefined : zO;
+export interface AgentRunResult<zO, zI> {
   history: ChatItem[];
-  output: AgentRunResultOutput<O>;
+  output: AgentRunResultOutput<zO, zI>;
   outputText: string;
 }
 
-export class Agent<O> {
+export class Agent<zO, zI> {
   #provider: string;
   #model: ModelString;
   #instructions: string;
-  #output?: ZodSchemaType<O>;
-  #tools: Tool<any>[];
+  #output?: z.ZodType<zO, zI>;
+  #tools: Tool<any, any>[];
 
-  constructor(options: AgentOptions<O>) {
+  constructor(options: AgentOptions<zO, zI>) {
     const [provider, ...modelParts] = options.model.split(":");
     this.#provider = provider;
     this.#model = modelParts.join(":");
@@ -55,7 +56,7 @@ export class Agent<O> {
   /** Run agent without streaming */
   async run(
     chatLike: ChatLike,
-  ): Promise<AgentRunResult<O>> {
+  ): Promise<AgentRunResult<zO, zI>> {
     const history = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
     if (!adapterClass) throw new Error("Could not resolve provider");
@@ -121,7 +122,7 @@ export class Agent<O> {
         history: newHistory,
         output: (this.#output
           ? JSON.parse(finalItem.type === "output_text" ? finalItem.text : "")
-          : undefined) as AgentRunResultOutput<O>,
+          : undefined) as AgentRunResultOutput<zO, zI>,
         outputText: newHistory.filter((history) =>
           history.type === "output_text"
         ).map((history) =>

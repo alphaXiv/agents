@@ -1,4 +1,5 @@
-import { ChatLike, ZodSchemaType } from "./types.ts";
+import type z from "zod";
+import type { ChatLike } from "./types.ts";
 
 export type ExecuteResult = ChatLike | Promise<ChatLike>;
 
@@ -8,11 +9,11 @@ export type ExecuteFuncInput<O> = {
 };
 export type ExecuteFunc<O> = (input: ExecuteFuncInput<O>) => ExecuteResult;
 
-export class Tool<O> {
+export class Tool<zO, zI> {
   #name: string;
   #description: string;
-  #parameters: ZodSchemaType<O>;
-  #execute: ExecuteFunc<O>;
+  #parameters: z.ZodType<zO, zI>;
+  #execute: ExecuteFunc<zO>;
   constructor({
     name,
     description,
@@ -21,8 +22,8 @@ export class Tool<O> {
   }: {
     name: string;
     description: string;
-    parameters: ZodSchemaType<O>;
-    execute: ExecuteFunc<O>;
+    parameters: z.ZodType<zO, zI>;
+    execute: ExecuteFunc<zO>;
   }) {
     this.#name = name;
     this.#description = description;
@@ -38,11 +39,11 @@ export class Tool<O> {
     return this.#description;
   }
 
-  get parameters(): ZodSchemaType<O> {
+  get parameters(): z.ZodType<zO, zI> {
     return this.#parameters;
   }
 
-  get execute(): ExecuteFunc<O> {
+  get execute(): ExecuteFunc<zO> {
     return this.#execute;
   }
 }

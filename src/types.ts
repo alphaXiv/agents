@@ -1,5 +1,3 @@
-import type z from "zod";
-
 export type ChatItem =
   | {
     type: "input_text";
@@ -14,5 +12,3 @@ export type ChatItem =
   | { type: "tool_result"; tool_use_id: string; content: string };
 
 export type ChatLike = string | ChatItem[];
-
-export type ZodSchemaType<O> = z.ZodType<O, O>;

@@ -6,17 +6,16 @@ import type {
 import z from "zod";
 import { assert } from "@std/assert";
 
-import { Tool } from "../tool.ts";
-import type { ChatItem, ZodSchemaType } from "../types.ts";
+import type { Tool } from "../tool.ts";
+import type { ChatItem } from "../types.ts";
 import { crossPlatformEnv } from "../util.ts";
-import { assertEquals } from "@std/assert/equals";
 
-export class OpenRouterAdapter<O> {
+export class OpenRouterAdapter<zO, zI> {
   #client: OpenAI;
   #model: string;
-  #output?: ZodSchemaType<O>;
+  #output?: z.ZodType<zO, zI>;
   #normalizedTools: {
-    original: Tool<unknown>;
+    original: Tool<unknown, unknown>;
     openrouter: ChatCompletionFunctionTool;
     /** OpenAI doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
     wrapperObject: boolean;
@@ -25,8 +24,8 @@ export class OpenRouterAdapter<O> {
   constructor(
     { model, output, tools }: {
       model: string;
-      output?: ZodSchemaType<O>;
-      tools: Tool<unknown>[];
+      output?: z.ZodType<zO, zI>;
+      tools: Tool<unknown, unknown>[];
     },
   ) {
     this.#model = model;

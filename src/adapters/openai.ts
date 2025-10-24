@@ -2,15 +2,15 @@ import OpenAI from "openai";
 import z from "zod";
 import { assert } from "@std/assert";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
-import { Tool } from "../tool.ts";
-import type { ChatItem, ZodSchemaType } from "../types.ts";
+import type { Tool } from "../tool.ts";
+import type { ChatItem } from "../types.ts";
 
-export class OpenAIAdapter<O> {
+export class OpenAIAdapter<zO, zI> {
   #client: OpenAI;
   #model: string;
-  #output?: ZodSchemaType<O>;
+  #output?: z.ZodType<zO, zI>;
   #normalizedTools: {
-    original: Tool<unknown>;
+    original: Tool<unknown, unknown>;
     openai: OpenAI.Responses.FunctionTool;
     /** OpenAI doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
     wrapperObject: boolean;
@@ -19,8 +19,8 @@ export class OpenAIAdapter<O> {
   constructor(
     { model, output, tools }: {
       model: string;
-      output?: ZodSchemaType<O>;
-      tools: Tool<unknown>[];
+      output?: z.ZodType<zO, zI>;
+      tools: Tool<unknown, unknown>[];
     },
   ) {
     this.#model = model;
