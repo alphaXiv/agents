@@ -10,15 +10,15 @@ export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
     if (type === "input_text" || type === "output_text") {
       return [{
         type,
-        text: chatLike,
+        content: chatLike,
       }];
     } else if (type === "tool_use") {
       return [
         {
           type,
-          id: otherData!.id,
+          tool_use_id: otherData!.tool_use_id,
           name: otherData!.name,
-          input: chatLike,
+          content: chatLike,
         },
       ];
     } else if (type === "tool_result") {

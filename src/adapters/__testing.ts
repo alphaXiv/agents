@@ -27,47 +27,47 @@ export class TestingAdapter<zO, zI> {
     if (!lastMessage) {
       return [{
         type: "output_text",
-        text: "How can I assist you today?",
+        content: "How can I assist you today?",
       }];
     }
     if (
       lastMessage.type === "input_text" &&
-      lastMessage.text.toLowerCase().includes("hello")
+      lastMessage.content.toLowerCase().includes("hello")
     ) {
       return [{
         type: "output_text",
-        text: "Hey! How are you doing?",
+        content: "Hey! How are you doing?",
       }];
     }
 
     if (
       lastMessage.type === "input_text" &&
-      lastMessage.text === "Can you give me a temperature estimate?"
+      lastMessage.content === "Can you give me a temperature estimate?"
     ) {
-      return [{ type: "output_text", text: "0" }];
+      return [{ type: "output_text", content: "0" }];
     }
 
     if (
       lastMessage.type === "input_text" &&
-      lastMessage.text === "Can you give me a cat name?"
+      lastMessage.content === "Can you give me a cat name?"
     ) {
       return [{
         type: "output_text",
-        text: JSON.stringify({ name: "Bingus" }),
+        content: JSON.stringify({ name: "Bingus" }),
       }];
     }
 
     if (
       lastMessage.type === "input_text" &&
-      lastMessage.text === "Can you tell me what cat websites there are?"
+      lastMessage.content === "Can you tell me what cat websites there are?"
     ) {
       const searchTool = this.#tools[0];
       return [
         {
           type: "tool_use",
-          id: Math.random().toString(),
+          tool_use_id: Math.random().toString(),
           name: searchTool.name,
-          input: '"cats"',
+          content: '"cats"',
         },
       ];
     }
@@ -75,14 +75,14 @@ export class TestingAdapter<zO, zI> {
     if (lastMessage.type === "tool_result") {
       return [{
         type: "output_text",
-        text: "looks like the tool call got " + lastMessage.content,
+        content: "looks like the tool call got " + lastMessage.content,
       }];
     }
 
     return [
       {
         type: "output_text",
-        text:
+        content:
           "I'm sorry, but I seem to be having issues processing your request...",
       },
     ];

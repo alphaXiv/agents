@@ -9,6 +9,16 @@ import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
 import { crossPlatformEnv, removeDollarSchema } from "../util.ts";
 
+// TODO: ensure this list is complete
+const nonReasoningModels = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-001",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash-lite-001",
+  "gemini-2.5-flash-image",
+  "gemini-2.5-flash-image-preview",
+];
+
 // TODO: support both output schema and tools in same agent
 export class GoogleAdapter<zO, zI> {
   #client: GoogleGenAI;
@@ -70,24 +80,24 @@ export class GoogleAdapter<zO, zI> {
       if (historyItem.type === "input_text") {
         googleHistory.push({
           role: "user",
-          parts: [{ text: historyItem.text }],
+          parts: [{ text: historyItem.content }],
         });
       } else if (historyItem.type === "output_text") {
         googleHistory.push({
           role: "model",
-          parts: [{ text: historyItem.text }],
+          parts: [{ text: historyItem.content }],
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
           tool.original.name === historyItem.name
         );
         assert(tool);
-        const content = JSON.parse(historyItem.input);
+        const content = JSON.parse(historyItem.content);
         googleHistory.push({
           role: "model",
           parts: [{
             functionCall: {
-              id: historyItem.id,
+              id: historyItem.tool_use_id,
               name: tool.google.name,
               args: tool.wrapperObject ? { content } : content,
             },
@@ -95,7 +105,8 @@ export class GoogleAdapter<zO, zI> {
         });
       } else if (historyItem.type === "tool_result") {
         const toolCall = history.find((item) =>
-          item.type === "tool_use" && item.id === historyItem.tool_use_id
+          item.type === "tool_use" &&
+          item.tool_use_id === historyItem.tool_use_id
         );
         assert(toolCall);
         googleHistory.push({
@@ -115,13 +126,13 @@ export class GoogleAdapter<zO, zI> {
       }
     }
 
-    const isReasoningModel = true; // TODO: implement
+    const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
     const response = await this.#client.models.generateContent({
       model: this.#model,
       contents: googleHistory,
       config: {
-        tools: this.#normalizedTools
+        tools: this.#normalizedTools.length
           ? [{
             functionDeclarations: this.#normalizedTools.map(({ google }) =>
               google
@@ -149,12 +160,12 @@ export class GoogleAdapter<zO, zI> {
         if (part.thought) {
           output.push({
             type: "output_reasoning",
-            text: part.text,
+            content: part.text,
           });
         } else {
           output.push({
             type: "output_text",
-            text: part.text,
+            content: part.text,
           });
         }
       } else if (part.functionCall) {
@@ -168,9 +179,9 @@ export class GoogleAdapter<zO, zI> {
         assert(tool);
         output.push({
           type: "tool_use",
-          id: funcId,
+          tool_use_id: funcId,
           name: tool.original.name,
-          input: JSON.stringify(
+          content: JSON.stringify(
             tool.wrapperObject ? func.args.content : func.args,
           ),
         });

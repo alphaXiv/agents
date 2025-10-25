@@ -73,12 +73,12 @@ export class OpenRouterAdapter<zO, zI> {
       if (historyItem.type === "input_text") {
         openrouterHistory.push({
           role: "user",
-          content: historyItem.text,
+          content: historyItem.content,
         });
       } else if (historyItem.type === "output_text") {
         openrouterHistory.push({
           role: "assistant",
-          content: historyItem.text,
+          content: historyItem.content,
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
@@ -89,13 +89,13 @@ export class OpenRouterAdapter<zO, zI> {
           role: "assistant",
           tool_calls: [
             {
-              id: historyItem.id,
+              id: historyItem.tool_use_id,
               type: "function",
               function: {
                 name: tool.openrouter.function.name,
                 arguments: tool.wrapperObject
-                  ? `{"content":${historyItem.input}}`
-                  : historyItem.input,
+                  ? `{"content":${historyItem.content}}`
+                  : historyItem.content,
               },
             },
           ],
@@ -132,7 +132,7 @@ export class OpenRouterAdapter<zO, zI> {
     if (choice.message.content) {
       output.push({
         type: "output_text",
-        text: choice.message.content,
+        content: choice.message.content,
       });
     }
     for (const toolUse of choice.message.tool_calls ?? []) {
@@ -144,9 +144,9 @@ export class OpenRouterAdapter<zO, zI> {
       const content = JSON.parse(toolUse.function.arguments);
       output.push({
         type: "tool_use",
-        id: toolUse.id,
+        tool_use_id: toolUse.id,
         name: tool.original.name,
-        input: tool.wrapperObject
+        content: tool.wrapperObject
           ? JSON.stringify(content.content)
           : toolUse.function.arguments,
       });

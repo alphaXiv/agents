@@ -67,24 +67,24 @@ export class AnthropicAdapter<zO, zI> {
       if (historyItem.type === "input_text") {
         anthropicHistory.push({
           role: "user",
-          content: [{ type: "text", text: historyItem.text }],
+          content: [{ type: "text", text: historyItem.content }],
         });
       } else if (historyItem.type === "output_text") {
         anthropicHistory.push({
           role: "assistant",
-          content: [{ type: "text", text: historyItem.text }],
+          content: [{ type: "text", text: historyItem.content }],
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
           tool.original.name === historyItem.name
         );
         assert(tool);
-        const content = JSON.parse(historyItem.input);
+        const content = JSON.parse(historyItem.content);
         anthropicHistory.push({
           role: "assistant",
           content: [{
             type: "tool_use",
-            id: historyItem.id,
+            id: historyItem.tool_use_id,
             name: tool.anthropic.name,
             input: tool.wrapperObject ? { content } : content,
           }],
@@ -99,13 +99,13 @@ export class AnthropicAdapter<zO, zI> {
           }],
         });
       } else if (historyItem.type === "output_reasoning") {
-        const signature = signatureMap.get(historyItem.text);
+        const signature = signatureMap.get(historyItem.content);
         if (signature) {
           anthropicHistory.push({
             role: "assistant",
             content: [{
               type: "thinking",
-              thinking: historyItem.text,
+              thinking: historyItem.content,
               signature,
             }],
           });
@@ -145,7 +145,7 @@ export class AnthropicAdapter<zO, zI> {
       if (part.type === "thinking") {
         output.push({
           type: "output_reasoning",
-          text: part.thinking,
+          content: part.thinking,
         });
         signatureMap.set(part.thinking, part.signature);
       } else if (part.type === "text") {
@@ -154,12 +154,12 @@ export class AnthropicAdapter<zO, zI> {
             .trim();
           output.push({
             type: "output_text",
-            text: parsedBlock,
+            content: parsedBlock,
           });
         } else {
           output.push({
             type: "output_text",
-            text: part.text,
+            content: part.text,
           });
         }
       } else if (part.type === "tool_use") {
@@ -169,9 +169,9 @@ export class AnthropicAdapter<zO, zI> {
         assert(tool);
         output.push({
           type: "tool_use",
-          id: part.id,
+          tool_use_id: part.id,
           name: tool.original.name,
-          input: JSON.stringify(
+          content: JSON.stringify(
             tool.wrapperObject ? (part.input as any).content : part.input,
           ),
         });

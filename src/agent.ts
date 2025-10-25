@@ -89,12 +89,12 @@ export class Agent<zO, zI> {
             if (!tool) throw new Error("wtfrick model tried to use fake tool"); // TODO: handle this better
 
             const result = await tool.execute({
-              param: JSON.parse(toolUse.input),
-              toolUseId: toolUse.id,
+              param: JSON.parse(toolUse.content),
+              toolUseId: toolUse.tool_use_id,
             });
 
             return convertChatLikeToChatItem(result, "tool_result", {
-              tool_use_id: toolUse.id,
+              tool_use_id: toolUse.tool_use_id,
             });
           }),
         );
@@ -110,10 +110,17 @@ export class Agent<zO, zI> {
         }
 
         try {
-          this.#output.parse(JSON.parse(finalItem.text));
-        } catch {
-          console.log("parsing failed", finalItem.text);
-          // TODO: add error here
+          this.#output.parse(JSON.parse(finalItem.content));
+        } catch (err) {
+          console.log("parsing failed", finalItem.content);
+          const errStr = err instanceof Error
+            ? err.message
+            : (err as string).toString();
+          newHistory.push({
+            type: "output_text",
+            content: "Sorry, my output has an error: " + errStr +
+              "\n I will try again.",
+          });
           continue;
         }
       }
@@ -121,13 +128,13 @@ export class Agent<zO, zI> {
       return {
         history: newHistory,
         output: (this.#output
-          ? JSON.parse(finalItem.type === "output_text" ? finalItem.text : "")
+          ? JSON.parse(
+            finalItem.type === "output_text" ? finalItem.content : "",
+          )
           : undefined) as AgentRunResultOutput<zO, zI>,
         outputText: newHistory.filter((history) =>
           history.type === "output_text"
-        ).map((history) =>
-          history.text
-        ).join("\n"),
+        ).map((history) => history.content).join("\n"),
       };
     }
 
@@ -137,29 +144,29 @@ export class Agent<zO, zI> {
   async cli() {
     const history: ChatItem[] = [];
     while (true) {
-      const text = prompt(">");
-      if (!text) break;
-      history.push({ type: "input_text", text });
+      const content = prompt(">");
+      if (!content) break;
+      history.push({ type: "input_text", content });
 
       const newResult = await this.run(history);
       for (const item of newResult.history) {
         if (item.type === "tool_use") {
           console.log(
-            `[${item.id}]`,
+            `[${item.tool_use_id}]`,
             "Calling",
             item.name,
             "with parameters",
-            item.input,
+            item.content,
           );
         }
         if (item.type === "tool_result") {
           console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
         }
         if (item.type === "output_reasoning") {
-          console.log(`\x1b[3m${item.text}\x1b[0m`);
+          console.log(`\x1b[3m${item.content}\x1b[0m`);
         }
         if (item.type === "output_text") {
-          console.log(item.text);
+          console.log(item.content);
         }
       }
       history.push(...newResult.history);

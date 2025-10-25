@@ -12,7 +12,7 @@ Deno.test("Basic input out of agents works", async () => {
   const run = await agent.run("Hello!");
   assertEquals(run.history, [{
     type: "output_text",
-    text: "Hey! How are you doing?",
+    content: "Hey! How are you doing?",
   }]);
 });
 
@@ -23,11 +23,11 @@ Deno.test("History input out of agents works", async () => {
   });
   const run = await agent.run([{
     type: "input_text",
-    text: "Hello!",
+    content: "Hello!",
   }]);
   assertEquals(run.history, [{
     type: "output_text",
-    text: "Hey! How are you doing?",
+    content: "Hey! How are you doing?",
   }]);
 });
 
@@ -40,7 +40,7 @@ Deno.test("Structured output works", async () => {
   });
   const run = await agent.run([{
     type: "input_text",
-    text: "Can you give me a temperature estimate?",
+    content: "Can you give me a temperature estimate?",
   }]);
   run.output satisfies number;
   assert(typeof run.output === "number");
@@ -56,7 +56,7 @@ Deno.test("Structured output 2 works", async () => {
   });
   const run = await agent.run([{
     type: "input_text",
-    text: "Can you give me a cat name?",
+    content: "Can you give me a cat name?",
   }]);
   assertEquals(run.output.name, "Bingus");
 });

@@ -61,13 +61,13 @@ export class OpenAIAdapter<zO, zI> {
         openAIHistory.push({
           type: "message",
           role: "user",
-          content: historyItem.text,
+          content: historyItem.content,
         });
       } else if (historyItem.type === "output_text") {
         openAIHistory.push({
           type: "message",
           role: "assistant",
-          content: historyItem.text,
+          content: historyItem.content,
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
@@ -76,11 +76,11 @@ export class OpenAIAdapter<zO, zI> {
         assert(tool);
         openAIHistory.push({
           type: "custom_tool_call",
-          call_id: historyItem.id,
+          call_id: historyItem.tool_use_id,
           name: tool.openai.name,
           input: tool.wrapperObject
-            ? `{"content":${historyItem.input}}`
-            : historyItem.input,
+            ? `{"content":${historyItem.content}}`
+            : historyItem.content,
         });
       } else if (historyItem.type === "tool_result") {
         openAIHistory.push({
@@ -120,7 +120,7 @@ export class OpenAIAdapter<zO, zI> {
       if (part.type === "message") {
         output.push({
           type: "output_text",
-          text: part.content.map((content) =>
+          content: part.content.map((content) =>
             content.type === "output_text" ? content.text : content.refusal
           ).join("\n"),
         });
@@ -129,15 +129,15 @@ export class OpenAIAdapter<zO, zI> {
           tool.openai.name === part.name
         );
         assert(tool);
-        const input = tool.wrapperObject
+        const content = tool.wrapperObject
           ? JSON.stringify(JSON.parse(part.arguments).content)
           : part.arguments;
 
         output.push({
           type: "tool_use",
-          id: part.call_id,
+          tool_use_id: part.call_id,
           name: tool.original.name,
-          input,
+          content,
         });
       } else if (part.type === "reasoning") {
         let reasoningText = "";
@@ -149,7 +149,7 @@ export class OpenAIAdapter<zO, zI> {
         if (reasoningText) {
           output.push({
             type: "output_reasoning",
-            text: reasoningText,
+            content: reasoningText,
           });
         }
       } else {
