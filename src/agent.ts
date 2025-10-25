@@ -49,10 +49,10 @@ export type AgentOptions<zO, zI, M extends ModelString = ModelString> =
       tools?: Tool<any, any>[];
     };
 
-type AgentRunResultOutput<zO, zI> = unknown extends zO ? undefined : zO;
-export interface AgentRunResult<zO, zI> {
+type AgentRunResultOutput<zO> = unknown extends zO ? undefined : zO;
+export interface AgentRunResult<zO> {
   history: ChatItem[];
-  output: AgentRunResultOutput<zO, zI>;
+  output: AgentRunResultOutput<zO>;
   outputText: string;
 }
 
@@ -75,7 +75,7 @@ export class Agent<zO, zI, M extends ModelString> {
   /** Run agent without streaming */
   async run(
     chatLike: ChatLike,
-  ): Promise<AgentRunResult<zO, zI>> {
+  ): Promise<AgentRunResult<zO>> {
     const history = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
     if (!adapterClass) throw new Error("Could not resolve provider");
@@ -150,7 +150,7 @@ export class Agent<zO, zI, M extends ModelString> {
           ? JSON.parse(
             finalItem.type === "output_text" ? finalItem.content : "",
           )
-          : undefined) as AgentRunResultOutput<zO, zI>,
+          : undefined) as AgentRunResultOutput<zO>,
         outputText: newHistory.filter((history) =>
           history.type === "output_text"
         ).map((history) => history.content).join("\n"),
