@@ -5,6 +5,15 @@ import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
 
+// TODO: ensure this list is complete
+const nonReasoningModels = [
+  "claude-3-5-haiku-20241022",
+  "claude-3-5-haiku-latest",
+  "claude-3-5-haiku",
+  "claude-3-haiku-20240307",
+  "claude-3-haiku",
+];
+
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
 const signatureMap = new Map<string, string>();
@@ -117,7 +126,7 @@ export class AnthropicAdapter<zO, zI> {
       }
     }
 
-    const isReasoningModel = true; // TODO: implement
+    const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
     // TODO: implement structured outputs properly instead of this hack
     const response = await this.#client.messages.create({
