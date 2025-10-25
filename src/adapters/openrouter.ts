@@ -130,6 +130,15 @@ export class OpenRouterAdapter<zO, zI> {
     const choice = response.choices[0];
 
     if (choice.message.content) {
+      const reasoning =
+        (choice.message as unknown as { reasoning: string | undefined })
+          .reasoning;
+      if (reasoning) {
+        output.push({
+          type: "output_reasoning",
+          content: reasoning,
+        });
+      }
       output.push({
         type: "output_text",
         content: choice.message.content,

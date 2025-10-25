@@ -15,20 +15,39 @@ export type ModelString =
   | "openai:gpt-4.1"
   | "google:gemini-2.5-pro"
   | "google:gemini-2.5-flash"
+  | "google:gemini-2.5-flash-image"
   | "google:gemini-2.5-flash-lite"
   | "google:gemini-2.0-flash"
   | "google:gemini-2.0-flash-lite"
   | "anthropic:claude-sonnet-4-5"
   | "anthropic:claude-haiku-4-5"
   | "anthropic:claude-opus-4-1"
+  | "openrouter:openai/gpt-oss-20b"
+  | "openrouter:openai/gpt-oss-120b"
+  | "openrouter:qwen/qwen3-235b-a22b-thinking-2507"
+  | "openrouter:qwen/qwen3-235b-a22b-2507"
+  | "openrouter:qwen/qwen3-next-80b-a3b-instruct"
+  | "openrouter:qwen/qwen3-next-80b-a3b-thinking"
+  | "openrouter:x-ai/grok-4-fast"
+  | "openrouter:x-ai/grok-4"
+  | "openrouter:x-ai/grok-code-fast-1"
   | (string & {});
 
-export interface AgentOptions<zO, zI> {
-  model: ModelString;
-  instructions: string;
-  output?: z.ZodType<zO, zI>;
-  tools?: Tool<any, any>[];
-}
+export type NoToolCallModels = "google:gemini-2.5-flash-image";
+
+export type AgentOptions<zO, zI, M extends ModelString = ModelString> =
+  M extends NoToolCallModels ? {
+      model: M;
+      instructions: string;
+      output?: z.ZodType<zO, zI>;
+      tools?: never;
+    }
+    : {
+      model: M;
+      instructions: string;
+      output?: z.ZodType<zO, zI>;
+      tools?: Tool<any, any>[];
+    };
 
 type AgentRunResultOutput<zO, zI> = unknown extends zO ? undefined : zO;
 export interface AgentRunResult<zO, zI> {
@@ -37,14 +56,14 @@ export interface AgentRunResult<zO, zI> {
   outputText: string;
 }
 
-export class Agent<zO, zI> {
+export class Agent<zO, zI, M extends ModelString> {
   #provider: string;
   #model: ModelString;
   #instructions: string;
   #output?: z.ZodType<zO, zI>;
   #tools: Tool<any, any>[];
 
-  constructor(options: AgentOptions<zO, zI>) {
+  constructor(options: AgentOptions<zO, zI, M>) {
     const [provider, ...modelParts] = options.model.split(":");
     this.#provider = provider;
     this.#model = modelParts.join(":");
