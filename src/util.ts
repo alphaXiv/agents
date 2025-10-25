@@ -1,5 +1,6 @@
 import process from "node:process";
 import type { ChatItem, ChatLike } from "./types.ts";
+import { encodeHex } from "@std/encoding/hex";
 
 export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
   chatLike: ChatLike,
@@ -12,15 +13,6 @@ export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
         type,
         content: chatLike,
       }];
-    } else if (type === "tool_use") {
-      return [
-        {
-          type,
-          tool_use_id: otherData!.tool_use_id,
-          name: otherData!.name,
-          content: chatLike,
-        },
-      ];
     } else if (type === "tool_result") {
       return [
         {
@@ -60,4 +52,16 @@ export async function runWithRetries<T>(
     }
   }
   throw err;
+}
+
+export async function hashString(str: string) {
+  // Encode the string as UTF-8
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+
+  // Hash the data
+  const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", data);
+
+  // Convert to hex string
+  return encodeHex(hashBuffer);
 }

@@ -7,7 +7,39 @@ import z from "zod";
 import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
-import { crossPlatformEnv, removeDollarSchema } from "../util.ts";
+import { crossPlatformEnv, hashString, removeDollarSchema } from "../util.ts";
+
+const BASE_URL = "https://generativelanguage.googleapis.com";
+
+/** No way to specify url for google api :( */
+async function ensureFileUploaded(
+  gemini: GoogleGenAI,
+  url: string,
+  mimeType: string,
+): Promise<string> {
+  // Create a safe filename by hashing the URL
+  const safeFileName = (await hashString(url)).slice(0, 40);
+
+  try {
+    // Try to get the file first to see if it exists
+    await gemini.files.get({ name: safeFileName });
+    return safeFileName;
+  } catch {
+    const response = await fetch(url);
+    const blob = await response.blob();
+
+    // Upload the file using the provided uploadBuffer function
+    await gemini.files.upload({
+      file: blob,
+      config: {
+        name: `files/${safeFileName}`,
+        mimeType,
+      },
+    });
+
+    return safeFileName;
+  }
+}
 
 // TODO: ensure this list is complete
 const nonReasoningModels = [
@@ -89,7 +121,7 @@ export class GoogleAdapter<zO, zI> {
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
-          tool.original.name === historyItem.name
+          tool.original.name === historyItem.kind
         );
         assert(tool);
         const content = JSON.parse(historyItem.content);
@@ -114,8 +146,23 @@ export class GoogleAdapter<zO, zI> {
           parts: [{
             functionResponse: {
               id: historyItem.tool_use_id,
-              name: toolCall.type === "tool_use" ? toolCall.name : undefined, // TODO: figure out why type narrowing is trolling me here
+              name: toolCall.type === "tool_use" ? toolCall.kind : undefined, // TODO: figure out why type narrowing is trolling me here
               response: { content: historyItem.content },
+            },
+          }],
+        });
+      } else if (historyItem.type === "input_file") {
+        const fileName = await ensureFileUploaded(
+          this.#client,
+          historyItem.content,
+          historyItem.kind,
+        ); // TODO: make this strategy configurable
+        googleHistory.push({
+          role: "user",
+          parts: [{
+            fileData: {
+              fileUri: `${BASE_URL}/v1beta/files/${fileName}`,
+              mimeType: historyItem.kind,
             },
           }],
         });
@@ -180,7 +227,7 @@ export class GoogleAdapter<zO, zI> {
         output.push({
           type: "tool_use",
           tool_use_id: funcId,
-          name: tool.original.name,
+          kind: tool.original.name,
           content: JSON.stringify(
             tool.wrapperObject ? func.args.content : func.args,
           ),

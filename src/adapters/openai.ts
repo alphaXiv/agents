@@ -4,6 +4,15 @@ import { assert } from "@std/assert";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
+import { encodeBase64 } from "@std/encoding";
+
+const supportedImageMimeTypes = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
 
 export class OpenAIAdapter<zO, zI> {
   #client: OpenAI;
@@ -71,7 +80,7 @@ export class OpenAIAdapter<zO, zI> {
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
-          tool.original.name === historyItem.name
+          tool.original.name === historyItem.kind
         );
         assert(tool);
         openAIHistory.push({
@@ -88,6 +97,50 @@ export class OpenAIAdapter<zO, zI> {
           call_id: historyItem.tool_use_id,
           output: historyItem.content,
         });
+      } else if (historyItem.type === "input_file") {
+        if (supportedImageMimeTypes.includes(historyItem.kind)) {
+          openAIHistory.push({
+            type: "message",
+            role: "user",
+            content: [{
+              type: "input_image",
+              image_url: historyItem.content,
+              detail: "auto",
+            }],
+          });
+        } else if (historyItem.kind === "application/pdf") {
+          const req = await fetch(historyItem.content);
+          const buffer = await req.arrayBuffer();
+          const filename = historyItem.content.split("/").pop(); // TODO: make this heuristic better
+
+          // TODO: check file support
+          openAIHistory.push({
+            type: "message",
+            role: "user",
+            content: [{
+              type: "input_file",
+              file_data: `data:application/pdf;base64,${encodeBase64(buffer)}`, // TODO: investigate openai file api
+              filename,
+            }],
+          });
+        } else if (historyItem.kind.startsWith("text/")) {
+          const req = await fetch(historyItem.content);
+          const text = await req.text();
+
+          openAIHistory.push({
+            type: "message",
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: `<file>${text}</file>`,
+            }],
+          });
+        } else {
+          throw new Error(
+            "OpenAI models don't support the following media type: " +
+              historyItem.kind,
+          );
+        }
       } else if (historyItem.type === "output_reasoning") {
         // no-op, don't propagate reasoning
       } else {
@@ -136,7 +189,7 @@ export class OpenAIAdapter<zO, zI> {
         output.push({
           type: "tool_use",
           tool_use_id: part.call_id,
-          name: tool.original.name,
+          kind: tool.original.name,
           content,
         });
       } else if (part.type === "reasoning") {

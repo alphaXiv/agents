@@ -104,7 +104,7 @@ export class Agent<zO, zI, M extends ModelString> {
         // tool subloop
         const toolResults = await Promise.all(
           toolUses.map(async (toolUse) => {
-            const tool = this.#tools.find((tool) => tool.name === toolUse.name);
+            const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
             if (!tool) throw new Error("wtfrick model tried to use fake tool"); // TODO: handle this better
 
             const result = await tool.execute({
@@ -173,7 +173,7 @@ export class Agent<zO, zI, M extends ModelString> {
           console.log(
             `[${item.tool_use_id}]`,
             "Calling",
-            item.name,
+            item.kind,
             "with parameters",
             item.content,
           );

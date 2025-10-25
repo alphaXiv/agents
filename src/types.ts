@@ -6,6 +6,13 @@ export type ChatItem =
     content: string;
   }
   | {
+    type: "input_file";
+    /** Mime type of the file */
+    kind: string;
+    /** File URL for the model */
+    content: string;
+  }
+  | {
     type: "output_reasoning";
     /** Textual reasoning output from the model */
     content: string;
@@ -20,7 +27,7 @@ export type ChatItem =
     /** Provider generated string representing the id of the tool call */
     tool_use_id: string;
     /** The name of the function called */
-    name: string;
+    kind: string;
     /** The input parameters into the function, encoded as json string  */
     content: string;
   }

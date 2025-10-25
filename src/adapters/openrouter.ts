@@ -10,6 +10,67 @@ import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
 import { crossPlatformEnv } from "../util.ts";
 
+// TODO: keep this updated (pulled from https://openrouter.ai/models?fmt=cards&input_modalities=file)
+const nativePdfSupport = [
+  "openai/gpt-5-image-mini",
+  "openai/gpt-5-image",
+  "openai/o3-deep-research",
+  "openai/o4-mini-deep-research",
+  "openai/gpt-5-pro",
+  "anthropic/claude-sonnet-4.5",
+  "google/gemini-2.5-flash-preview-09-2025",
+  "google/gemini-2.5-flash-lite-preview-09-2025",
+  "openai/gpt-5-chat",
+  "openai/gpt-5",
+  "openai/gpt-5-mini",
+  "openai/gpt-5-nano",
+  "anthropic/claude-opus-4.1",
+  "google/gemini-2.5-flash-lite",
+  "google/gemini-2.5-flash-lite-preview-06-17",
+  "google/gemini-2.5-flash",
+  "google/gemini-2.5-pro",
+  "openai/o3-pro",
+  "google/gemini-2.5-pro-preview",
+  "anthropic/claude-opus-4",
+  "anthropic/claude-sonnet-4",
+  "google/gemini-2.5-pro-preview-05-06",
+  "openai/o4-mini-high",
+  "openai/o3",
+  "openai/o4-mini",
+  "openai/gpt-4.1",
+  "openai/gpt-4.1-mini",
+  "openai/gpt-4.1-nano",
+  "openai/o1-pro",
+  "google/gemini-2.0-flash-lite-001",
+  "anthropic/claude-3.7-sonnet",
+  "anthropic/claude-3.7-sonnet",
+  "openai/o3-mini-high",
+  "google/gemini-2.0-flash-001",
+  "openai/o3-mini",
+  "openai/o1",
+  "openai/gpt-4o-2024-11-20",
+  "anthropic/claude-3.5-haiku-20241022",
+  "anthropic/claude-3.5-sonnet",
+  "openai/gpt-4o-2024-08-06",
+  "openai/gpt-4o-mini",
+  "openai/gpt-4o-mini-2024-07-18",
+  "anthropic/claude-3.5-sonnet-20240620",
+  "openai/gpt-4o",
+  "openai/gpt-4o",
+  "openai/gpt-4o-2024-05-13",
+  "google/gemini-2.5-flash-preview-05-20",
+  "google/gemini-2.5-flash-preview",
+  "google/gemini-2.5-pro-exp-03-25",
+];
+
+const supportedImageMimeTypes = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+
 export class OpenRouterAdapter<zO, zI> {
   #client: OpenAI;
   #model: string;
@@ -82,7 +143,7 @@ export class OpenRouterAdapter<zO, zI> {
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
-          tool.original.name === historyItem.name
+          tool.original.name === historyItem.kind
         );
         assert(tool);
         openrouterHistory.push({
@@ -106,6 +167,42 @@ export class OpenRouterAdapter<zO, zI> {
           tool_call_id: historyItem.tool_use_id,
           content: historyItem.content,
         });
+      } else if (historyItem.type === "input_file") {
+        if (supportedImageMimeTypes.includes(historyItem.kind)) {
+          openrouterHistory.push({
+            role: "user",
+            content: [{
+              type: "image_url",
+              image_url: { url: historyItem.content },
+            }],
+          });
+        } else if (historyItem.kind === "application/pdf") {
+          openrouterHistory.push({
+            role: "user",
+            content: [{
+              type: "file",
+              file: {
+                file_data: historyItem.content,
+              },
+            }],
+          });
+        } else if (historyItem.kind.startsWith("text/")) {
+          const req = await fetch(historyItem.content);
+          const text = await req.text();
+
+          openrouterHistory.push({
+            role: "user",
+            content: [{
+              type: "text",
+              text: `<file>${text}</file>`,
+            }],
+          });
+        } else {
+          throw new Error(
+            "OpenRouter models don't support the following media type: " +
+              historyItem.kind,
+          );
+        }
       } else if (historyItem.type === "output_reasoning") {
         // no-op, don't propagate reasoning
       } else {
@@ -123,6 +220,15 @@ export class OpenRouterAdapter<zO, zI> {
           json_schema: z.toJSONSchema(this.#output) as any,
         }
         : { type: "text" },
+      // @ts-expect-error openrouter isn't type safe :(
+      plugins: nativePdfSupport.includes(this.#model) ? undefined : [
+        {
+          id: "file-parser",
+          pdf: {
+            engine: "pdf-text",
+          },
+        },
+      ],
     });
 
     const output: ChatItem[] = [];
@@ -154,7 +260,7 @@ export class OpenRouterAdapter<zO, zI> {
       output.push({
         type: "tool_use",
         tool_use_id: toolUse.id,
-        name: tool.original.name,
+        kind: tool.original.name,
         content: tool.wrapperObject
           ? JSON.stringify(content.content)
           : toolUse.function.arguments,

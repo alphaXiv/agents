@@ -66,7 +66,7 @@ export class TestingAdapter<zO, zI> {
         {
           type: "tool_use",
           tool_use_id: Math.random().toString(),
-          name: searchTool.name,
+          kind: searchTool.name,
           content: '"cats"',
         },
       ];

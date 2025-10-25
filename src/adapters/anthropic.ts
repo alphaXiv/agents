@@ -5,6 +5,14 @@ import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
 
+const supportedImageMimeTypes = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+
 // TODO: ensure this list is complete
 const nonReasoningModels = [
   "claude-3-5-haiku-20241022",
@@ -85,7 +93,7 @@ export class AnthropicAdapter<zO, zI> {
         });
       } else if (historyItem.type === "tool_use") {
         const tool = this.#normalizedTools.find((tool) =>
-          tool.original.name === historyItem.name
+          tool.original.name === historyItem.kind
         );
         assert(tool);
         const content = JSON.parse(historyItem.content);
@@ -120,6 +128,50 @@ export class AnthropicAdapter<zO, zI> {
           });
         } else {
           // no-op :( nothing we can do
+        }
+      } else if (historyItem.type === "input_file") {
+        if (supportedImageMimeTypes.includes(historyItem.kind)) {
+          anthropicHistory.push({
+            role: "user",
+            content: [{
+              type: "image",
+              source: {
+                type: "url",
+                url: historyItem.content,
+              },
+            }],
+          });
+        } else if (historyItem.kind === "application/pdf") {
+          anthropicHistory.push({
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "url",
+                  url: historyItem.content,
+                },
+              },
+            ],
+          });
+        } else if (historyItem.kind.startsWith("text/")) {
+          const req = await fetch(historyItem.content);
+          const text = await req.text();
+
+          anthropicHistory.push({
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<ant-file>${text}</ant-file>`,
+              },
+            ],
+          });
+        } else {
+          throw new Error(
+            "Anthropic models don't support the following media type: " +
+              historyItem.kind,
+          );
         }
       } else {
         historyItem satisfies never;
@@ -179,7 +231,7 @@ export class AnthropicAdapter<zO, zI> {
         output.push({
           type: "tool_use",
           tool_use_id: part.id,
-          name: tool.original.name,
+          kind: tool.original.name,
           content: JSON.stringify(
             tool.wrapperObject ? (part.input as any).content : part.input,
           ),
