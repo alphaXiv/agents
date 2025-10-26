@@ -218,7 +218,6 @@ export class GoogleAdapter<zO, zI> {
       } else if (part.functionCall) {
         const func = part.functionCall;
         const funcId = func.id ?? crypto.randomUUID();
-        console.log(func);
         assert(func.name && func.args);
         const tool = this.#normalizedTools.find((tool) =>
           tool.google.name === func.name

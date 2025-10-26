@@ -3,19 +3,15 @@ import type { Tool } from "../tool.ts";
 import type { ChatItem } from "../types.ts";
 
 export class TestingAdapter<zO, zI> {
-  #model: string;
-  #output?: z.ZodType<zO, zI>;
   #tools: Tool<unknown, unknown>[];
 
   constructor(
-    { model, output, tools }: {
+    { tools }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown>[];
     },
   ) {
-    this.#model = model;
-    this.#output = output;
     this.#tools = tools;
   }
 
