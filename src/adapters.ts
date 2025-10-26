@@ -5,7 +5,7 @@ import { GoogleAdapter } from "./adapters/google.ts";
 import { OpenAIAdapter } from "./adapters/openai.ts";
 import { OpenRouterAdapter } from "./adapters/openrouter.ts";
 import type { Tool } from "./tool.ts";
-import type { ChatItem } from "./types.ts";
+import type { ChatItem, StreamItem } from "./types.ts";
 
 export interface Adapter<zO, zI> {
   new (config: {
@@ -20,6 +20,11 @@ export interface AdapterInstance {
     systemPrompt: string;
     history: ChatItem[];
   }): Promise<ChatItem[]>;
+
+  stream(params: {
+    systemPrompt: string;
+    history: ChatItem[];
+  }): AsyncGenerator<StreamItem, void, unknown>;
 }
 
 export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {

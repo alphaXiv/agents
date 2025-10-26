@@ -40,3 +40,26 @@ export type ChatItem =
   };
 
 export type ChatLike = string | ChatItem[];
+
+type BaseStreamItem = {
+  index: number;
+};
+
+type StreamItemType = {
+  type: "delta_output_text";
+  delta: string;
+} | {
+  type: "delta_output_reasoning";
+  delta: string;
+} | {
+  type: "tool_use";
+  tool_use_id: string;
+  kind: string;
+  content: string;
+} | {
+  type: "tool_result";
+  tool_use_id: string;
+  content: string;
+};
+
+export type StreamItem = BaseStreamItem & StreamItemType;

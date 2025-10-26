@@ -32,6 +32,10 @@ export function crossPlatformEnv(key: string) {
   return process.env[key];
 }
 
+export function crossPlatformLog(str: string) {
+  process.stdout.write(str);
+}
+
 export function removeDollarSchema(schema: any) {
   const { $schema: _$schema, ...result } = schema;
 

@@ -2,7 +2,11 @@ import type z from "zod";
 import { ADAPTERS } from "./adapters.ts";
 import type { Tool } from "./tool.ts";
 import type { ChatItem, ChatLike } from "./types.ts";
-import { convertChatLikeToChatItem, runWithRetries } from "./util.ts";
+import {
+  convertChatLikeToChatItem,
+  crossPlatformLog,
+  runWithRetries,
+} from "./util.ts";
 
 const MAX_TURNS = 100;
 
@@ -160,6 +164,48 @@ export class Agent<zO, zI, M extends ModelString> {
     throw new Error("MAX TURNS EXCEEDED");
   }
 
+  /** Run agent with streaming */
+  async *stream(chatLike: ChatLike) {
+    const history = convertChatLikeToChatItem(chatLike, "input_text");
+    const adapterClass = ADAPTERS[this.#provider];
+    if (!adapterClass) throw new Error("Could not resolve provider");
+    const adapter = new adapterClass({
+      model: this.#model,
+      output: this.#output,
+      tools: this.#tools,
+    });
+
+    const newHistory: ChatItem[] = [];
+
+    const stream = adapter.stream({
+      systemPrompt: this.#instructions,
+      history,
+    });
+    for await (const part of stream) {
+      if (!newHistory[part.index]) {
+        if (part.type === "delta_output_text") {
+          newHistory[part.index] = {
+            type: "output_text",
+            content: "",
+          };
+        } else if (part.type === "delta_output_reasoning") {
+          newHistory[part.index] = {
+            type: "output_reasoning",
+            content: "",
+          };
+        }
+      }
+
+      if (
+        part.type === "delta_output_text" ||
+        part.type === "delta_output_reasoning"
+      ) {
+        newHistory[part.index].content += part.delta;
+      }
+      yield part;
+    }
+  }
+
   async cli() {
     const history: ChatItem[] = [];
     while (true) {
@@ -167,28 +213,59 @@ export class Agent<zO, zI, M extends ModelString> {
       if (!content) break;
       history.push({ type: "input_text", content });
 
-      const newResult = await this.run(history);
-      for (const item of newResult.history) {
-        if (item.type === "tool_use") {
-          console.log(
-            `[${item.tool_use_id}]`,
-            "Calling",
-            item.kind,
-            "with parameters",
-            item.content,
-          );
+      const stream = this.stream(history);
+      const newHistory: ChatItem[] = [];
+      for await (const part of stream) {
+        if (part.index + 1 > newHistory.length) {
+          if (newHistory.length > 0) {
+            crossPlatformLog("\n");
+          }
+          if (part.type === "delta_output_text") {
+            crossPlatformLog("\x1b[0m");
+            newHistory[part.index] = {
+              type: "output_text",
+              content: "",
+            };
+          } else if (part.type === "delta_output_reasoning") {
+            newHistory[part.index] = {
+              type: "output_reasoning",
+              content: "",
+            };
+            crossPlatformLog("\x1b[3m");
+          }
         }
-        if (item.type === "tool_result") {
-          console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
-        }
-        if (item.type === "output_reasoning") {
-          console.log(`\x1b[3m${item.content}\x1b[0m`);
-        }
-        if (item.type === "output_text") {
-          console.log(item.content);
+
+        if (part.type === "delta_output_text") {
+          crossPlatformLog(part.delta);
+          newHistory[part.index].content += part.delta;
+        } else if (part.type === "delta_output_reasoning") {
+          crossPlatformLog(part.delta);
+          newHistory[part.index].content += part.delta;
         }
       }
-      history.push(...newResult.history);
+      crossPlatformLog("\n");
+
+      // for (const item of newResult.history) {
+      //   if (item.type === "tool_use") {
+      //     console.log(
+      //       `[${item.tool_use_id}]`,
+      //       "Calling",
+      //       item.kind,
+      //       "with parameters",
+      //       item.content,
+      //     );
+      //   }
+      //   if (item.type === "tool_result") {
+      //     console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
+      //   }
+      //   if (item.type === "output_reasoning") {
+      //     console.log(`\x1b[3m${item.content}\x1b[0m`);
+      //   }
+      //   if (item.type === "output_text") {
+      //     console.log(item.content);
+      //   }
+      // }
+      history.push(...newHistory);
     }
   }
 }
