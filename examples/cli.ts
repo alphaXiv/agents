@@ -39,7 +39,7 @@ const search = new Tool({
 });
 
 const agent = new Agent({
-  model: "anthropic:claude-haiku-4-5",
+  model: "google:gemini-2.5-flash",
   instructions: "You are a friendly assistant",
   tools: [search, calculator],
 });

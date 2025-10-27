@@ -41,6 +41,80 @@ async function ensureFileUploaded(
   }
 }
 
+export async function getGoogleHistory(
+  history: ChatItem[],
+  gemini: GoogleGenAI,
+  toolMap: GoogleToolMap[],
+) {
+  const googleHistory: Content[] = [];
+  for (const historyItem of history) {
+    if (historyItem.type === "input_text") {
+      googleHistory.push({
+        role: "user",
+        parts: [{ text: historyItem.content }],
+      });
+    } else if (historyItem.type === "output_text") {
+      googleHistory.push({
+        role: "model",
+        parts: [{ text: historyItem.content }],
+      });
+    } else if (historyItem.type === "tool_use") {
+      const tool = toolMap.find((tool) =>
+        tool.original.name === historyItem.kind
+      );
+      assert(tool);
+      const content = JSON.parse(historyItem.content);
+      googleHistory.push({
+        role: "model",
+        parts: [{
+          functionCall: {
+            id: historyItem.tool_use_id,
+            name: tool.google.name,
+            args: tool.wrapperObject ? { content } : content,
+          },
+        }],
+      });
+    } else if (historyItem.type === "tool_result") {
+      const toolCall = history.find((item) =>
+        item.type === "tool_use" &&
+        item.tool_use_id === historyItem.tool_use_id
+      );
+      assert(toolCall);
+      googleHistory.push({
+        role: "user",
+        parts: [{
+          functionResponse: {
+            id: historyItem.tool_use_id,
+            name: toolCall.type === "tool_use" ? toolCall.kind : undefined, // TODO: figure out why type narrowing is trolling me here
+            response: { content: historyItem.content },
+          },
+        }],
+      });
+    } else if (historyItem.type === "input_file") {
+      const fileName = await ensureFileUploaded(
+        gemini,
+        historyItem.content,
+        historyItem.kind,
+      ); // TODO: make this strategy configurable
+      googleHistory.push({
+        role: "user",
+        parts: [{
+          fileData: {
+            fileUri: `${BASE_URL}/v1beta/files/${fileName}`,
+            mimeType: historyItem.kind,
+          },
+        }],
+      });
+    } else if (historyItem.type === "output_reasoning") {
+      // no-op, don't propagate reasoning
+    } else {
+      historyItem satisfies never;
+    }
+  }
+
+  return googleHistory;
+}
+
 // TODO: ensure this list is complete
 const nonReasoningModels = [
   "gemini-2.0-flash",
@@ -51,17 +125,19 @@ const nonReasoningModels = [
   "gemini-2.5-flash-image-preview",
 ];
 
+type GoogleToolMap = {
+  original: Tool<unknown, unknown>;
+  google: FunctionDeclaration;
+  /** Google silently doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
+  wrapperObject: boolean;
+};
+
 // TODO: support both output schema and tools in same agent
 export class GoogleAdapter<zO, zI> {
   #client: GoogleGenAI;
   #model: string;
   #output?: z.ZodType<zO, zI>;
-  #normalizedTools: {
-    original: Tool<unknown, unknown>;
-    google: FunctionDeclaration;
-    /** Google silently doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
-    wrapperObject: boolean;
-  }[];
+  #normalizedTools: GoogleToolMap[];
 
   constructor(
     { model, output, tools }: {
@@ -107,71 +183,11 @@ export class GoogleAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
   }): Promise<ChatItem[]> {
-    const googleHistory: Content[] = [];
-    for (const historyItem of history) {
-      if (historyItem.type === "input_text") {
-        googleHistory.push({
-          role: "user",
-          parts: [{ text: historyItem.content }],
-        });
-      } else if (historyItem.type === "output_text") {
-        googleHistory.push({
-          role: "model",
-          parts: [{ text: historyItem.content }],
-        });
-      } else if (historyItem.type === "tool_use") {
-        const tool = this.#normalizedTools.find((tool) =>
-          tool.original.name === historyItem.kind
-        );
-        assert(tool);
-        const content = JSON.parse(historyItem.content);
-        googleHistory.push({
-          role: "model",
-          parts: [{
-            functionCall: {
-              id: historyItem.tool_use_id,
-              name: tool.google.name,
-              args: tool.wrapperObject ? { content } : content,
-            },
-          }],
-        });
-      } else if (historyItem.type === "tool_result") {
-        const toolCall = history.find((item) =>
-          item.type === "tool_use" &&
-          item.tool_use_id === historyItem.tool_use_id
-        );
-        assert(toolCall);
-        googleHistory.push({
-          role: "user",
-          parts: [{
-            functionResponse: {
-              id: historyItem.tool_use_id,
-              name: toolCall.type === "tool_use" ? toolCall.kind : undefined, // TODO: figure out why type narrowing is trolling me here
-              response: { content: historyItem.content },
-            },
-          }],
-        });
-      } else if (historyItem.type === "input_file") {
-        const fileName = await ensureFileUploaded(
-          this.#client,
-          historyItem.content,
-          historyItem.kind,
-        ); // TODO: make this strategy configurable
-        googleHistory.push({
-          role: "user",
-          parts: [{
-            fileData: {
-              fileUri: `${BASE_URL}/v1beta/files/${fileName}`,
-              mimeType: historyItem.kind,
-            },
-          }],
-        });
-      } else if (historyItem.type === "output_reasoning") {
-        // no-op, don't propagate reasoning
-      } else {
-        historyItem satisfies never;
-      }
-    }
+    const googleHistory = await getGoogleHistory(
+      history,
+      this.#client,
+      this.#normalizedTools,
+    );
 
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
@@ -237,9 +253,86 @@ export class GoogleAdapter<zO, zI> {
     return output;
   }
 
-  async *stream({}: {
+  async *stream({ history, systemPrompt }: {
     systemPrompt: string;
     history: ChatItem[];
   }): AsyncStreamItemGenerator {
+    const googleHistory = await getGoogleHistory(
+      history,
+      this.#client,
+      this.#normalizedTools,
+    );
+
+    const isReasoningModel = !nonReasoningModels.includes(this.#model);
+
+    const response = await this.#client.models.generateContentStream({
+      model: this.#model,
+      contents: googleHistory,
+      config: {
+        tools: this.#normalizedTools.length
+          ? [{
+            functionDeclarations: this.#normalizedTools.map(({ google }) =>
+              google
+            ),
+          }]
+          : undefined,
+        systemInstruction: systemPrompt,
+        thinkingConfig: isReasoningModel
+          ? { includeThoughts: true }
+          : undefined,
+      },
+    });
+
+    let lastType = "";
+    let lastIndex = -1;
+    for await (const item of response) {
+      const parts = item?.candidates?.[0]?.content?.parts;
+      if (!parts) continue;
+      for (const part of parts) {
+        if (part.text) {
+          if (part.thought) {
+            if (lastType !== "reasoning") {
+              lastType = "reasoning";
+              lastIndex++;
+            }
+            yield {
+              type: "delta_output_reasoning",
+              delta: part.text,
+              index: lastIndex,
+            };
+          } else {
+            if (lastType !== "text") {
+              lastType = "text";
+              lastIndex++;
+            }
+            yield {
+              type: "delta_output_text",
+              delta: part.text,
+              index: lastIndex,
+            };
+          }
+        } else if (part.functionCall) {
+          lastType = "tool_use";
+          lastIndex++;
+
+          const func = part.functionCall;
+          const funcId = func.id ?? crypto.randomUUID();
+          assert(func.name && func.args);
+          const tool = this.#normalizedTools.find((tool) =>
+            tool.google.name === func.name
+          );
+          assert(tool);
+          yield {
+            type: "tool_use",
+            tool_use_id: funcId,
+            kind: tool.original.name,
+            content: tool.wrapperObject
+              ? JSON.stringify(part.functionCall.args!.content)
+              : JSON.stringify(part.functionCall.args),
+            index: lastIndex,
+          };
+        }
+      }
+    }
   }
 }
