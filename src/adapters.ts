@@ -4,6 +4,7 @@ import { AnthropicAdapter } from "./adapters/anthropic.ts";
 import { GoogleAdapter } from "./adapters/google.ts";
 import { OpenAIAdapter } from "./adapters/openai.ts";
 import { OpenRouterAdapter } from "./adapters/openrouter.ts";
+import { OllamaAdapter } from "./adapters/ollama.ts";
 import type { Tool } from "./tool.ts";
 import type { ChatItem } from "./types.ts";
 
@@ -28,4 +29,5 @@ export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {
   "google": GoogleAdapter,
   "anthropic": AnthropicAdapter,
   "openrouter": OpenRouterAdapter,
+  "ollama": OllamaAdapter,
 };

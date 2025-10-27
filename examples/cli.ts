@@ -22,7 +22,7 @@ const calculator = new Tool({
       return (param.left - param.right).toString();
     }
     param.operation satisfies never;
-    return "";
+    return "Invalid operand! Please double check your operation. It cannot be a symbol.";
   },
 });
 
@@ -39,7 +39,7 @@ const search = new Tool({
 });
 
 const agent = new Agent({
-  model: "openrouter:qwen/qwen3-235b-a22b-2507",
+  model: "ollama:gpt-oss:20b",
   instructions: "You are a friendly assistant",
   tools: [search, calculator],
 });
