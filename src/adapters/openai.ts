@@ -243,7 +243,7 @@ export class OpenAIAdapter<zO, zI> {
       },
     });
 
-    let toolIndex: ChatItem[] = [];
+    const toolIndex: ChatItem[] = [];
     for await (const part of response) {
       if (part.type === "response.output_item.added") {
         const partItem = part.item;

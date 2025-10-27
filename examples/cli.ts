@@ -39,7 +39,7 @@ const search = new Tool({
 });
 
 const agent = new Agent({
-  model: "openai:gpt-5-nano",
+  model: "openrouter:qwen/qwen3-235b-a22b-2507",
   instructions: "You are a friendly assistant",
   tools: [search, calculator],
 });
