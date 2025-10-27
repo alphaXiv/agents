@@ -1,12 +1,13 @@
 import type z from "zod";
 import { ADAPTERS } from "./adapters.ts";
 import type { Tool } from "./tool.ts";
-import type { ChatItem, ChatLike } from "./types.ts";
+import type { ChatItem, ChatLike, StreamItem } from "./types.ts";
 import {
   convertChatLikeToChatItem,
   crossPlatformLog,
   runWithRetries,
 } from "./util.ts";
+import { addStreamItem } from "./client.ts";
 
 const MAX_TURNS = 100;
 
@@ -165,8 +166,8 @@ export class Agent<zO, zI, M extends ModelString> {
   }
 
   /** Run agent with streaming */
-  async *stream(chatLike: ChatLike) {
-    const history = convertChatLikeToChatItem(chatLike, "input_text");
+  async *stream(chatLike: ChatLike): AsyncGenerator<StreamItem, void, unknown> {
+    const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
     if (!adapterClass) throw new Error("Could not resolve provider");
     const adapter = new adapterClass({
@@ -175,34 +176,59 @@ export class Agent<zO, zI, M extends ModelString> {
       tools: this.#tools,
     });
 
-    const newHistory: ChatItem[] = [];
+    const history: ChatItem[] = [];
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const stream = adapter.stream({
+        systemPrompt: this.#instructions,
+        history: [...initialHistory, ...history],
+      });
+      const newHistory: ChatItem[] = [];
+      for await (const part of stream) {
+        const reIndexedPart = {
+          ...part,
+          index: part.index + history.length,
+        };
+        addStreamItem(newHistory, part);
+        yield reIndexedPart;
+      }
 
-    const stream = adapter.stream({
-      systemPrompt: this.#instructions,
-      history,
-    });
-    for await (const part of stream) {
-      if (!newHistory[part.index]) {
-        if (part.type === "delta_output_text") {
-          newHistory[part.index] = {
-            type: "output_text",
-            content: "",
-          };
-        } else if (part.type === "delta_output_reasoning") {
-          newHistory[part.index] = {
-            type: "output_reasoning",
-            content: "",
-          };
+      const toolUses = newHistory.filter((chatItem) =>
+        chatItem.type === "tool_use"
+      );
+      if (toolUses.length > 0) {
+        // execute and stream tools
+        const toolResults = await Promise.all(
+          toolUses.map(async (toolUse) => {
+            const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
+            if (!tool) throw new Error("wtfrick model tried to use fake tool"); // TODO: handle this better
+
+            const result = await tool.execute({
+              param: JSON.parse(toolUse.content),
+              toolUseId: toolUse.tool_use_id,
+            });
+
+            return convertChatLikeToChatItem(result, "tool_result", {
+              tool_use_id: toolUse.tool_use_id,
+            });
+          }),
+        );
+        for (const toolResult of toolResults.flat()) {
+          if (toolResult.type === "tool_result") {
+            yield {
+              type: "tool_result",
+              index: newHistory.length,
+              tool_use_id: toolResult.tool_use_id,
+              content: toolResult.content,
+            };
+            newHistory.push(toolResult);
+          }
         }
-      }
 
-      if (
-        part.type === "delta_output_text" ||
-        part.type === "delta_output_reasoning"
-      ) {
-        newHistory[part.index].content += part.delta;
+        // continue loop
+        history.push(...newHistory);
+        continue;
       }
-      yield part;
+      break;
     }
   }
 
@@ -222,49 +248,28 @@ export class Agent<zO, zI, M extends ModelString> {
           }
           if (part.type === "delta_output_text") {
             crossPlatformLog("\x1b[0m");
-            newHistory[part.index] = {
-              type: "output_text",
-              content: "",
-            };
           } else if (part.type === "delta_output_reasoning") {
-            newHistory[part.index] = {
-              type: "output_reasoning",
-              content: "",
-            };
             crossPlatformLog("\x1b[3m");
+          } else if (part.type === "tool_use") {
+            crossPlatformLog(
+              `[${part.tool_use_id}] Calling '${part.kind}' with parameters '${part.content}'`,
+            );
+          } else if (part.type === "tool_result") {
+            crossPlatformLog(
+              `[${part.tool_use_id}] Got result '${part.content}'`,
+            );
           }
         }
 
         if (part.type === "delta_output_text") {
           crossPlatformLog(part.delta);
-          newHistory[part.index].content += part.delta;
         } else if (part.type === "delta_output_reasoning") {
           crossPlatformLog(part.delta);
-          newHistory[part.index].content += part.delta;
         }
+        addStreamItem(newHistory, part);
       }
       crossPlatformLog("\n");
 
-      // for (const item of newResult.history) {
-      //   if (item.type === "tool_use") {
-      //     console.log(
-      //       `[${item.tool_use_id}]`,
-      //       "Calling",
-      //       item.kind,
-      //       "with parameters",
-      //       item.content,
-      //     );
-      //   }
-      //   if (item.type === "tool_result") {
-      //     console.log(`[${item.tool_use_id}]`, "Got tool result", item.content);
-      //   }
-      //   if (item.type === "output_reasoning") {
-      //     console.log(`\x1b[3m${item.content}\x1b[0m`);
-      //   }
-      //   if (item.type === "output_text") {
-      //     console.log(item.content);
-      //   }
-      // }
       history.push(...newHistory);
     }
   }

@@ -281,28 +281,60 @@ export class AnthropicAdapter<zO, zI> {
         : undefined,
     });
 
-    const parts: string[] = [];
+    const parts: ChatItem[] = [];
     for await (const part of response) {
       if (part.type === "content_block_delta") {
         const { delta } = part;
         if (delta.type === "text_delta") {
           if (!parts[part.index]) {
-            parts[part.index] = "";
+            parts[part.index] = { type: "output_text", content: "" };
           }
-          parts[part.index] += delta.text;
+          parts[part.index].content += delta.text;
           yield {
             type: "delta_output_text",
             delta: delta.text,
             index: part.index,
           };
         } else if (delta.type === "thinking_delta") {
+          if (!parts[part.index]) {
+            parts[part.index] = { type: "output_reasoning", content: "" };
+          }
+          parts[part.index].content += delta.thinking;
           yield {
             type: "delta_output_reasoning",
             delta: delta.thinking,
             index: part.index,
           };
         } else if (delta.type === "signature_delta") {
-          signatureMap.set(parts[part.index], delta.signature);
+          signatureMap.set(parts[part.index].content, delta.signature);
+        } else if (delta.type === "input_json_delta") {
+          parts[part.index].content += delta.partial_json;
+        }
+      } else if (part.type === "content_block_start") {
+        if (part.content_block.type === "tool_use") {
+          parts[part.index] = {
+            type: "tool_use",
+            kind: part.content_block.name,
+            tool_use_id: part.content_block.id,
+            content: "",
+          };
+        }
+      } else if (part.type === "content_block_stop") {
+        const endingPart = parts[part.index];
+        if (endingPart.type === "tool_use") {
+          const tool = this.#normalizedTools.find((tool) =>
+            tool.anthropic.name === endingPart.kind
+          );
+          assert(tool);
+          yield {
+            type: "tool_use",
+            index: part.index,
+            kind: tool.original.name,
+            tool_use_id: endingPart.tool_use_id,
+            content: tool.wrapperObject
+              ? JSON.stringify(JSON.parse(endingPart.content).content)
+              : endingPart.content,
+          };
         }
       }
     }
