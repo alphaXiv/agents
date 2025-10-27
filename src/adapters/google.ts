@@ -6,7 +6,7 @@ import {
 import z from "zod";
 import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
-import type { ChatItem } from "../types.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 import { crossPlatformEnv, hashString, removeDollarSchema } from "../util.ts";
 
 const BASE_URL = "https://generativelanguage.googleapis.com";
@@ -235,5 +235,11 @@ export class GoogleAdapter<zO, zI> {
     }
 
     return output;
+  }
+
+  async *stream({}: {
+    systemPrompt: string;
+    history: ChatItem[];
+  }): AsyncStreamItemGenerator {
   }
 }

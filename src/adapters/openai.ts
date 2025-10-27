@@ -3,7 +3,7 @@ import z from "zod";
 import { assert } from "@std/assert";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
 import type { Tool } from "../tool.ts";
-import type { ChatItem } from "../types.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 import { encodeBase64 } from "@std/encoding";
 
 const supportedImageMimeTypes = [
@@ -211,5 +211,11 @@ export class OpenAIAdapter<zO, zI> {
     }
 
     return output;
+  }
+
+  async *stream({}: {
+    systemPrompt: string;
+    history: ChatItem[];
+  }): AsyncStreamItemGenerator {
   }
 }

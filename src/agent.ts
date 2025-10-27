@@ -1,7 +1,7 @@
 import type z from "zod";
 import { ADAPTERS } from "./adapters.ts";
 import type { Tool } from "./tool.ts";
-import type { ChatItem, ChatLike, StreamItem } from "./types.ts";
+import type { AsyncStreamItemGenerator, ChatItem, ChatLike } from "./types.ts";
 import {
   convertChatLikeToChatItem,
   crossPlatformLog,
@@ -166,7 +166,7 @@ export class Agent<zO, zI, M extends ModelString> {
   }
 
   /** Run agent with streaming */
-  async *stream(chatLike: ChatLike): AsyncGenerator<StreamItem, void, unknown> {
+  async *stream(chatLike: ChatLike): AsyncStreamItemGenerator {
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
     if (!adapterClass) throw new Error("Could not resolve provider");

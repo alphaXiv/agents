@@ -7,7 +7,7 @@ import z from "zod";
 import { assert } from "@std/assert";
 
 import type { Tool } from "../tool.ts";
-import type { ChatItem } from "../types.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 import { crossPlatformEnv } from "../util.ts";
 
 // TODO: keep this updated (pulled from https://openrouter.ai/models?fmt=cards&input_modalities=file)
@@ -266,8 +266,13 @@ export class OpenRouterAdapter<zO, zI> {
           : toolUse.function.arguments,
       });
     }
-    // TODO: figure out reasoning
 
     return output;
+  }
+
+  async *stream({}: {
+    systemPrompt: string;
+    history: ChatItem[];
+  }): AsyncStreamItemGenerator {
   }
 }

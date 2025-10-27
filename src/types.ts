@@ -63,3 +63,9 @@ type StreamItemType = {
 };
 
 export type StreamItem = BaseStreamItem & StreamItemType;
+
+export type AsyncStreamItemGenerator = AsyncGenerator<
+  StreamItem,
+  void,
+  unknown
+>;

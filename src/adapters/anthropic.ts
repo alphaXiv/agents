@@ -3,7 +3,7 @@ import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages
 import z from "zod";
 import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
-import type { ChatItem, StreamItem } from "../types.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 
 const supportedImageMimeTypes = [
   "image/jpeg",
@@ -259,7 +259,7 @@ export class AnthropicAdapter<zO, zI> {
   async *stream({ history, systemPrompt }: {
     systemPrompt: string;
     history: ChatItem[];
-  }): AsyncGenerator<StreamItem, void, unknown> {
+  }): AsyncStreamItemGenerator {
     const anthropicHistory = await getAnthropicHistory(
       history,
       this.#normalizedTools,
