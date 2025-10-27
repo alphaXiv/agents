@@ -2,6 +2,8 @@ import z from "zod";
 import { Agent, Tool } from "../mod.ts";
 import type { ModelString } from "../src/agent.ts";
 import { assert } from "@std/assert/assert";
+import type { ChatItem } from "../src/types.ts";
+import { addStreamItem } from "../src/client.ts";
 
 const workingModels: ModelString[] = [
   "anthropic:claude-haiku-4-5",
@@ -10,33 +12,33 @@ const workingModels: ModelString[] = [
   "openrouter:openai/gpt-oss-20b",
 ];
 
+const calculator = new Tool({
+  name: "Calculating...",
+  description: "A simple calculator to make math operations easier!",
+  parameters: z.object({
+    operation: z.enum(["add", "multiply", "divide", "subtract"]).describe(
+      "The operator you want to calculate with",
+    ),
+    left: z.number(),
+    right: z.number(),
+  }),
+  execute: ({ param }) => {
+    if (param.operation === "add") {
+      return (param.left + param.right).toString();
+    } else if (param.operation === "multiply") {
+      return (param.left * param.right).toString();
+    } else if (param.operation === "divide") {
+      return (param.left / param.right).toString();
+    } else if (param.operation === "subtract") {
+      return (param.left - param.right).toString();
+    }
+    param.operation satisfies never;
+    return "";
+  },
+});
+
 for (const model of workingModels) {
   Deno.test(`Basic tool calling workflow works for ${model}`, async () => {
-    const calculator = new Tool({
-      name: "Calculating...",
-      description: "A simple calculator to make math operations easier!",
-      parameters: z.object({
-        operation: z.enum(["add", "multiply", "divide", "subtract"]).describe(
-          "The operator you want to calculate with",
-        ),
-        left: z.number(),
-        right: z.number(),
-      }),
-      execute: ({ param }) => {
-        if (param.operation === "add") {
-          return (param.left + param.right).toString();
-        } else if (param.operation === "multiply") {
-          return (param.left * param.right).toString();
-        } else if (param.operation === "divide") {
-          return (param.left / param.right).toString();
-        } else if (param.operation === "subtract") {
-          return (param.left - param.right).toString();
-        }
-        param.operation satisfies never;
-        return "";
-      },
-    });
-
     const agent = new Agent({
       model,
       instructions: "You are a friendly assistant",
@@ -97,6 +99,64 @@ for (const model of workingModels) {
     );
     assert(result.output.title.includes("Reasoning"));
     assert(result.output.abstract);
+  });
+
+  Deno.test(`Basic streaming for ${model}`, async () => {
+    const agent = new Agent({
+      model,
+      instructions: "You are a friendly assistant",
+      tools: [calculator],
+    });
+
+    const originalPrompt = [{
+      type: "input_text" as const,
+      content:
+        "What is 89089 * 32123. Please use your calculator tool. After using the tool, please output your response without formatting.",
+    }];
+    const run = agent.stream(originalPrompt);
+    const output: ChatItem[] = [];
+    for await (const part of run) {
+      addStreamItem(output, part);
+    }
+
+    // TODO: gpt oss is known to be a little stupid so this test is flaky
+    assert(
+      output.find((h) =>
+        h.type === "output_text" &&
+        h.content.replaceAll(",", "").replaceAll(" ", "").includes(
+          "2861805947",
+        )
+      ),
+      `Didn't find number, instead found ${JSON.stringify(output)}`,
+    );
+    assert(
+      output.find((h) => h.type === "tool_use" && h.kind === "Calculating..."),
+    );
+
+    const run2 = agent.stream([
+      ...originalPrompt,
+      ...output,
+      {
+        type: "input_text",
+        content:
+          "Great, now multiply that value by two, again using your calculator tool. Again, please output your response without formatting.",
+      },
+    ]);
+    const output2: ChatItem[] = [];
+    for await (const part of run2) {
+      addStreamItem(output2, part);
+    }
+    assert(
+      output2.find((h) =>
+        h.type === "output_text" &&
+        h.content.replaceAll(",", "").replaceAll(" ", "").includes(
+          "5723611894",
+        )
+      ),
+    );
+    assert(
+      output2.find((h) => h.type === "tool_use" && h.kind === "Calculating..."),
+    );
   });
 
   // TODO: add tests for csv, image, and pdfs
