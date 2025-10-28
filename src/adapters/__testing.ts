@@ -1,6 +1,6 @@
 import type z from "zod";
 import type { Tool } from "../tool.ts";
-import type { ChatItem } from "../types.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 
 export class TestingAdapter<zO, zI> {
   #tools: Tool<unknown, unknown>[];
@@ -82,5 +82,12 @@ export class TestingAdapter<zO, zI> {
           "I'm sorry, but I seem to be having issues processing your request...",
       },
     ];
+  }
+
+  // TODO: add testing here
+  async *stream({}: {
+    systemPrompt: string;
+    history: ChatItem[];
+  }): AsyncStreamItemGenerator {
   }
 }

@@ -7,8 +7,107 @@ import z from "zod";
 import { assert } from "@std/assert";
 
 import type { Tool } from "../tool.ts";
-import type { ChatItem } from "../types.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 import { crossPlatformEnv } from "../util.ts";
+
+const supportedImageMimeTypes = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+];
+
+async function getOpenrouterHistory(
+  history: ChatItem[],
+  systemPrompt: string,
+  toolMap: OpenrouterToolMap[],
+) {
+  const openrouterHistory: ChatCompletionMessageParam[] = [{
+    role: "system", // TODO: select right role for each model
+    content: systemPrompt,
+  }];
+  for (const historyItem of history) {
+    if (historyItem.type === "input_text") {
+      openrouterHistory.push({
+        role: "user",
+        content: historyItem.content,
+      });
+    } else if (historyItem.type === "output_text") {
+      openrouterHistory.push({
+        role: "assistant",
+        content: historyItem.content,
+      });
+    } else if (historyItem.type === "tool_use") {
+      const tool = toolMap.find((tool) =>
+        tool.original.name === historyItem.kind
+      );
+      openrouterHistory.push({
+        role: "assistant",
+        tool_calls: [
+          {
+            id: historyItem.tool_use_id,
+            type: "function",
+            function: {
+              name: tool?.openrouter.function.name ?? historyItem.kind,
+              arguments: tool?.wrapperObject
+                ? `{"content":${historyItem.content}}`
+                : historyItem.content,
+            },
+          },
+        ],
+      });
+    } else if (historyItem.type === "tool_result") {
+      openrouterHistory.push({
+        role: "tool",
+        tool_call_id: historyItem.tool_use_id,
+        content: historyItem.content,
+      });
+    } else if (historyItem.type === "input_file") {
+      if (supportedImageMimeTypes.includes(historyItem.kind)) {
+        openrouterHistory.push({
+          role: "user",
+          content: [{
+            type: "image_url",
+            image_url: { url: historyItem.content },
+          }],
+        });
+      } else if (historyItem.kind === "application/pdf") {
+        openrouterHistory.push({
+          role: "user",
+          content: [{
+            type: "file",
+            file: {
+              file_data: historyItem.content,
+            },
+          }],
+        });
+      } else if (historyItem.kind.startsWith("text/")) {
+        const req = await fetch(historyItem.content);
+        const text = await req.text();
+
+        openrouterHistory.push({
+          role: "user",
+          content: [{
+            type: "text",
+            text: `<file>${text}</file>`,
+          }],
+        });
+      } else {
+        throw new Error(
+          "OpenRouter models don't support the following media type: " +
+            historyItem.kind,
+        );
+      }
+    } else if (historyItem.type === "output_reasoning") {
+      // no-op, don't propagate reasoning
+    } else {
+      historyItem satisfies never;
+    }
+  }
+
+  return openrouterHistory;
+}
 
 // TODO: keep this updated (pulled from https://openrouter.ai/models?fmt=cards&input_modalities=file)
 const nativePdfSupport = [
@@ -63,24 +162,18 @@ const nativePdfSupport = [
   "google/gemini-2.5-pro-exp-03-25",
 ];
 
-const supportedImageMimeTypes = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-];
+type OpenrouterToolMap = {
+  original: Tool<unknown, unknown>;
+  openrouter: ChatCompletionFunctionTool;
+  /** Openrouter doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
+  wrapperObject: boolean;
+};
 
 export class OpenRouterAdapter<zO, zI> {
   #client: OpenAI;
   #model: string;
   #output?: z.ZodType<zO, zI>;
-  #normalizedTools: {
-    original: Tool<unknown, unknown>;
-    openrouter: ChatCompletionFunctionTool;
-    /** OpenAI doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
-    wrapperObject: boolean;
-  }[];
+  #normalizedTools: OpenrouterToolMap[];
 
   constructor(
     { model, output, tools }: {
@@ -126,89 +219,11 @@ export class OpenRouterAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
   }): Promise<ChatItem[]> {
-    const openrouterHistory: ChatCompletionMessageParam[] = [{
-      role: "system", // TODO: select right role for each model
-      content: systemPrompt,
-    }];
-    for (const historyItem of history) {
-      if (historyItem.type === "input_text") {
-        openrouterHistory.push({
-          role: "user",
-          content: historyItem.content,
-        });
-      } else if (historyItem.type === "output_text") {
-        openrouterHistory.push({
-          role: "assistant",
-          content: historyItem.content,
-        });
-      } else if (historyItem.type === "tool_use") {
-        const tool = this.#normalizedTools.find((tool) =>
-          tool.original.name === historyItem.kind
-        );
-        assert(tool);
-        openrouterHistory.push({
-          role: "assistant",
-          tool_calls: [
-            {
-              id: historyItem.tool_use_id,
-              type: "function",
-              function: {
-                name: tool.openrouter.function.name,
-                arguments: tool.wrapperObject
-                  ? `{"content":${historyItem.content}}`
-                  : historyItem.content,
-              },
-            },
-          ],
-        });
-      } else if (historyItem.type === "tool_result") {
-        openrouterHistory.push({
-          role: "tool",
-          tool_call_id: historyItem.tool_use_id,
-          content: historyItem.content,
-        });
-      } else if (historyItem.type === "input_file") {
-        if (supportedImageMimeTypes.includes(historyItem.kind)) {
-          openrouterHistory.push({
-            role: "user",
-            content: [{
-              type: "image_url",
-              image_url: { url: historyItem.content },
-            }],
-          });
-        } else if (historyItem.kind === "application/pdf") {
-          openrouterHistory.push({
-            role: "user",
-            content: [{
-              type: "file",
-              file: {
-                file_data: historyItem.content,
-              },
-            }],
-          });
-        } else if (historyItem.kind.startsWith("text/")) {
-          const req = await fetch(historyItem.content);
-          const text = await req.text();
-
-          openrouterHistory.push({
-            role: "user",
-            content: [{
-              type: "text",
-              text: `<file>${text}</file>`,
-            }],
-          });
-        } else {
-          throw new Error(
-            "OpenRouter models don't support the following media type: " +
-              historyItem.kind,
-          );
-        }
-      } else if (historyItem.type === "output_reasoning") {
-        // no-op, don't propagate reasoning
-      } else {
-        historyItem satisfies never;
-      }
-    }
+    const openrouterHistory = await getOpenrouterHistory(
+      history,
+      systemPrompt,
+      this.#normalizedTools,
+    );
 
     const response = await this.#client.chat.completions.create({
       model: this.#model,
@@ -255,19 +270,132 @@ export class OpenRouterAdapter<zO, zI> {
       const tool = this.#normalizedTools.find((tool) =>
         tool.openrouter.function.name === toolUse.function.name
       );
-      assert(tool);
       const content = JSON.parse(toolUse.function.arguments);
       output.push({
         type: "tool_use",
         tool_use_id: toolUse.id,
-        kind: tool.original.name,
-        content: tool.wrapperObject
+        kind: tool?.original.name ?? toolUse.function.name,
+        content: tool?.wrapperObject
           ? JSON.stringify(content.content)
           : toolUse.function.arguments,
       });
     }
-    // TODO: figure out reasoning
 
     return output;
+  }
+
+  async *stream({ history, systemPrompt }: {
+    systemPrompt: string;
+    history: ChatItem[];
+  }): AsyncStreamItemGenerator {
+    const openrouterHistory = await getOpenrouterHistory(
+      history,
+      systemPrompt,
+      this.#normalizedTools,
+    );
+
+    const response = this.#client.chat.completions.stream({
+      model: this.#model,
+      messages: openrouterHistory,
+      tools: this.#normalizedTools.map(({ openrouter }) => openrouter),
+      // openrouter-specific extension
+      plugins: nativePdfSupport.includes(this.#model) ? undefined : [
+        {
+          id: "file-parser",
+          pdf: {
+            engine: "pdf-text",
+          },
+        },
+      ],
+    });
+
+    const toolMap: ChatItem[] = [];
+
+    const deltas = [];
+
+    let lastType = "";
+    let lastIndex = -1;
+    for await (const part of response) {
+      const choice = part.choices[0];
+      if (!choice) continue; // Skip empty choices
+      const { delta } = choice;
+      deltas.push(delta);
+
+      // @ts-expect-error Handle reasoning content, this is a openrouter-specific extension
+      const reasoningDelta = delta.reasoning as string | undefined;
+
+      if (reasoningDelta) {
+        if (lastType !== "reasoning") {
+          lastType = "reasoning";
+          lastIndex++;
+        }
+        yield {
+          type: "delta_output_reasoning",
+          index: lastIndex,
+          delta: reasoningDelta,
+        };
+      }
+
+      if (delta.content) {
+        if (lastType !== "text") {
+          lastType = "text";
+          lastIndex++;
+        }
+        yield {
+          type: "delta_output_text",
+          index: lastIndex,
+          delta: delta.content,
+        };
+      }
+
+      for (const call of delta.tool_calls ?? []) {
+        const callFunction = call.function;
+        if (callFunction?.name) {
+          lastType = "tool_use";
+          lastIndex++;
+
+          const tool = this.#normalizedTools.find((tool) =>
+            tool.openrouter.function.name === callFunction.name
+          );
+          assert(call.id);
+
+          toolMap[lastIndex] = {
+            type: "tool_use",
+            kind: tool?.original.name ?? callFunction.name,
+            tool_use_id: call.id,
+            content: callFunction.arguments ?? "",
+          };
+        } else if (callFunction?.arguments) {
+          const toolUse = toolMap[lastIndex];
+          assert(toolUse.type === "tool_use");
+          toolUse.content += callFunction.arguments;
+        }
+      }
+    }
+    for (const msg of toolMap) {
+      if (msg?.type === "tool_use") {
+        const toolUse = msg;
+        assert(toolUse.type === "tool_use");
+        const tool = this.#normalizedTools.find((tool) =>
+          tool.original.name === toolUse.kind
+        );
+
+        try {
+          const parsedContent = JSON.parse(toolUse.content);
+          yield {
+            type: "tool_use",
+            index: lastIndex,
+            tool_use_id: toolUse.tool_use_id,
+            kind: toolUse.kind,
+            content: tool?.wrapperObject
+              ? JSON.stringify(parsedContent.content)
+              : toolUse.content,
+          };
+        } catch {
+          // the function call isn't done yet
+        }
+      }
+    }
+    // console.log(deltas);
   }
 }
