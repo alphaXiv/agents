@@ -1,9 +1,19 @@
 import OpenAI from "openai";
 import z from "zod";
 import { assert } from "@std/assert";
-import type { ResponseInputItem } from "openai/resources/responses/responses";
+import type {
+  ResponseInputFile,
+  ResponseInputImage,
+  ResponseInputItem,
+  ResponseInputText,
+} from "openai/resources/responses/responses";
 import type { Tool } from "../tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import type {
+  AsyncStreamItemGenerator,
+  ChatItem,
+  ChatItemInputFile,
+  ChatItemToolResultFile,
+} from "../types.ts";
 import { encodeBase64 } from "@std/encoding";
 
 const supportedImageMimeTypes = [
@@ -13,6 +23,42 @@ const supportedImageMimeTypes = [
   "image/gif",
   "image/webp",
 ];
+
+async function getOpenAIFile(
+  historyItem: ChatItemToolResultFile | ChatItemInputFile,
+): Promise<ResponseInputText | ResponseInputFile | ResponseInputImage> {
+  if (supportedImageMimeTypes.includes(historyItem.kind)) {
+    return {
+      type: "input_image",
+      image_url: historyItem.content,
+      detail: "auto",
+    };
+  } else if (historyItem.kind === "application/pdf") {
+    const req = await fetch(historyItem.content);
+    const buffer = await req.arrayBuffer();
+    const filename = historyItem.content.split("/").pop(); // TODO: make this heuristic better
+
+    // TODO: check file support
+    return {
+      type: "input_file",
+      file_data: `data:application/pdf;base64,${encodeBase64(buffer)}`, // TODO: investigate openai file api
+      filename,
+    };
+  } else if (historyItem.kind.startsWith("text/")) {
+    const req = await fetch(historyItem.content);
+    const text = await req.text();
+
+    return {
+      type: "input_text",
+      text: `<file>${text}</file>`,
+    };
+  } else {
+    throw new Error(
+      "OpenAI models don't support the following media type: " +
+        historyItem.kind,
+    );
+  }
+}
 
 async function getOpenAIHistory(history: ChatItem[], toolMap: OpenAIToolMap[]) {
   const openAIHistory: ResponseInputItem[] = [];
@@ -41,56 +87,47 @@ async function getOpenAIHistory(history: ChatItem[], toolMap: OpenAIToolMap[]) {
           ? `{"content":${historyItem.content}}`
           : historyItem.content,
       });
-    } else if (historyItem.type === "tool_result") {
-      openAIHistory.push({
-        type: "custom_tool_call_output",
-        call_id: historyItem.tool_use_id,
-        output: historyItem.content,
-      });
-    } else if (historyItem.type === "input_file") {
-      if (supportedImageMimeTypes.includes(historyItem.kind)) {
-        openAIHistory.push({
-          type: "message",
-          role: "user",
-          content: [{
-            type: "input_image",
-            image_url: historyItem.content,
-            detail: "auto",
-          }],
-        });
-      } else if (historyItem.kind === "application/pdf") {
-        const req = await fetch(historyItem.content);
-        const buffer = await req.arrayBuffer();
-        const filename = historyItem.content.split("/").pop(); // TODO: make this heuristic better
-
-        // TODO: check file support
-        openAIHistory.push({
-          type: "message",
-          role: "user",
-          content: [{
-            type: "input_file",
-            file_data: `data:application/pdf;base64,${encodeBase64(buffer)}`, // TODO: investigate openai file api
-            filename,
-          }],
-        });
-      } else if (historyItem.kind.startsWith("text/")) {
-        const req = await fetch(historyItem.content);
-        const text = await req.text();
-
-        openAIHistory.push({
-          type: "message",
-          role: "user",
-          content: [{
-            type: "input_text",
-            text: `<file>${text}</file>`,
-          }],
+    } else if (historyItem.type === "tool_result_text") {
+      const previousToolCallResult = openAIHistory.find((call) =>
+        call.type === "custom_tool_call_output" &&
+        call.call_id === historyItem.tool_use_id
+      );
+      if (previousToolCallResult) {
+        assert(previousToolCallResult.type === "custom_tool_call_output");
+        assert(typeof previousToolCallResult.output !== "string");
+        previousToolCallResult.output.push({
+          type: "input_text",
+          text: historyItem.content,
         });
       } else {
-        throw new Error(
-          "OpenAI models don't support the following media type: " +
-            historyItem.kind,
-        );
+        openAIHistory.push({
+          type: "custom_tool_call_output",
+          call_id: historyItem.tool_use_id,
+          output: [{ type: "input_text", text: historyItem.content }],
+        });
       }
+    } else if (historyItem.type === "tool_result_file") {
+      const previousToolCallResult = openAIHistory.find((call) =>
+        call.type === "custom_tool_call_output" &&
+        call.call_id === historyItem.tool_use_id
+      );
+      if (previousToolCallResult) {
+        assert(previousToolCallResult.type === "custom_tool_call_output");
+        assert(typeof previousToolCallResult.output !== "string");
+        previousToolCallResult.output.push(await getOpenAIFile(historyItem));
+      } else {
+        openAIHistory.push({
+          type: "custom_tool_call_output",
+          call_id: historyItem.tool_use_id,
+          output: [await getOpenAIFile(historyItem)],
+        });
+      }
+    } else if (historyItem.type === "input_file") {
+      openAIHistory.push({
+        type: "message",
+        role: "user",
+        content: [await getOpenAIFile(historyItem)],
+      });
     } else if (historyItem.type === "output_reasoning") {
       // no-op, don't propagate reasoning
     } else {

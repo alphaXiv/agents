@@ -68,7 +68,7 @@ export class TestingAdapter<zO, zI> {
       ];
     }
 
-    if (lastMessage.type === "tool_result") {
+    if (lastMessage.type === "tool_result_text") {
       return [{
         type: "output_text",
         content: "looks like the tool call got " + lastMessage.content,

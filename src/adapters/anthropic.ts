@@ -46,7 +46,7 @@ async function getAnthropicHistory(
           input: tool?.wrapperObject ? { content } : content,
         }],
       });
-    } else if (historyItem.type === "tool_result") {
+    } else if (historyItem.type === "tool_result_text") {
       anthropicHistory.push({
         role: "user",
         content: [{
@@ -70,7 +70,10 @@ async function getAnthropicHistory(
       } else {
         // no-op :( nothing we can do
       }
-    } else if (historyItem.type === "input_file") {
+    } else if (
+      historyItem.type === "input_file" ||
+      historyItem.type === "tool_result_file"
+    ) {
       if (supportedImageMimeTypes.includes(historyItem.kind)) {
         anthropicHistory.push({
           role: "user",

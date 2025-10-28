@@ -1,11 +1,10 @@
 import process from "node:process";
-import type { ChatItem, ChatLike } from "./types.ts";
+import type { ChatItem, ChatLike, ToolResultLike } from "./types.ts";
 import { encodeHex } from "@std/encoding/hex";
 
 export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
   chatLike: ChatLike,
   type: T,
-  otherData?: Record<string, string>,
 ): ChatItem[] {
   if (typeof chatLike === "string") {
     if (type === "input_text" || type === "output_text") {
@@ -13,19 +12,38 @@ export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
         type,
         content: chatLike,
       }];
-    } else if (type === "tool_result") {
-      return [
-        {
-          type,
-          tool_use_id: otherData!.tool_use_id,
-          content: chatLike,
-        },
-      ];
     }
     throw new Error("Unhandled type");
   }
 
   return chatLike;
+}
+
+export function convertToolResultLikeToChatItem(
+  toolResultLike: ToolResultLike,
+  toolUseId: string,
+): ChatItem[] {
+  if (typeof toolResultLike === "string") {
+    return [{
+      type: "tool_result_text",
+      tool_use_id: toolUseId,
+      content: toolResultLike,
+    }];
+  }
+
+  return toolResultLike.map((toolResult) => {
+    if (toolResult.type === "tool_result_text") {
+      return {
+        ...toolResult,
+        tool_use_id: toolUseId,
+      };
+    } else {
+      return {
+        ...toolResult,
+        tool_use_id: toolUseId,
+      };
+    }
+  });
 }
 
 export function crossPlatformEnv(key: string) {

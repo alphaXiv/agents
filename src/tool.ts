@@ -1,7 +1,7 @@
 import type z from "zod";
-import type { ChatLike } from "./types.ts";
+import type { ToolResultLike } from "./types.ts";
 
-export type ExecuteResult = ChatLike | Promise<ChatLike>;
+export type ExecuteResult = ToolResultLike | Promise<ToolResultLike>;
 
 export type ExecuteFuncInput<O> = {
   param: O;

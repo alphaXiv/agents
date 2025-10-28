@@ -73,7 +73,7 @@ export async function getGoogleHistory(
           },
         }],
       });
-    } else if (historyItem.type === "tool_result") {
+    } else if (historyItem.type === "tool_result_text") {
       const toolCall = history.find((item) =>
         item.type === "tool_use" &&
         item.tool_use_id === historyItem.tool_use_id
@@ -89,7 +89,10 @@ export async function getGoogleHistory(
           },
         }],
       });
-    } else if (historyItem.type === "input_file") {
+    } else if (
+      historyItem.type === "input_file" ||
+      historyItem.type === "tool_result_file"
+    ) {
       const fileName = await ensureFileUploaded(
         gemini,
         historyItem.content,

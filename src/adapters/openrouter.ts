@@ -57,13 +57,16 @@ async function getOpenrouterHistory(
           },
         ],
       });
-    } else if (historyItem.type === "tool_result") {
+    } else if (historyItem.type === "tool_result_text") {
       openrouterHistory.push({
         role: "tool",
         tool_call_id: historyItem.tool_use_id,
         content: historyItem.content,
       });
-    } else if (historyItem.type === "input_file") {
+    } else if (
+      historyItem.type === "input_file" ||
+      historyItem.type === "tool_result_file"
+    ) {
       if (supportedImageMimeTypes.includes(historyItem.kind)) {
         openrouterHistory.push({
           role: "user",

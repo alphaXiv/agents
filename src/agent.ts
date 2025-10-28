@@ -9,6 +9,7 @@ import type {
 } from "./types.ts";
 import {
   convertChatLikeToChatItem,
+  convertToolResultLikeToChatItem,
   crossPlatformLog,
   runWithRetries,
 } from "./util.ts";
@@ -91,17 +92,25 @@ export class Agent<zO, zI, M extends ModelString> {
             throw new Error(`Tool does not exist: ${toolUse.kind}`);
           }
 
+          try {
+            tool.parameters.parse(JSON.parse(toolUse.content));
+          } catch (err) {
+            throw new Error(
+              `Invalid parameters for tool: ${
+                err instanceof Error ? err.message : err
+              }`,
+            );
+          }
+
           const result = await tool.execute({
             param: JSON.parse(toolUse.content),
             toolUseId: toolUse.tool_use_id,
           });
 
-          return convertChatLikeToChatItem(result, "tool_result", {
-            tool_use_id: toolUse.tool_use_id,
-          });
+          return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
         } catch (err) {
           return [{
-            type: "tool_result" as const,
+            type: "tool_result_text" as const,
             tool_use_id: toolUse.tool_use_id,
             content: "Error: " +
               (err instanceof Error ? err.message : (err as string).toString()),
@@ -216,9 +225,9 @@ export class Agent<zO, zI, M extends ModelString> {
         // execute and stream tools
         const toolResults = await this.#runToolUses(toolUses);
         for (const toolResult of toolResults.flat()) {
-          if (toolResult.type === "tool_result") {
+          if (toolResult.type === "tool_result_text") {
             yield {
-              type: "tool_result",
+              type: "tool_result_text",
               index: newHistory.length + history.length,
               tool_use_id: toolResult.tool_use_id,
               content: toolResult.content,
@@ -259,7 +268,7 @@ export class Agent<zO, zI, M extends ModelString> {
             crossPlatformLog(
               `[${part.tool_use_id}] Calling '${part.kind}' with parameters '${part.content}'`,
             );
-          } else if (part.type === "tool_result") {
+          } else if (part.type === "tool_result_text") {
             crossPlatformLog(
               `[${part.tool_use_id}] Got result '${part.content}'`,
             );
