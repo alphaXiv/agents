@@ -42,7 +42,6 @@ async function getOpenrouterHistory(
       const tool = toolMap.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      assert(tool);
       openrouterHistory.push({
         role: "assistant",
         tool_calls: [
@@ -50,8 +49,8 @@ async function getOpenrouterHistory(
             id: historyItem.tool_use_id,
             type: "function",
             function: {
-              name: tool.openrouter.function.name,
-              arguments: tool.wrapperObject
+              name: tool?.openrouter.function.name ?? historyItem.kind,
+              arguments: tool?.wrapperObject
                 ? `{"content":${historyItem.content}}`
                 : historyItem.content,
             },
@@ -271,13 +270,12 @@ export class OpenRouterAdapter<zO, zI> {
       const tool = this.#normalizedTools.find((tool) =>
         tool.openrouter.function.name === toolUse.function.name
       );
-      assert(tool);
       const content = JSON.parse(toolUse.function.arguments);
       output.push({
         type: "tool_use",
         tool_use_id: toolUse.id,
-        kind: tool.original.name,
-        content: tool.wrapperObject
+        kind: tool?.original.name ?? toolUse.function.name,
+        content: tool?.wrapperObject
           ? JSON.stringify(content.content)
           : toolUse.function.arguments,
       });
@@ -359,12 +357,11 @@ export class OpenRouterAdapter<zO, zI> {
           const tool = this.#normalizedTools.find((tool) =>
             tool.openrouter.function.name === callFunction.name
           );
-          assert(tool);
           assert(call.id);
 
           toolMap[lastIndex] = {
             type: "tool_use",
-            kind: tool.original.name,
+            kind: tool?.original.name ?? callFunction.name,
             tool_use_id: call.id,
             content: callFunction.arguments ?? "",
           };
@@ -382,7 +379,7 @@ export class OpenRouterAdapter<zO, zI> {
         const tool = this.#normalizedTools.find((tool) =>
           tool.original.name === toolUse.kind
         );
-        assert(tool);
+
         try {
           const parsedContent = JSON.parse(toolUse.content);
           yield {
@@ -390,7 +387,7 @@ export class OpenRouterAdapter<zO, zI> {
             index: lastIndex,
             tool_use_id: toolUse.tool_use_id,
             kind: toolUse.kind,
-            content: tool.wrapperObject
+            content: tool?.wrapperObject
               ? JSON.stringify(parsedContent.content)
               : toolUse.content,
           };
@@ -399,5 +396,6 @@ export class OpenRouterAdapter<zO, zI> {
         }
       }
     }
+    // console.log(deltas);
   }
 }

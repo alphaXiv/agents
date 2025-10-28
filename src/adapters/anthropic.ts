@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages";
 import z from "zod";
-import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
 import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
 
@@ -37,15 +36,14 @@ async function getAnthropicHistory(
       const tool = normalizedTools.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      assert(tool);
       const content = JSON.parse(historyItem.content);
       anthropicHistory.push({
         role: "assistant",
         content: [{
           type: "tool_use",
           id: historyItem.tool_use_id,
-          name: tool.anthropic.name,
-          input: tool.wrapperObject ? { content } : content,
+          name: tool?.anthropic.name ?? historyItem.kind,
+          input: tool?.wrapperObject ? { content } : content,
         }],
       });
     } else if (historyItem.type === "tool_result") {
@@ -55,6 +53,7 @@ async function getAnthropicHistory(
           type: "tool_result",
           tool_use_id: historyItem.tool_use_id,
           content: historyItem.content,
+          is_error: historyItem.content.startsWith("Error: "),
         }],
       });
     } else if (historyItem.type === "output_reasoning") {
@@ -239,13 +238,12 @@ export class AnthropicAdapter<zO, zI> {
         const tool = this.#normalizedTools.find((tool) =>
           tool.anthropic.name === part.name
         );
-        assert(tool);
         output.push({
           type: "tool_use",
           tool_use_id: part.id,
-          kind: tool.original.name,
+          kind: tool?.original.name ?? part.name,
           content: JSON.stringify(
-            tool.wrapperObject ? (part.input as any).content : part.input,
+            tool?.wrapperObject ? (part.input as any).content : part.input,
           ),
         });
       } else {
@@ -325,13 +323,12 @@ export class AnthropicAdapter<zO, zI> {
           const tool = this.#normalizedTools.find((tool) =>
             tool.anthropic.name === endingPart.kind
           );
-          assert(tool);
           yield {
             type: "tool_use",
             index: part.index,
-            kind: tool.original.name,
+            kind: tool?.original.name ?? endingPart.kind,
             tool_use_id: endingPart.tool_use_id,
-            content: tool.wrapperObject
+            content: tool?.wrapperObject
               ? JSON.stringify(JSON.parse(endingPart.content).content)
               : endingPart.content,
           };

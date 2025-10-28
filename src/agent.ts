@@ -1,7 +1,12 @@
 import type z from "zod";
 import { ADAPTERS } from "./adapters.ts";
 import type { Tool } from "./tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem, ChatLike } from "./types.ts";
+import type {
+  AsyncStreamItemGenerator,
+  ChatItem,
+  ChatItemToolUse,
+  ChatLike,
+} from "./types.ts";
 import {
   convertChatLikeToChatItem,
   crossPlatformLog,
@@ -77,6 +82,35 @@ export class Agent<zO, zI, M extends ModelString> {
     this.#tools = options.tools ?? [];
   }
 
+  async #runToolUses(toolUses: ChatItemToolUse[]) {
+    return await Promise.all(
+      toolUses.map(async (toolUse) => {
+        try {
+          const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
+          if (!tool) {
+            throw new Error(`Tool does not exist: ${toolUse.kind}`);
+          }
+
+          const result = await tool.execute({
+            param: JSON.parse(toolUse.content),
+            toolUseId: toolUse.tool_use_id,
+          });
+
+          return convertChatLikeToChatItem(result, "tool_result", {
+            tool_use_id: toolUse.tool_use_id,
+          });
+        } catch (err) {
+          return [{
+            type: "tool_result" as const,
+            tool_use_id: toolUse.tool_use_id,
+            content: "Error: " +
+              (err instanceof Error ? err.message : (err as string).toString()),
+          }];
+        }
+      }),
+    );
+  }
+
   /** Run agent without streaming */
   async run(
     chatLike: ChatLike,
@@ -104,24 +138,7 @@ export class Agent<zO, zI, M extends ModelString> {
         chatItem.type === "tool_use"
       );
       if (toolUses.length > 0) {
-        // TODO: verify that it's using all real tools
-
-        // tool subloop
-        const toolResults = await Promise.all(
-          toolUses.map(async (toolUse) => {
-            const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
-            if (!tool) throw new Error("wtfrick model tried to use fake tool"); // TODO: handle this better
-
-            const result = await tool.execute({
-              param: JSON.parse(toolUse.content),
-              toolUseId: toolUse.tool_use_id,
-            });
-
-            return convertChatLikeToChatItem(result, "tool_result", {
-              tool_use_id: toolUse.tool_use_id,
-            });
-          }),
-        );
+        const toolResults = await this.#runToolUses(toolUses);
         newHistory.push(...toolResults.flat());
         continue;
       }
@@ -197,30 +214,18 @@ export class Agent<zO, zI, M extends ModelString> {
       );
       if (toolUses.length > 0) {
         // execute and stream tools
-        const toolResults = await Promise.all(
-          toolUses.map(async (toolUse) => {
-            const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
-            if (!tool) throw new Error("wtfrick model tried to use fake tool"); // TODO: handle this better
-
-            const result = await tool.execute({
-              param: JSON.parse(toolUse.content),
-              toolUseId: toolUse.tool_use_id,
-            });
-
-            return convertChatLikeToChatItem(result, "tool_result", {
-              tool_use_id: toolUse.tool_use_id,
-            });
-          }),
-        );
+        const toolResults = await this.#runToolUses(toolUses);
         for (const toolResult of toolResults.flat()) {
           if (toolResult.type === "tool_result") {
             yield {
               type: "tool_result",
-              index: newHistory.length,
+              index: newHistory.length + history.length,
               tool_use_id: toolResult.tool_use_id,
               content: toolResult.content,
             };
             newHistory.push(toolResult);
+          } else {
+            console.log(toolResult);
           }
         }
 

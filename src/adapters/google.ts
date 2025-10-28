@@ -62,15 +62,14 @@ export async function getGoogleHistory(
       const tool = toolMap.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      assert(tool);
       const content = JSON.parse(historyItem.content);
       googleHistory.push({
         role: "model",
         parts: [{
           functionCall: {
             id: historyItem.tool_use_id,
-            name: tool.google.name,
-            args: tool.wrapperObject ? { content } : content,
+            name: tool?.google.name ?? historyItem.kind,
+            args: tool?.wrapperObject ? { content } : content,
           },
         }],
       });
@@ -238,13 +237,12 @@ export class GoogleAdapter<zO, zI> {
         const tool = this.#normalizedTools.find((tool) =>
           tool.google.name === func.name
         );
-        assert(tool);
         output.push({
           type: "tool_use",
           tool_use_id: funcId,
-          kind: tool.original.name,
+          kind: tool?.original.name ?? func.name,
           content: JSON.stringify(
-            tool.wrapperObject ? func.args.content : func.args,
+            tool?.wrapperObject ? func.args.content : func.args,
           ),
         });
       }
@@ -321,12 +319,11 @@ export class GoogleAdapter<zO, zI> {
           const tool = this.#normalizedTools.find((tool) =>
             tool.google.name === func.name
           );
-          assert(tool);
           yield {
             type: "tool_use",
             tool_use_id: funcId,
-            kind: tool.original.name,
-            content: tool.wrapperObject
+            kind: tool?.original.name ?? func.name,
+            content: tool?.wrapperObject
               ? JSON.stringify(part.functionCall.args!.content)
               : JSON.stringify(part.functionCall.args),
             index: lastIndex,

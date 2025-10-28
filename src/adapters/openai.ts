@@ -33,12 +33,11 @@ async function getOpenAIHistory(history: ChatItem[], toolMap: OpenAIToolMap[]) {
       const tool = toolMap.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      assert(tool);
       openAIHistory.push({
         type: "custom_tool_call",
         call_id: historyItem.tool_use_id,
-        name: tool.openai.name,
-        input: tool.wrapperObject
+        name: tool?.openai.name ?? historyItem.kind,
+        input: tool?.wrapperObject
           ? `{"content":${historyItem.content}}`
           : historyItem.content,
       });
@@ -191,15 +190,14 @@ export class OpenAIAdapter<zO, zI> {
         const tool = this.#normalizedTools.find((tool) =>
           tool.openai.name === part.name
         );
-        assert(tool);
-        const content = tool.wrapperObject
+        const content = tool?.wrapperObject
           ? JSON.stringify(JSON.parse(part.arguments).content)
           : part.arguments;
 
         output.push({
           type: "tool_use",
           tool_use_id: part.call_id,
-          kind: tool.original.name,
+          kind: tool?.original.name ?? part.name,
           content,
         });
       } else if (part.type === "reasoning") {
@@ -265,11 +263,10 @@ export class OpenAIAdapter<zO, zI> {
           const tool = this.#normalizedTools.find((tool) =>
             tool.openai.name === partItem.name
           );
-          assert(tool);
           toolIndex[part.output_index] = {
             type: "tool_use",
             tool_use_id: partItem.call_id,
-            kind: tool.original.name,
+            kind: tool?.original.name ?? partItem.name,
             content: partItem.arguments,
           };
         }
@@ -291,14 +288,13 @@ export class OpenAIAdapter<zO, zI> {
         const tool = this.#normalizedTools.find((tool) =>
           tool.original.name === toolUse.kind
         );
-        assert(tool);
-        const content = tool.wrapperObject
+        const content = tool?.wrapperObject
           ? JSON.stringify(JSON.parse(part.arguments).content)
           : part.arguments;
         yield {
           type: "tool_use",
           tool_use_id: toolUse.tool_use_id,
-          kind: tool.original.name,
+          kind: tool?.original.name ?? toolUse.kind,
           content,
           index: part.output_index,
         };

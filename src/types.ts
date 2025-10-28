@@ -1,3 +1,13 @@
+export type ChatItemToolUse = {
+  type: "tool_use";
+  /** Provider generated string representing the id of the tool call */
+  tool_use_id: string;
+  /** The name of the function called */
+  kind: string;
+  /** The input parameters into the function, encoded as json string  */
+  content: string;
+};
+
 /** ChatItem is designed to be stored in a database, this is why some names are suboptimal, we're trying to overlap as much as possible */
 export type ChatItem =
   | {
@@ -22,15 +32,7 @@ export type ChatItem =
     /** Text output from the model */
     content: string;
   }
-  | {
-    type: "tool_use";
-    /** Provider generated string representing the id of the tool call */
-    tool_use_id: string;
-    /** The name of the function called */
-    kind: string;
-    /** The input parameters into the function, encoded as json string  */
-    content: string;
-  }
+  | ChatItemToolUse
   | {
     type: "tool_result";
     /** Id of a previous tool call in this conversation. CANNOT BE INCLUDED UNLESS THE TOOL USE IS ALSO INCLUDED!! */
