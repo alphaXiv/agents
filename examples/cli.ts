@@ -2,7 +2,7 @@ import z from "zod";
 import { Agent, Tool } from "../mod.ts";
 
 const calculator = new Tool({
-  name: "Calulating...",
+  name: "Calculating...",
   description: "A simple calculator to make math operations easier!",
   parameters: z.object({
     operation: z.enum(["add", "multiply", "divide", "subtract"]).describe(
