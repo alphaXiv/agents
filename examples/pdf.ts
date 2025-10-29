@@ -1,7 +1,7 @@
 import { Agent } from "../mod.ts";
 
 const agent = new Agent({
-  model: "openai:gpt-4.1",
+  model: "google:gemini-2.5-flash",
   instructions: "You are a friendly assistant",
 });
 

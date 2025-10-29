@@ -1,5 +1,7 @@
 import {
+  ApiError,
   type Content,
+  type DeleteFileResponse,
   type FunctionDeclaration,
   GoogleGenAI,
 } from "@google/genai";
@@ -28,14 +30,52 @@ async function ensureFileUploaded(
     const response = await fetch(url);
     const blob = await response.blob();
 
-    // Upload the file using the provided uploadBuffer function
-    await gemini.files.upload({
-      file: blob,
-      config: {
-        name: `files/${safeFileName}`,
-        mimeType,
-      },
-    });
+    try {
+      await gemini.files.upload({
+        file: blob,
+        config: {
+          name: `files/${safeFileName}`,
+          mimeType,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (
+          err.message.includes(
+            "generativelanguage.googleapis.com/file_storage_bytes",
+          ) && err.message.includes(
+            "429",
+          )
+        ) {
+          // We've run out of file storage as cache. Delete some files, then try uploading again.
+          const fileList = await gemini.files.list({
+            config: { pageSize: 100 },
+          });
+          let toDelete = 1000; // How many files we want to delete before attempting to upload one
+          const deletionPromises: Promise<DeleteFileResponse>[] = [];
+          for await (const file of fileList) {
+            // Check if the file was created > 30 minutes ago
+            if (
+              file.name && (
+                !file.createTime ||
+                new Date(file.createTime).getTime() <
+                  new Date().getTime() - (30 * 60 * 1000)
+              )
+            ) {
+              // If so, delete it
+              deletionPromises.push(gemini.files.delete({ name: file.name }));
+              toDelete--;
+              if (toDelete <= 0) {
+                break;
+              }
+            }
+          }
+          await Promise.all(deletionPromises);
+          return await ensureFileUploaded(gemini, url, mimeType);
+        }
+      }
+      throw err;
+    }
 
     return safeFileName;
   }
