@@ -5,7 +5,6 @@ export type ExecuteResult = ToolResultLike | Promise<ToolResultLike>;
 
 export type ExecuteFuncInput<O> = {
   param: O;
-  toolUseId: string;
 };
 export type ExecuteFunc<O> = (input: ExecuteFuncInput<O>) => ExecuteResult;
 

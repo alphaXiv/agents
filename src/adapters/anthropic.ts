@@ -19,6 +19,7 @@ const signatureMap = new Map<string, string>();
 async function getAnthropicHistory(
   history: ChatItem[],
   normalizedTools: AnthropicToolMap[],
+  signal: AbortSignal,
 ) {
   const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
   for (const historyItem of history) {
@@ -99,7 +100,7 @@ async function getAnthropicHistory(
           ],
         });
       } else if (historyItem.kind.startsWith("text/")) {
-        const req = await fetch(historyItem.content);
+        const req = await fetch(historyItem.content, { signal });
         const text = await req.text();
 
         anthropicHistory.push({
@@ -184,13 +185,15 @@ export class AnthropicAdapter<zO, zI> {
     this.#client = new Anthropic();
   }
 
-  async run({ history, systemPrompt }: {
+  async run({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): Promise<ChatItem[]> {
     const anthropicHistory = await getAnthropicHistory(
       history,
       this.#normalizedTools,
+      signal,
     );
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
@@ -212,7 +215,7 @@ export class AnthropicAdapter<zO, zI> {
           budget_tokens: 16000,
         }
         : undefined,
-    });
+    }, { signal });
 
     const output: ChatItem[] = [];
 
@@ -257,13 +260,15 @@ export class AnthropicAdapter<zO, zI> {
     return output;
   }
 
-  async *stream({ history, systemPrompt }: {
+  async *stream({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): AsyncStreamItemGenerator {
     const anthropicHistory = await getAnthropicHistory(
       history,
       this.#normalizedTools,
+      signal,
     );
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
@@ -280,7 +285,7 @@ export class AnthropicAdapter<zO, zI> {
           budget_tokens: 16000,
         }
         : undefined,
-    });
+    }, { signal });
 
     const parts: ChatItem[] = [];
     for await (const part of response) {

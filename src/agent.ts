@@ -1,4 +1,5 @@
 import type z from "zod";
+import { abortable } from "@std/async/abortable";
 import { ADAPTERS } from "./adapters.ts";
 import type { Tool } from "./tool.ts";
 import type {
@@ -10,10 +11,13 @@ import type {
 import {
   convertChatLikeToChatItem,
   convertToolResultLikeToChatItem,
+  crossPlatformHandleSigInt,
   crossPlatformLog,
+  crossPlatformRemoveHandleSigInt,
   runWithRetries,
 } from "./util.ts";
 import { addStreamItem } from "./client.ts";
+import { signalAsyncLocalStorage } from "./storage.ts";
 
 const MAX_TURNS = 100;
 
@@ -83,7 +87,7 @@ export class Agent<zO, zI, M extends ModelString> {
     this.#tools = options.tools ?? [];
   }
 
-  async #runToolUses(toolUses: ChatItemToolUse[]) {
+  async #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
     return await Promise.all(
       toolUses.map(async (toolUse) => {
         try {
@@ -102,13 +106,20 @@ export class Agent<zO, zI, M extends ModelString> {
             );
           }
 
-          const result = await tool.execute({
-            param: JSON.parse(toolUse.content),
-            toolUseId: toolUse.tool_use_id,
-          });
+          const result = await abortable(
+            signalAsyncLocalStorage.run(signal, async () => {
+              return await tool.execute({
+                param: JSON.parse(toolUse.content),
+              });
+            }),
+            signal,
+          );
 
           return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
         } catch (err) {
+          if (signal.aborted) {
+            throw err;
+          }
           return [{
             type: "tool_result_text" as const,
             tool_use_id: toolUse.tool_use_id,
@@ -123,7 +134,12 @@ export class Agent<zO, zI, M extends ModelString> {
   /** Run agent without streaming */
   async run(
     chatLike: ChatLike,
+    options?: {
+      signal: AbortSignal;
+    },
   ): Promise<AgentRunResult<zO>> {
+    const signal = options?.signal ?? signalAsyncLocalStorage.getStore() ??
+      new AbortController().signal;
     const history = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
     if (!adapterClass) throw new Error("Could not resolve provider");
@@ -139,6 +155,7 @@ export class Agent<zO, zI, M extends ModelString> {
         adapter.run({
           systemPrompt: this.#instructions,
           history: [...history, ...newHistory],
+          signal,
         }), 5);
 
       newHistory.push(...result);
@@ -147,7 +164,7 @@ export class Agent<zO, zI, M extends ModelString> {
         chatItem.type === "tool_use"
       );
       if (toolUses.length > 0) {
-        const toolResults = await this.#runToolUses(toolUses);
+        const toolResults = await this.#runToolUses(toolUses, signal);
         newHistory.push(...toolResults.flat());
         continue;
       }
@@ -192,7 +209,10 @@ export class Agent<zO, zI, M extends ModelString> {
   }
 
   /** Run agent with streaming */
-  async *stream(chatLike: ChatLike): AsyncStreamItemGenerator {
+  async *stream(chatLike: ChatLike, options?: {
+    signal: AbortSignal;
+  }): AsyncStreamItemGenerator {
+    const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
     if (!adapterClass) throw new Error("Could not resolve provider");
@@ -207,6 +227,7 @@ export class Agent<zO, zI, M extends ModelString> {
       const stream = adapter.stream({
         systemPrompt: this.#instructions,
         history: [...initialHistory, ...history],
+        signal,
       });
       const newHistory: ChatItem[] = [];
       for await (const part of stream) {
@@ -223,7 +244,7 @@ export class Agent<zO, zI, M extends ModelString> {
       );
       if (toolUses.length > 0) {
         // execute and stream tools
-        const toolResults = await this.#runToolUses(toolUses);
+        const toolResults = await this.#runToolUses(toolUses, signal);
         for (const toolResult of toolResults.flat()) {
           if (toolResult.type === "tool_result_text") {
             yield {
@@ -253,38 +274,51 @@ export class Agent<zO, zI, M extends ModelString> {
       if (!content) break;
       history.push({ type: "input_text", content });
 
-      const stream = this.stream(history);
+      const abortController = new AbortController();
+      const handler = () => {
+        abortController.abort();
+      };
+      crossPlatformHandleSigInt(handler);
+
       const newHistory: ChatItem[] = [];
-      for await (const part of stream) {
-        if (part.index + 1 > newHistory.length) {
-          if (newHistory.length > 0) {
-            crossPlatformLog("\n");
+      try {
+        const stream = this.stream(history, { signal: abortController.signal });
+        for await (const part of stream) {
+          if (part.index + 1 > newHistory.length) {
+            if (newHistory.length > 0) {
+              crossPlatformLog("\n");
+            }
+            if (part.type === "delta_output_text") {
+              crossPlatformLog("\x1b[0m");
+            } else if (part.type === "delta_output_reasoning") {
+              crossPlatformLog("\x1b[3m");
+            } else if (part.type === "tool_use") {
+              crossPlatformLog(
+                `[${part.tool_use_id}] Calling '${part.kind}' with parameters '${part.content}'`,
+              );
+            } else if (part.type === "tool_result_text") {
+              crossPlatformLog(
+                `[${part.tool_use_id}] Got result '${part.content}'`,
+              );
+            }
           }
+
           if (part.type === "delta_output_text") {
-            crossPlatformLog("\x1b[0m");
+            crossPlatformLog(part.delta);
           } else if (part.type === "delta_output_reasoning") {
-            crossPlatformLog("\x1b[3m");
-          } else if (part.type === "tool_use") {
-            crossPlatformLog(
-              `[${part.tool_use_id}] Calling '${part.kind}' with parameters '${part.content}'`,
-            );
-          } else if (part.type === "tool_result_text") {
-            crossPlatformLog(
-              `[${part.tool_use_id}] Got result '${part.content}'`,
-            );
+            crossPlatformLog(part.delta);
           }
+          addStreamItem(newHistory, part);
         }
-
-        if (part.type === "delta_output_text") {
-          crossPlatformLog(part.delta);
-        } else if (part.type === "delta_output_reasoning") {
-          crossPlatformLog(part.delta);
+      } catch (err) {
+        if (!abortController.signal.aborted) {
+          throw err;
         }
-        addStreamItem(newHistory, part);
       }
-      crossPlatformLog("\n");
-
       history.push(...newHistory);
+      crossPlatformLog("\x1b[0m\n");
+
+      crossPlatformRemoveHandleSigInt(handler);
     }
   }
 }

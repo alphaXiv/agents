@@ -22,6 +22,7 @@ async function getOpenrouterHistory(
   history: ChatItem[],
   systemPrompt: string,
   toolMap: OpenrouterToolMap[],
+  signal: AbortSignal,
 ) {
   const openrouterHistory: ChatCompletionMessageParam[] = [{
     role: "system", // TODO: select right role for each model
@@ -86,7 +87,7 @@ async function getOpenrouterHistory(
           }],
         });
       } else if (historyItem.kind.startsWith("text/")) {
-        const req = await fetch(historyItem.content);
+        const req = await fetch(historyItem.content, { signal });
         const text = await req.text();
 
         openrouterHistory.push({
@@ -218,14 +219,16 @@ export class OpenRouterAdapter<zO, zI> {
     });
   }
 
-  async run({ history, systemPrompt }: {
+  async run({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): Promise<ChatItem[]> {
     const openrouterHistory = await getOpenrouterHistory(
       history,
       systemPrompt,
       this.#normalizedTools,
+      signal,
     );
 
     const response = await this.#client.chat.completions.create({
@@ -247,7 +250,7 @@ export class OpenRouterAdapter<zO, zI> {
           },
         },
       ],
-    });
+    }, { signal });
 
     const output: ChatItem[] = [];
 
@@ -287,14 +290,16 @@ export class OpenRouterAdapter<zO, zI> {
     return output;
   }
 
-  async *stream({ history, systemPrompt }: {
+  async *stream({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): AsyncStreamItemGenerator {
     const openrouterHistory = await getOpenrouterHistory(
       history,
       systemPrompt,
       this.#normalizedTools,
+      signal,
     );
 
     const response = this.#client.chat.completions.stream({
@@ -310,7 +315,7 @@ export class OpenRouterAdapter<zO, zI> {
           },
         },
       ],
-    });
+    }, { signal });
 
     const toolMap: ChatItem[] = [];
 

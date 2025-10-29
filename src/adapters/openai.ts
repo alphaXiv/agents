@@ -26,6 +26,7 @@ const supportedImageMimeTypes = [
 
 async function getOpenAIFile(
   historyItem: ChatItemToolResultFile | ChatItemInputFile,
+  signal: AbortSignal,
 ): Promise<ResponseInputText | ResponseInputFile | ResponseInputImage> {
   if (supportedImageMimeTypes.includes(historyItem.kind)) {
     return {
@@ -34,7 +35,7 @@ async function getOpenAIFile(
       detail: "auto",
     };
   } else if (historyItem.kind === "application/pdf") {
-    const req = await fetch(historyItem.content);
+    const req = await fetch(historyItem.content, { signal });
     const buffer = await req.arrayBuffer();
     const filename = historyItem.content.split("/").pop(); // TODO: make this heuristic better
 
@@ -45,7 +46,7 @@ async function getOpenAIFile(
       filename,
     };
   } else if (historyItem.kind.startsWith("text/")) {
-    const req = await fetch(historyItem.content);
+    const req = await fetch(historyItem.content, { signal });
     const text = await req.text();
 
     return {
@@ -60,7 +61,11 @@ async function getOpenAIFile(
   }
 }
 
-async function getOpenAIHistory(history: ChatItem[], toolMap: OpenAIToolMap[]) {
+async function getOpenAIHistory(
+  history: ChatItem[],
+  toolMap: OpenAIToolMap[],
+  signal: AbortSignal,
+) {
   const openAIHistory: ResponseInputItem[] = [];
   for (const historyItem of history) {
     if (historyItem.type === "input_text") {
@@ -114,19 +119,21 @@ async function getOpenAIHistory(history: ChatItem[], toolMap: OpenAIToolMap[]) {
       if (previousToolCallResult) {
         assert(previousToolCallResult.type === "custom_tool_call_output");
         assert(typeof previousToolCallResult.output !== "string");
-        previousToolCallResult.output.push(await getOpenAIFile(historyItem));
+        previousToolCallResult.output.push(
+          await getOpenAIFile(historyItem, signal),
+        );
       } else {
         openAIHistory.push({
           type: "custom_tool_call_output",
           call_id: historyItem.tool_use_id,
-          output: [await getOpenAIFile(historyItem)],
+          output: [await getOpenAIFile(historyItem, signal)],
         });
       }
     } else if (historyItem.type === "input_file") {
       openAIHistory.push({
         type: "message",
         role: "user",
-        content: [await getOpenAIFile(historyItem)],
+        content: [await getOpenAIFile(historyItem, signal)],
       });
     } else if (historyItem.type === "output_reasoning") {
       // no-op, don't propagate reasoning
@@ -185,13 +192,15 @@ export class OpenAIAdapter<zO, zI> {
     this.#client = new OpenAI();
   }
 
-  async run({ history, systemPrompt }: {
+  async run({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): Promise<ChatItem[]> {
     const openAIHistory = await getOpenAIHistory(
       history,
       this.#normalizedTools,
+      signal,
     );
 
     const response = await this.#client.responses.create({
@@ -211,7 +220,7 @@ export class OpenAIAdapter<zO, zI> {
       reasoning: {
         summary: "auto",
       },
-    });
+    }, { signal });
 
     const output: ChatItem[] = [];
 
@@ -258,13 +267,15 @@ export class OpenAIAdapter<zO, zI> {
     return output;
   }
 
-  async *stream({ history, systemPrompt }: {
+  async *stream({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): AsyncStreamItemGenerator {
     const openAIHistory = await getOpenAIHistory(
       history,
       this.#normalizedTools,
+      signal,
     );
 
     const response = await this.#client.responses.create({
@@ -276,7 +287,7 @@ export class OpenAIAdapter<zO, zI> {
       reasoning: {
         summary: "auto",
       },
-    });
+    }, { signal });
 
     const toolIndex: ChatItem[] = [];
     for await (const part of response) {

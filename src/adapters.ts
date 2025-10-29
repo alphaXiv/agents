@@ -19,11 +19,13 @@ export interface AdapterInstance {
   run(params: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): Promise<ChatItem[]>;
 
   stream(params: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): AsyncStreamItemGenerator;
 }
 

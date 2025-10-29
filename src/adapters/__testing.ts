@@ -18,6 +18,7 @@ export class TestingAdapter<zO, zI> {
   async run({ history }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): Promise<ChatItem[]> {
     const lastMessage = history.slice().pop();
     if (!lastMessage) {
@@ -88,6 +89,7 @@ export class TestingAdapter<zO, zI> {
   async *stream({}: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): AsyncStreamItemGenerator {
   }
 }

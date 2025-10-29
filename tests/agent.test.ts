@@ -1,6 +1,7 @@
 import z from "zod";
+import { delay } from "@std/async/delay";
 import { Agent } from "../src/agent.ts";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { assert } from "@std/assert/assert";
 import { Tool } from "../src/tool.ts";
 
@@ -76,8 +77,7 @@ Deno.test("Tool calls can work", async () => {
 
   const agent = new Agent({
     model: "__testing:deterministic",
-    instructions:
-      "You are a friendly assistant who can spit out a temperature guesstimate",
+    instructions: "You are a friendly assistant.",
     tools: [search],
   });
   const run = await agent.run("Can you tell me what cat websites there are?");
@@ -85,4 +85,50 @@ Deno.test("Tool calls can work", async () => {
     run.outputText.includes("bingus.com"),
   );
   assertEquals(run.history.length, 3);
+});
+
+Deno.test("Abort signal can work", async () => {
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    execute: async ({ param }) => {
+      await delay(250);
+      if (param === "cats") {
+        return JSON.stringify(["bingus.com", "bungus.com"]);
+      }
+      return "wtfrick.com";
+    },
+  });
+
+  const agent = new Agent({
+    model: "__testing:deterministic",
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+  });
+
+  // Pre-aborted signal works
+  const abortController1 = new AbortController();
+  abortController1.abort();
+  await assertRejects(
+    () =>
+      agent.run("Can you tell me what cat websites there are?", {
+        signal: abortController1.signal,
+      }),
+    DOMException,
+  );
+
+  // Abort-signal during tool call works
+  const abortController2 = new AbortController();
+  setTimeout(() => abortController2.abort(), 100);
+  await assertRejects(
+    () =>
+      agent.run("Can you tell me what cat websites there are?", {
+        signal: abortController2.signal,
+      }),
+    DOMException,
+  );
+
+  // wait for all delays to clear up so we don't leak timers
+  await delay(250);
 });

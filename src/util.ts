@@ -54,6 +54,14 @@ export function crossPlatformLog(str: string) {
   process.stdout.write(str);
 }
 
+export function crossPlatformHandleSigInt(handler: () => void) {
+  process.on("SIGINT", handler);
+}
+
+export function crossPlatformRemoveHandleSigInt(handler: () => void) {
+  process.off("SIGINT", handler);
+}
+
 export function removeDollarSchema(schema: any) {
   const { $schema: _$schema, ...result } = schema;
 

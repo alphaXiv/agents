@@ -2,6 +2,8 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@^1.0.15": "1.0.15",
+    "jsr:@std/async@*": "1.0.15",
+    "jsr:@std/async@^1.0.15": "1.0.15",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@anthropic-ai/sdk@0.67": "0.67.0",
@@ -16,6 +18,9 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/async@1.0.15": {
+      "integrity": "55d1d9d04f99403fe5730ab16bdcc3c47f658a6bf054cafb38a50f046238116e"
     },
     "@std/encoding@1.0.10": {
       "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
@@ -201,6 +206,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@^1.0.15",
+      "jsr:@std/async@^1.0.15",
       "jsr:@std/encoding@^1.0.10",
       "npm:@anthropic-ai/sdk@0.67",
       "npm:@google/genai@^1.25.0",

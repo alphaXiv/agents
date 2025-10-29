@@ -1,6 +1,8 @@
 # @alphaxiv/agents
 
-A TypeScript library to build agents easily for real applications. We couldn't find an open source library to fit our needs at alphaXiv so we decided to just build our own.
+A TypeScript library to build agents easily for real applications. We couldn't
+find an open source library to fit our needs at alphaXiv so we decided to just
+build our own.
 
 Nice-to-haves that other libraries should frankly steal:
 
@@ -8,7 +10,8 @@ Nice-to-haves that other libraries should frankly steal:
 - Built-in way to convert agent into a CLI app (just use `.cli()` on any agent)!
 - Tools can return multiple values!
 - Built-in support for relevant model providers
-- Idiosyncrasies of different model providers are hidden away as much as possible (i.e. no constraints on tool naming or input schema)
+- Idiosyncrasies of different model providers are hidden away as much as
+  possible (i.e. no constraints on tool naming or input schema)
 
 ## TODO
 

@@ -18,15 +18,22 @@ async function ensureFileUploaded(
   gemini: GoogleGenAI,
   url: string,
   mimeType: string,
+  abortSignal: AbortSignal,
 ): Promise<string> {
   // Create a safe filename by hashing the URL
   const safeFileName = (await hashString(url)).slice(0, 40);
 
   try {
     // Try to get the file first to see if it exists
-    await gemini.files.get({ name: safeFileName });
+    await gemini.files.get({
+      name: safeFileName,
+      config: { abortSignal },
+    });
     return safeFileName;
-  } catch {
+  } catch (err) {
+    if (abortSignal.aborted) {
+      throw err;
+    }
     const response = await fetch(url);
     const blob = await response.blob();
 
@@ -36,6 +43,7 @@ async function ensureFileUploaded(
         config: {
           name: `files/${safeFileName}`,
           mimeType,
+          abortSignal,
         },
       });
     } catch (err) {
@@ -49,7 +57,7 @@ async function ensureFileUploaded(
         ) {
           // We've run out of file storage as cache. Delete some files, then try uploading again.
           const fileList = await gemini.files.list({
-            config: { pageSize: 100 },
+            config: { pageSize: 100, abortSignal },
           });
           let toDelete = 1000; // How many files we want to delete before attempting to upload one
           const deletionPromises: Promise<DeleteFileResponse>[] = [];
@@ -63,7 +71,12 @@ async function ensureFileUploaded(
               )
             ) {
               // If so, delete it
-              deletionPromises.push(gemini.files.delete({ name: file.name }));
+              deletionPromises.push(
+                gemini.files.delete({
+                  name: file.name,
+                  config: { abortSignal },
+                }),
+              );
               toDelete--;
               if (toDelete <= 0) {
                 break;
@@ -71,7 +84,7 @@ async function ensureFileUploaded(
             }
           }
           await Promise.all(deletionPromises);
-          return await ensureFileUploaded(gemini, url, mimeType);
+          return await ensureFileUploaded(gemini, url, mimeType, abortSignal);
         }
       }
       throw err;
@@ -85,6 +98,7 @@ export async function getGoogleHistory(
   history: ChatItem[],
   gemini: GoogleGenAI,
   toolMap: GoogleToolMap[],
+  signal: AbortSignal,
 ) {
   const googleHistory: Content[] = [];
   for (const historyItem of history) {
@@ -137,6 +151,7 @@ export async function getGoogleHistory(
         gemini,
         historyItem.content,
         historyItem.kind,
+        signal,
       ); // TODO: make this strategy configurable
       googleHistory.push({
         role: "user",
@@ -221,14 +236,16 @@ export class GoogleAdapter<zO, zI> {
     });
   }
 
-  async run({ history, systemPrompt }: {
+  async run({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): Promise<ChatItem[]> {
     const googleHistory = await getGoogleHistory(
       history,
       this.#client,
       this.#normalizedTools,
+      signal,
     );
 
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
@@ -252,6 +269,7 @@ export class GoogleAdapter<zO, zI> {
         responseSchema: this.#output
           ? removeDollarSchema(z.toJSONSchema(this.#output))
           : undefined,
+        abortSignal: signal,
       },
     });
 
@@ -294,14 +312,16 @@ export class GoogleAdapter<zO, zI> {
     return output;
   }
 
-  async *stream({ history, systemPrompt }: {
+  async *stream({ history, systemPrompt, signal }: {
     systemPrompt: string;
     history: ChatItem[];
+    signal: AbortSignal;
   }): AsyncStreamItemGenerator {
     const googleHistory = await getGoogleHistory(
       history,
       this.#client,
       this.#normalizedTools,
+      signal,
     );
 
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
@@ -321,6 +341,7 @@ export class GoogleAdapter<zO, zI> {
         thinkingConfig: isReasoningModel
           ? { includeThoughts: true }
           : undefined,
+        abortSignal: signal,
       },
     });
 
