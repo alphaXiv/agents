@@ -1,8 +1,7 @@
 import z from "zod";
 import { delay } from "@std/async/delay";
 import { Agent } from "../src/agent.ts";
-import { assertEquals, assertRejects } from "@std/assert";
-import { assert } from "@std/assert/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { Tool } from "../src/tool.ts";
 
 Deno.test("Basic input out of agents works", async () => {
@@ -68,6 +67,58 @@ Deno.test("Tool calls can work", async () => {
     description: "Use when you want to search the internet",
     parameters: z.string().describe("Query parameter"),
     execute: ({ param }) => {
+      if (param === "cats") {
+        return JSON.stringify(["bingus.com", "bungus.com"]);
+      }
+      return "wtfrick.com";
+    },
+  });
+
+  const agent = new Agent({
+    model: "__testing:deterministic",
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+  });
+  const run = await agent.run("Can you tell me what cat websites there are?");
+  assert(
+    run.outputText.includes("bingus.com"),
+  );
+  assertEquals(run.history.length, 3);
+});
+
+Deno.test("Dubious calls without retry will fail", async () => {
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    execute: () => {
+      throw new Error("Oopsies network error");
+    },
+  });
+
+  const agent = new Agent({
+    model: "__testing:deterministic",
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+  });
+  const run = await agent.run("Can you tell me what cat websites there are?");
+  assert(
+    run.outputText.includes("Error: Oopsies network error"),
+  );
+});
+
+Deno.test("Dubious calls will work with retry", async () => {
+  let shouldFail = true;
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    retries: 1,
+    execute: ({ param }) => {
+      if (shouldFail) {
+        shouldFail = false;
+        throw new Error("Oopsies network error");
+      }
       if (param === "cats") {
         return JSON.stringify(["bingus.com", "bungus.com"]);
       }
