@@ -48,7 +48,7 @@ export class Tool<zO, zI> {
     return this.#parameters;
   }
 
-  async execute(input: ExecuteFuncInput<zO>) {
+  async execute(input: ExecuteFuncInput<zO>): Promise<ToolResultLike> {
     let lastError: unknown;
     for (let i = 0; i < this.#retries + 1; i++) {
       try {
