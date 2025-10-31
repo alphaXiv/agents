@@ -5,4 +5,9 @@ export {
   type ExecuteResult,
   Tool,
 } from "./src/tool.ts";
-export type { ChatItem, ChatLike } from "./src/types.ts";
+export type {
+  AsyncStreamItemGenerator,
+  ChatItem,
+  ChatLike,
+  StreamItem,
+} from "./src/types.ts";
