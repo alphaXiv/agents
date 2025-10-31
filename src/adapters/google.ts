@@ -116,7 +116,9 @@ export async function getGoogleHistory(
       const tool = toolMap.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      const content = JSON.parse(historyItem.content);
+      const content = historyItem.content
+        ? JSON.parse(historyItem.content)
+        : undefined;
       googleHistory.push({
         role: "model",
         parts: [{
@@ -187,6 +189,8 @@ type GoogleToolMap = {
   google: FunctionDeclaration;
   /** Google silently doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
+  /** No parameter specified */
+  isVoid: boolean;
 };
 
 // TODO: support both output schema and tools in same agent
@@ -215,13 +219,15 @@ export class GoogleAdapter<zO, zI> {
       }
       name = name.slice(0, 64); // Limit to 64 characters
 
-      const wrapperObject = !(tool.parameters instanceof z.ZodObject);
+      const isVoid = tool.parameters instanceof z.ZodVoid;
+      const wrapperObject = !isVoid &&
+        !(tool.parameters instanceof z.ZodObject);
 
       return {
         original: tool,
         google: {
           name,
-          parameters: z.toJSONSchema(
+          parameters: isVoid ? undefined : z.toJSONSchema(
             wrapperObject
               ? z.object({ content: tool.parameters })
               : tool.parameters,
@@ -229,6 +235,7 @@ export class GoogleAdapter<zO, zI> {
           description: tool.description,
         },
         wrapperObject,
+        isVoid,
       };
     });
     this.#client = new GoogleGenAI({
@@ -302,7 +309,7 @@ export class GoogleAdapter<zO, zI> {
           type: "tool_use",
           tool_use_id: funcId,
           kind: tool?.original.name ?? func.name,
-          content: JSON.stringify(
+          content: tool?.isVoid ? undefined : JSON.stringify(
             tool?.wrapperObject ? func.args.content : func.args,
           ),
         });
@@ -387,9 +394,11 @@ export class GoogleAdapter<zO, zI> {
             type: "tool_use",
             tool_use_id: funcId,
             kind: tool?.original.name ?? func.name,
-            content: tool?.wrapperObject
-              ? JSON.stringify(part.functionCall.args!.content)
-              : JSON.stringify(part.functionCall.args),
+            content: tool?.isVoid
+              ? undefined
+              : (tool?.wrapperObject
+                ? JSON.stringify(part.functionCall.args!.content)
+                : JSON.stringify(part.functionCall.args)),
             index: lastIndex,
           };
         }

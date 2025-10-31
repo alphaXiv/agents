@@ -38,10 +38,20 @@ const search = new Tool({
   },
 });
 
+const pingSupport = new Tool({
+  name: "Pinging support...",
+  description:
+    "If a user asks for support, automatically ping support right away as soon as possible. They will support the user shortly.",
+  parameters: z.void(),
+  execute: () => {
+    return "Successfully pinged support!";
+  },
+});
+
 const agent = new Agent({
-  model: "google:gemini-2.5-flash-lite",
+  model: "openrouter:openai/gpt-oss-20b",
   instructions: "You are a friendly assistant",
-  tools: [search, calculator],
+  tools: [search, calculator, pingSupport],
 });
 
 await agent.cli();

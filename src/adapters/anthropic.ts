@@ -3,6 +3,7 @@ import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages
 import z from "zod";
 import type { Tool } from "../tool.ts";
 import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import { assert } from "@std/assert/assert";
 
 const supportedImageMimeTypes = [
   "image/jpeg",
@@ -37,7 +38,9 @@ async function getAnthropicHistory(
       const tool = normalizedTools.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      const content = JSON.parse(historyItem.content);
+      const content = historyItem.content
+        ? JSON.parse(historyItem.content)
+        : {};
       anthropicHistory.push({
         role: "assistant",
         content: [{
@@ -139,6 +142,8 @@ type AnthropicToolMap = {
   anthropic: AnthropicTool;
   /** Anthropic doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
+  /** No parameter specified */
+  isVoid: boolean;
 };
 
 export class AnthropicAdapter<zO, zI> {
@@ -166,13 +171,15 @@ export class AnthropicAdapter<zO, zI> {
       }
       name = name.slice(0, 64); // Limit to 64 characters
 
-      const wrapperObject = !(tool.parameters instanceof z.ZodObject);
+      const isVoid = tool.parameters instanceof z.ZodVoid;
+      const wrapperObject = !isVoid &&
+        !(tool.parameters instanceof z.ZodObject);
 
       return {
         original: tool,
         anthropic: {
           name,
-          input_schema: z.toJSONSchema(
+          input_schema: isVoid ? { type: "object" } : z.toJSONSchema(
             wrapperObject
               ? z.object({ content: tool.parameters })
               : tool.parameters,
@@ -180,6 +187,7 @@ export class AnthropicAdapter<zO, zI> {
           description: tool.description,
         },
         wrapperObject,
+        isVoid,
       };
     });
     this.#client = new Anthropic();
@@ -248,9 +256,9 @@ export class AnthropicAdapter<zO, zI> {
           type: "tool_use",
           tool_use_id: part.id,
           kind: tool?.original.name ?? part.name,
-          content: JSON.stringify(
+          content: tool?.isVoid ? undefined : (JSON.stringify(
             tool?.wrapperObject ? (part.input as any).content : part.input,
-          ),
+          )),
         });
       } else {
         console.warn("Unrecognized type", part);
@@ -312,7 +320,9 @@ export class AnthropicAdapter<zO, zI> {
             index: part.index,
           };
         } else if (delta.type === "signature_delta") {
-          signatureMap.set(parts[part.index].content, delta.signature);
+          const thinkingPart = parts[part.index];
+          assert(thinkingPart.type === "output_reasoning");
+          signatureMap.set(thinkingPart.content, delta.signature);
         } else if (delta.type === "input_json_delta") {
           parts[part.index].content += delta.partial_json;
         }
@@ -336,9 +346,11 @@ export class AnthropicAdapter<zO, zI> {
             index: part.index,
             kind: tool?.original.name ?? endingPart.kind,
             tool_use_id: endingPart.tool_use_id,
-            content: tool?.wrapperObject
-              ? JSON.stringify(JSON.parse(endingPart.content).content)
-              : endingPart.content,
+            content: endingPart.content
+              ? (tool?.wrapperObject
+                ? JSON.stringify(JSON.parse(endingPart.content).content)
+                : endingPart.content)
+              : undefined,
           };
         }
       }

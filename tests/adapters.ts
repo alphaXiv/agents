@@ -38,6 +38,37 @@ const calculator = new Tool({
 });
 
 for (const model of workingModels) {
+  Deno.test(`Tool with void parameters works for ${model}`, async () => {
+    const agent = new Agent({
+      model,
+      instructions: "You are a friendly assistant",
+      tools: [
+        new Tool({
+          name: "Ping Support",
+          description:
+            "If a user asks for support, automatically ping support right away as soon as possible. They will support the user shortly.",
+          parameters: z.void(),
+          execute() {
+            // no-op
+            return "success!";
+          },
+        }),
+      ],
+    });
+
+    const originalPrompt = [{
+      type: "input_text" as const,
+      content: "Hi I'd like to talk to the support team",
+    }];
+    const run = await agent.run(originalPrompt);
+    assert(
+      run.history.find((h) =>
+        h.type === "tool_use" && h.kind === "Ping Support" &&
+        h.content === undefined
+      ),
+    );
+  });
+
   Deno.test(`Basic tool calling workflow works for ${model}`, async () => {
     const agent = new Agent({
       model,

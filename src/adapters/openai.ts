@@ -88,9 +88,9 @@ async function getOpenAIHistory(
         type: "custom_tool_call",
         call_id: historyItem.tool_use_id,
         name: tool?.openai.name ?? historyItem.kind,
-        input: tool?.wrapperObject
+        input: (tool?.wrapperObject
           ? `{"content":${historyItem.content}}`
-          : historyItem.content,
+          : historyItem.content) ?? "{}",
       });
     } else if (historyItem.type === "tool_result_text") {
       const previousToolCallResult = openAIHistory.find((call) =>
@@ -167,21 +167,26 @@ export class OpenAIAdapter<zO, zI> {
     this.#model = model;
     this.#output = output;
     this.#normalizedTools = tools.map((tool) => {
+      // TODO: improve this mapping
       const name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
         /[^a-zA-Z0-9_-]/g,
         "",
-      ); // TODO: improve this mapping
+      );
+
+      const isVoid = tool.parameters instanceof z.ZodVoid;
       const wrapperObject = !(tool.parameters instanceof z.ZodObject);
 
       return {
         original: tool,
         openai: {
           name,
-          parameters: z.toJSONSchema(
-            wrapperObject
-              ? z.object({ content: tool.parameters })
-              : tool.parameters,
-          ),
+          parameters: isVoid
+            ? { type: "object", properties: {}, additionalProperties: false }
+            : z.toJSONSchema(
+              wrapperObject
+                ? z.object({ content: tool.parameters })
+                : tool.parameters,
+            ),
           description: tool.description,
           type: "function",
           strict: true,

@@ -4,8 +4,8 @@ export type ChatItemToolUse = {
   tool_use_id: string;
   /** The name of the function called */
   kind: string;
-  /** The input parameters into the function, encoded as json string  */
-  content: string;
+  /** The input parameters into the function, encoded as json string or nothing if void input  */
+  content?: string;
 };
 
 export type ChatItemToolResultText = {
@@ -84,7 +84,7 @@ type StreamItemType = {
   type: "tool_use";
   tool_use_id: string;
   kind: string;
-  content: string;
+  content?: string;
 } | {
   type: "tool_result_text";
   tool_use_id: string;

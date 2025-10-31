@@ -51,9 +51,9 @@ async function getOpenrouterHistory(
             type: "function",
             function: {
               name: tool?.openrouter.function.name ?? historyItem.kind,
-              arguments: tool?.wrapperObject
+              arguments: (tool?.wrapperObject
                 ? `{"content":${historyItem.content}}`
-                : historyItem.content,
+                : historyItem.content) ?? "{}",
             },
           },
         ],
@@ -171,6 +171,8 @@ type OpenrouterToolMap = {
   openrouter: ChatCompletionFunctionTool;
   /** Openrouter doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
+  /** No parameter specified */
+  isVoid: boolean;
 };
 
 export class OpenRouterAdapter<zO, zI> {
@@ -189,11 +191,15 @@ export class OpenRouterAdapter<zO, zI> {
     this.#model = model;
     this.#output = output;
     this.#normalizedTools = tools.map((tool) => {
+      // TODO: improve this mapping
       const name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
         /[^a-zA-Z0-9_-]/g,
         "",
-      ); // TODO: improve this mapping
-      const wrapperObject = !(tool.parameters instanceof z.ZodObject);
+      );
+
+      const isVoid = tool.parameters instanceof z.ZodVoid;
+      const wrapperObject = !isVoid &&
+        !(tool.parameters instanceof z.ZodObject);
 
       return {
         original: tool,
@@ -201,7 +207,7 @@ export class OpenRouterAdapter<zO, zI> {
           type: "function",
           function: {
             name,
-            parameters: z.toJSONSchema(
+            parameters: isVoid ? undefined : z.toJSONSchema(
               wrapperObject
                 ? z.object({ content: tool.parameters })
                 : tool.parameters,
@@ -210,6 +216,7 @@ export class OpenRouterAdapter<zO, zI> {
             strict: false,
           },
         },
+        isVoid,
         wrapperObject,
       };
     });
@@ -281,9 +288,11 @@ export class OpenRouterAdapter<zO, zI> {
         type: "tool_use",
         tool_use_id: toolUse.id,
         kind: tool?.original.name ?? toolUse.function.name,
-        content: tool?.wrapperObject
-          ? JSON.stringify(content.content)
-          : toolUse.function.arguments,
+        content: tool?.isVoid
+          ? undefined
+          : (tool?.wrapperObject
+            ? JSON.stringify(content.content)
+            : toolUse.function.arguments),
       });
     }
 
@@ -389,15 +398,19 @@ export class OpenRouterAdapter<zO, zI> {
         );
 
         try {
-          const parsedContent = JSON.parse(toolUse.content);
+          const parsedContent = toolUse.content
+            ? JSON.parse(toolUse.content)
+            : undefined;
           yield {
             type: "tool_use",
             index: lastIndex,
             tool_use_id: toolUse.tool_use_id,
             kind: toolUse.kind,
-            content: tool?.wrapperObject
-              ? JSON.stringify(parsedContent.content)
-              : toolUse.content,
+            content: tool?.isVoid
+              ? undefined
+              : (tool?.wrapperObject
+                ? JSON.stringify(parsedContent.content)
+                : toolUse.content),
           };
         } catch {
           // the function call isn't done yet

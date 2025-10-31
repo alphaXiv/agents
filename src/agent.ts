@@ -18,6 +18,8 @@ import {
 } from "./util.ts";
 import { addStreamItem } from "./client.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
+import { ZodVoid } from "zod";
+import { assert } from "@std/assert/assert";
 
 const MAX_TURNS = 100;
 
@@ -97,7 +99,10 @@ export class Agent<zO, zI, M extends ModelString> {
           }
 
           try {
-            tool.parameters.parse(JSON.parse(toolUse.content));
+            if (!(tool.parameters instanceof ZodVoid)) {
+              assert(toolUse.content);
+              tool.parameters.parse(JSON.parse(toolUse.content));
+            }
           } catch (err) {
             throw new Error(
               `Invalid parameters for tool: ${
@@ -109,7 +114,9 @@ export class Agent<zO, zI, M extends ModelString> {
           const result = await abortable(
             signalAsyncLocalStorage.run(signal, async () => {
               return await tool.execute({
-                param: JSON.parse(toolUse.content),
+                param: toolUse.content
+                  ? JSON.parse(toolUse.content)
+                  : undefined,
               });
             }),
             signal,
