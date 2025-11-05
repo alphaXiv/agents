@@ -52,6 +52,7 @@ const agent = new Agent({
   model: "openrouter:openai/gpt-oss-20b",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport],
+  reasoningEffort: "normal",
 });
 
 await agent.cli();

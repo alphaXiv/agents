@@ -7,7 +7,11 @@ import z from "zod";
 import { assert } from "@std/assert";
 
 import type { Tool } from "../tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import type {
+  AsyncStreamItemGenerator,
+  ChatItem,
+  ReasoningEffort,
+} from "../types.ts";
 import { crossPlatformEnv } from "../util.ts";
 
 const supportedImageMimeTypes = [
@@ -166,6 +170,12 @@ const nativePdfSupport = [
   "google/gemini-2.5-pro-exp-03-25",
 ];
 
+// TODO: ensure this list is complete
+const alwaysReasoningModels = [
+  "openai/gpt-oss-20b",
+  "openai/gpt-oss-120b",
+];
+
 type OpenrouterToolMap = {
   original: Tool<unknown, unknown>;
   openrouter: ChatCompletionFunctionTool;
@@ -180,16 +190,19 @@ export class OpenRouterAdapter<zO, zI> {
   #model: string;
   #output?: z.ZodType<zO, zI>;
   #normalizedTools: OpenrouterToolMap[];
+  #reasoningEffort: ReasoningEffort;
 
   constructor(
-    { model, output, tools }: {
+    { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown>[];
+      reasoningEffort: ReasoningEffort;
     },
   ) {
     this.#model = model;
     this.#output = output;
+    this.#reasoningEffort = reasoningEffort;
     this.#normalizedTools = tools.map((tool) => {
       // TODO: improve this mapping
       const name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
@@ -249,6 +262,10 @@ export class OpenRouterAdapter<zO, zI> {
         }
         : { type: "text" },
       // @ts-expect-error openrouter isn't type safe :(
+      reasoning: {
+        enabled: this.#reasoningEffort === "normal" ||
+          alwaysReasoningModels.includes(this.#model),
+      },
       plugins: nativePdfSupport.includes(this.#model) ? undefined : [
         {
           id: "file-parser",
@@ -315,7 +332,11 @@ export class OpenRouterAdapter<zO, zI> {
       model: this.#model,
       messages: openrouterHistory,
       tools: this.#normalizedTools.map(({ openrouter }) => openrouter),
-      // openrouter-specific extension
+      // openrouter-specific extensions
+      reasoning: {
+        enabled: this.#reasoningEffort === "normal" ||
+          alwaysReasoningModels.includes(this.#model),
+      },
       plugins: nativePdfSupport.includes(this.#model) ? undefined : [
         {
           id: "file-parser",

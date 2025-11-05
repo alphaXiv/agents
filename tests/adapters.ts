@@ -190,5 +190,5 @@ for (const model of workingModels) {
     );
   });
 
-  // TODO: add tests for csv, image, and pdfs
+  // TODO: add tests for csv, image, reasoning effort, and pdfs
 }

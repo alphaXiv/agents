@@ -8,7 +8,11 @@ import {
 import z from "zod";
 import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import type {
+  AsyncStreamItemGenerator,
+  ChatItem,
+  ReasoningEffort,
+} from "../types.ts";
 import { crossPlatformEnv, hashString, removeDollarSchema } from "../util.ts";
 
 const BASE_URL = "https://generativelanguage.googleapis.com";
@@ -184,6 +188,11 @@ const nonReasoningModels = [
   "gemini-2.5-flash-image-preview",
 ];
 
+// TODO: ensure this list is complete
+const alwaysReasoningModels = [
+  "gemini-2.5-pro",
+];
+
 type GoogleToolMap = {
   original: Tool<unknown, unknown>;
   google: FunctionDeclaration;
@@ -199,16 +208,19 @@ export class GoogleAdapter<zO, zI> {
   #model: string;
   #output?: z.ZodType<zO, zI>;
   #normalizedTools: GoogleToolMap[];
+  #reasoningEffort: ReasoningEffort;
 
   constructor(
-    { model, output, tools }: {
+    { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown>[];
+      reasoningEffort: ReasoningEffort;
     },
   ) {
     this.#model = model;
     this.#output = output;
+    this.#reasoningEffort = reasoningEffort;
     this.#normalizedTools = tools.map((tool) => {
       let name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
         /[^a-zA-Z0-9_-]/g,
@@ -270,7 +282,13 @@ export class GoogleAdapter<zO, zI> {
           : undefined,
         systemInstruction: systemPrompt,
         thinkingConfig: isReasoningModel
-          ? { includeThoughts: true }
+          ? {
+            includeThoughts: true,
+            thinkingBudget: this.#reasoningEffort === "minimal" &&
+                !alwaysReasoningModels.includes(this.#model)
+              ? 0
+              : undefined,
+          }
           : undefined,
         responseMimeType: this.#output ? "application/json" : undefined,
         responseSchema: this.#output
@@ -346,7 +364,13 @@ export class GoogleAdapter<zO, zI> {
           : undefined,
         systemInstruction: systemPrompt,
         thinkingConfig: isReasoningModel
-          ? { includeThoughts: true }
+          ? {
+            includeThoughts: true,
+            thinkingBudget: this.#reasoningEffort === "minimal" &&
+                !alwaysReasoningModels.includes(this.#model)
+              ? 0
+              : undefined,
+          }
           : undefined,
         abortSignal: signal,
       },

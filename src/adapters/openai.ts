@@ -13,6 +13,7 @@ import type {
   ChatItem,
   ChatItemInputFile,
   ChatItemToolResultFile,
+  ReasoningEffort,
 } from "../types.ts";
 import { encodeBase64 } from "@std/encoding";
 
@@ -22,6 +23,11 @@ const supportedImageMimeTypes = [
   "image/png",
   "image/gif",
   "image/webp",
+];
+
+// TODO: ensure this list is complete
+const nonReasoningModels = [
+  "gpt-4.1",
 ];
 
 async function getOpenAIFile(
@@ -156,16 +162,19 @@ export class OpenAIAdapter<zO, zI> {
   #model: string;
   #output?: z.ZodType<zO, zI>;
   #normalizedTools: OpenAIToolMap[];
+  #reasoningEffort: ReasoningEffort;
 
   constructor(
-    { model, output, tools }: {
+    { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown>[];
+      reasoningEffort: ReasoningEffort;
     },
   ) {
     this.#model = model;
     this.#output = output;
+    this.#reasoningEffort = reasoningEffort;
     this.#normalizedTools = tools.map((tool) => {
       // TODO: improve this mapping
       const name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
@@ -224,6 +233,10 @@ export class OpenAIAdapter<zO, zI> {
       },
       reasoning: {
         summary: "auto",
+        effort: this.#reasoningEffort === "normal" ||
+            nonReasoningModels.includes(this.#model)
+          ? undefined
+          : "minimal",
       },
     }, { signal });
 
@@ -291,6 +304,10 @@ export class OpenAIAdapter<zO, zI> {
       tools: this.#normalizedTools.map(({ openai }) => openai),
       reasoning: {
         summary: "auto",
+        effort: this.#reasoningEffort === "normal" ||
+            nonReasoningModels.includes(this.#model)
+          ? undefined
+          : "minimal",
       },
     }, { signal });
 
