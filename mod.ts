@@ -9,5 +9,6 @@ export type {
   AsyncStreamItemGenerator,
   ChatItem,
   ChatLike,
+  ReasoningEffort,
   StreamItem,
 } from "./src/types.ts";

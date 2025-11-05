@@ -20,6 +20,7 @@ import { addStreamItem } from "./client.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
 import { ZodVoid } from "zod";
 import { assert } from "@std/assert/assert";
+import { ReasoningEffort } from "@alphaxiv/agents";
 
 const MAX_TURNS = 100;
 
@@ -36,8 +37,13 @@ export type ModelString =
   | "google:gemini-2.5-flash-lite"
   | "google:gemini-2.0-flash"
   | "google:gemini-2.0-flash-lite"
+  | "anthropic:claude-3-7-sonnet-latest"
+  | "anthropic:claude-sonnet-4-0"
   | "anthropic:claude-sonnet-4-5"
+  | "anthropic:claude-3-haiku-20240307"
+  | "anthropic:claude-3-5-haiku-latest"
   | "anthropic:claude-haiku-4-5"
+  | "anthropic:claude-opus-4-0"
   | "anthropic:claude-opus-4-1"
   | "openrouter:openai/gpt-oss-20b"
   | "openrouter:openai/gpt-oss-120b"
@@ -52,19 +58,13 @@ export type ModelString =
 
 export type NoToolCallModels = "google:gemini-2.5-flash-image";
 
-export type AgentOptions<zO, zI, M extends ModelString = ModelString> =
-  M extends NoToolCallModels ? {
-      model: M;
-      instructions: string;
-      output?: z.ZodType<zO, zI>;
-      tools?: never;
-    }
-    : {
-      model: M;
-      instructions: string;
-      output?: z.ZodType<zO, zI>;
-      tools?: Tool<any, any>[];
-    };
+export type AgentOptions<zO, zI, M extends ModelString = ModelString> = {
+  model: M;
+  instructions: string;
+  output?: z.ZodType<zO, zI>;
+  tools?: M extends NoToolCallModels ? never : Tool<any, any>[];
+  reasoningEffort?: ReasoningEffort;
+};
 
 type AgentRunResultOutput<zO> = unknown extends zO ? undefined : zO;
 export interface AgentRunResult<zO> {
@@ -79,6 +79,7 @@ export class Agent<zO, zI, M extends ModelString> {
   #instructions: string;
   #output?: z.ZodType<zO, zI>;
   #tools: Tool<any, any>[];
+  #reasoningEffort: ReasoningEffort;
 
   constructor(options: AgentOptions<zO, zI, M>) {
     const [provider, ...modelParts] = options.model.split(":");
@@ -87,6 +88,7 @@ export class Agent<zO, zI, M extends ModelString> {
     this.#instructions = options.instructions;
     this.#output = options.output;
     this.#tools = options.tools ?? [];
+    this.#reasoningEffort = options.reasoningEffort ?? "normal";
   }
 
   async #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
@@ -154,6 +156,7 @@ export class Agent<zO, zI, M extends ModelString> {
       model: this.#model,
       output: this.#output,
       tools: this.#tools,
+      reasoningEffort: this.#reasoningEffort,
     });
 
     const newHistory: ChatItem[] = [];
@@ -227,6 +230,7 @@ export class Agent<zO, zI, M extends ModelString> {
       model: this.#model,
       output: this.#output,
       tools: this.#tools,
+      reasoningEffort: this.#reasoningEffort,
     });
 
     const history: ChatItem[] = [];

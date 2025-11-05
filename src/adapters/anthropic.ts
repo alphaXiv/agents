@@ -2,7 +2,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages";
 import z from "zod";
 import type { Tool } from "../tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import type {
+  AsyncStreamItemGenerator,
+  ChatItem,
+  ReasoningEffort,
+} from "../types.ts";
 import { assert } from "@std/assert/assert";
 
 const supportedImageMimeTypes = [
@@ -12,6 +16,12 @@ const supportedImageMimeTypes = [
   "image/gif",
   "image/webp",
 ];
+
+const maxTokensMap: Record<string, number> = {
+  "claude-3-haiku-20240307": 4000,
+  "claude-3-5-haiku-20241022": 8000,
+  "claude-3-5-haiku-latest": 8000,
+};
 
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
@@ -151,16 +161,19 @@ export class AnthropicAdapter<zO, zI> {
   #model: string;
   #output?: z.ZodType<zO, zI>;
   #normalizedTools: AnthropicToolMap[];
+  #reasoningEffort: ReasoningEffort;
 
   constructor(
-    { model, output, tools }: {
+    { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown>[];
+      reasoningEffort: ReasoningEffort;
     },
   ) {
     this.#model = model;
     this.#output = output;
+    this.#reasoningEffort = reasoningEffort;
     this.#normalizedTools = tools.map((tool) => {
       let name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
         /[^a-zA-Z0-9_-]/g,
@@ -216,8 +229,8 @@ export class AnthropicAdapter<zO, zI> {
           : ""),
       messages: anthropicHistory,
       tools: this.#normalizedTools.map(({ anthropic }) => anthropic),
-      max_tokens: 16001,
-      thinking: isReasoningModel
+      max_tokens: maxTokensMap[this.#model] ?? 16001,
+      thinking: isReasoningModel && this.#reasoningEffort === "normal"
         ? {
           type: "enabled",
           budget_tokens: 16000,
@@ -286,8 +299,8 @@ export class AnthropicAdapter<zO, zI> {
       system: systemPrompt,
       messages: anthropicHistory,
       tools: this.#normalizedTools.map(({ anthropic }) => anthropic),
-      max_tokens: 16001,
-      thinking: isReasoningModel
+      max_tokens: maxTokensMap[this.#model] ?? 16001,
+      thinking: isReasoningModel && this.#reasoningEffort === "normal"
         ? {
           type: "enabled",
           budget_tokens: 16000,

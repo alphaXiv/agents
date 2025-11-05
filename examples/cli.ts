@@ -49,9 +49,10 @@ const pingSupport = new Tool({
 });
 
 const agent = new Agent({
-  model: "openrouter:openai/gpt-oss-20b",
+  model: "openrouter:anthropic/claude-sonnet-4.5",
   instructions: "You are a friendly assistant",
-  tools: [search, calculator, pingSupport],
+  // tools: [search, calculator, pingSupport],
+  reasoningEffort: "normal",
 });
 
 await agent.cli();
