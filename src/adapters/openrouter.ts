@@ -170,6 +170,12 @@ const nativePdfSupport = [
   "google/gemini-2.5-pro-exp-03-25",
 ];
 
+// TODO: ensure this list is complete
+const alwaysReasoningModels = [
+  "openai/gpt-oss-20b",
+  "openai/gpt-oss-120b",
+];
+
 type OpenrouterToolMap = {
   original: Tool<unknown, unknown>;
   openrouter: ChatCompletionFunctionTool;
@@ -257,7 +263,8 @@ export class OpenRouterAdapter<zO, zI> {
         : { type: "text" },
       // @ts-expect-error openrouter isn't type safe :(
       reasoning: {
-        enabled: this.#reasoningEffort === "normal",
+        enabled: this.#reasoningEffort === "normal" ||
+          alwaysReasoningModels.includes(this.#model),
       },
       plugins: nativePdfSupport.includes(this.#model) ? undefined : [
         {
@@ -327,7 +334,8 @@ export class OpenRouterAdapter<zO, zI> {
       tools: this.#normalizedTools.map(({ openrouter }) => openrouter),
       // openrouter-specific extensions
       reasoning: {
-        enabled: this.#reasoningEffort === "normal",
+        enabled: this.#reasoningEffort === "normal" ||
+          alwaysReasoningModels.includes(this.#model),
       },
       plugins: nativePdfSupport.includes(this.#model) ? undefined : [
         {
