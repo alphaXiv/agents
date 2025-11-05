@@ -18,7 +18,6 @@ Nice-to-haves that other libraries should frankly steal:
 - Configurable max token limit
 - Configurable max turns
 - Provide fall-back models
-- Toggling reasoning for models that support it
 - Way to get cost of agentic query across providers
 
 ## Example
