@@ -1,6 +1,6 @@
 {
   "name": "@alphaxiv/agents",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "license": "MIT",
   "exports": {
     "./client": "./src/client.ts",
@@ -13,7 +13,7 @@
   "imports": {
     "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@^0.67.0",
     "@google/genai": "npm:@google/genai@^1.25.0",
-    "@lino/pdf-parse": "jsr:@lino/pdf-parse@^0.3.0",
+    "@lino/pdf-parse": "jsr:@lino/pdf-parse@^0.3.1",
     "@std/assert": "jsr:@std/assert@^1.0.15",
     "@std/async": "jsr:@std/async@^1.0.15",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",

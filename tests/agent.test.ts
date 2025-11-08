@@ -1,8 +1,7 @@
 import z from "zod";
 import { delay } from "@std/async/delay";
-import { Agent } from "../src/agent.ts";
+import { Agent, Tool } from "../mod.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { Tool } from "../src/tool.ts";
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({

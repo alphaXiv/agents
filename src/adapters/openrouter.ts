@@ -5,7 +5,6 @@ import type {
 } from "openai/resources/chat/completions/completions";
 import z from "zod";
 import { assert } from "@std/assert";
-import parsePdf from "@lino/pdf-parse";
 
 import type { Tool } from "../tool.ts";
 import type {
@@ -85,10 +84,13 @@ async function getOpenrouterHistory(
         const req = await fetch(historyItem.content, {
           method: "HEAD",
         });
-        const fileSize = parseInt(req.headers.get("Content-Length") ?? "0");
+        const fileSize = parseInt(
+          req.headers.get("Content-Length") ?? "9999999999999",
+        ); // If the service doesn't currently return content length, assume it's too big
         const MAX_MEGABYTES = 4;
         if (fileSize > MAX_MEGABYTES * 1024 * 1024) { // Openrouter seems to have an undocumented 5MB size limit on pdfs :) - 4 to be safe here
           const req = await fetch(historyItem.content);
+          const { default: parsePdf } = await import("@lino/pdf-parse");
           const pdfText = await parsePdf(await req.arrayBuffer());
           openrouterHistory.push({
             role: "user",
