@@ -198,7 +198,7 @@ export class OpenAIAdapter<zO, zI> {
             ),
           description: tool.description,
           type: "function",
-          strict: true,
+          strict: false,
         },
         wrapperObject,
       };

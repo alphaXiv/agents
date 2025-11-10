@@ -38,6 +38,29 @@ const search = new Tool({
   },
 });
 
+const complexSearch = new Tool({
+  name: "Searching the paper database...",
+  description: "Use when you want to search the internet",
+  parameters: z.object({
+    subcategories: z
+      .array(z.enum(["ai", "ml", "whatever"]))
+      .optional()
+      .describe("List of arXiv subcategories to filter papers by."),
+    categories: z
+      .array(z.enum(["Computer Science", "Physics"]))
+      .optional()
+      .describe("List of arXiv categories to filter papers by"),
+    days_ago: z
+      .enum(["7", "30", "90", "-1"])
+      .describe(
+        "Time interval to filter papers by. Must be one of: 7, 30, 90, or -1 (for all time).",
+      ),
+  }),
+  execute: () => {
+    return "no results";
+  },
+});
+
 const pingSupport = new Tool({
   name: "Pinging support...",
   description:
@@ -49,9 +72,9 @@ const pingSupport = new Tool({
 });
 
 const agent = new Agent({
-  model: "openrouter:openai/gpt-oss-20b",
+  model: "openai:gpt-5",
   instructions: "You are a friendly assistant",
-  tools: [search, calculator, pingSupport],
+  tools: [search, calculator, pingSupport, complexSearch],
   reasoningEffort: "normal",
 });
 
