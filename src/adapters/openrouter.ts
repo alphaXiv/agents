@@ -194,6 +194,7 @@ const nativePdfSupport = [
 const alwaysReasoningModels = [
   "openai/gpt-oss-20b",
   "openai/gpt-oss-120b",
+  "x-ai/grok-4",
 ];
 
 type OpenrouterToolMap = {
@@ -282,9 +283,8 @@ export class OpenRouterAdapter<zO, zI> {
         }
         : { type: "text" },
       // @ts-expect-error openrouter isn't type safe :(
-      reasoning: {
-        enabled: this.#reasoningEffort === "normal" ||
-          alwaysReasoningModels.includes(this.#model),
+      reasoning: alwaysReasoningModels.includes(this.#model) ? undefined : {
+        enabled: this.#reasoningEffort === "normal",
       },
       plugins: nativePdfSupport.includes(this.#model) ? undefined : [
         {
@@ -353,9 +353,8 @@ export class OpenRouterAdapter<zO, zI> {
       messages: openrouterHistory,
       tools: this.#normalizedTools.map(({ openrouter }) => openrouter),
       // openrouter-specific extensions
-      reasoning: {
-        enabled: this.#reasoningEffort === "normal" ||
-          alwaysReasoningModels.includes(this.#model),
+      reasoning: alwaysReasoningModels.includes(this.#model) ? undefined : {
+        enabled: this.#reasoningEffort === "normal",
       },
       plugins: nativePdfSupport.includes(this.#model) ? undefined : [
         {
