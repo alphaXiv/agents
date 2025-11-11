@@ -23,6 +23,7 @@ import { assert } from "@std/assert/assert";
 import { ReasoningEffort } from "@alphaxiv/agents";
 
 const MAX_TURNS = 100;
+const MAX_PROVIDER_ERRORS = 10;
 
 export type ModelString =
   | "__testing:deterministic"
@@ -233,21 +234,33 @@ export class Agent<zO, zI, M extends ModelString> {
       reasoningEffort: this.#reasoningEffort,
     });
 
+    let providerErrors = 0;
     const history: ChatItem[] = [];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const newHistory: ChatItem[] = [];
       const stream = adapter.stream({
         systemPrompt: this.#instructions,
         history: [...initialHistory, ...history],
         signal,
       });
-      const newHistory: ChatItem[] = [];
-      for await (const part of stream) {
-        const reIndexedPart = {
-          ...part,
-          index: part.index + history.length,
-        };
-        addStreamItem(newHistory, part);
-        yield reIndexedPart;
+
+      try {
+        for await (const part of stream) {
+          const reIndexedPart = {
+            ...part,
+            index: part.index + history.length,
+          };
+          addStreamItem(newHistory, part);
+          yield reIndexedPart;
+        }
+      } catch (err) {
+        if (providerErrors < MAX_PROVIDER_ERRORS) {
+          providerErrors++;
+          // continue loop
+          history.push(...newHistory);
+          continue;
+        }
+        throw err;
       }
 
       const toolUses = newHistory.filter((chatItem) =>
@@ -296,7 +309,11 @@ export class Agent<zO, zI, M extends ModelString> {
         const stream = this.stream(history, { signal: abortController.signal });
         for await (const part of stream) {
           if (part.index + 1 > newHistory.length) {
-            if (newHistory.length > 0) {
+            if (
+              newHistory.length > 0 &&
+              !(newHistory[newHistory.length - 1].type === "output_text" &&
+                part.type === "delta_output_text")
+            ) {
               crossPlatformLog("\n");
             }
             if (part.type === "delta_output_text") {

@@ -12,6 +12,7 @@ Nice-to-haves that other libraries should frankly steal:
 - Built-in support for relevant model providers
 - Idiosyncrasies of different model providers are hidden away as much as
   possible (i.e. no constraints on tool naming or input schema)
+- Automatic retries of provider errors (even mid-streaming!)
 
 ## TODO
 

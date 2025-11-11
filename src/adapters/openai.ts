@@ -16,6 +16,7 @@ import type {
   ReasoningEffort,
 } from "../types.ts";
 import { encodeBase64 } from "@std/encoding";
+import { RETRY_RESUMABILITY_PROMPT } from "../constants.ts";
 
 const supportedImageMimeTypes = [
   "image/jpeg",
@@ -145,6 +146,18 @@ async function getOpenAIHistory(
       // no-op, don't propagate reasoning
     } else {
       historyItem satisfies never;
+    }
+  }
+
+  // Check if this is a resumability request
+  if (openAIHistory.length > 0) {
+    const lastMessage = openAIHistory[openAIHistory.length - 1];
+    if (lastMessage.type === "message" && lastMessage.role === "assistant") {
+      openAIHistory.push({
+        type: "message",
+        role: "developer",
+        content: RETRY_RESUMABILITY_PROMPT,
+      });
     }
   }
   return openAIHistory;

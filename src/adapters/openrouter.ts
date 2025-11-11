@@ -13,6 +13,7 @@ import type {
   ReasoningEffort,
 } from "../types.ts";
 import { crossPlatformEnv } from "../util.ts";
+import { RETRY_RESUMABILITY_PROMPT } from "../constants.ts";
 
 const supportedImageMimeTypes = [
   "image/jpeg",
@@ -131,6 +132,20 @@ async function getOpenrouterHistory(
       // no-op, don't propagate reasoning
     } else {
       historyItem satisfies never;
+    }
+  }
+
+  // Check if this is a resumability request
+  if (openrouterHistory.length > 0) {
+    const lastMessage = openrouterHistory[openrouterHistory.length - 1];
+    if (lastMessage.role === "assistant") {
+      openrouterHistory.push({
+        role: "developer",
+        content: [{
+          type: "text",
+          text: RETRY_RESUMABILITY_PROMPT,
+        }],
+      });
     }
   }
 
