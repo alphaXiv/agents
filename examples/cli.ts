@@ -72,7 +72,7 @@ const pingSupport = new Tool({
 });
 
 const agent = new Agent({
-  model: "openrouter:qwen/qwen3-next-80b-a3b-instruct",
+  model: "anthropic:claude-3-5-haiku-latest",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch],
   reasoningEffort: "normal",

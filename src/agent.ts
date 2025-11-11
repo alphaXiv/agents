@@ -244,6 +244,7 @@ export class Agent<zO, zI, M extends ModelString> {
         signal,
       });
 
+      let err: unknown;
       try {
         for await (const part of stream) {
           const reIndexedPart = {
@@ -253,14 +254,8 @@ export class Agent<zO, zI, M extends ModelString> {
           addStreamItem(newHistory, part);
           yield reIndexedPart;
         }
-      } catch (err) {
-        if (providerErrors < MAX_PROVIDER_ERRORS) {
-          providerErrors++;
-          // continue loop
-          history.push(...newHistory);
-          continue;
-        }
-        throw err;
+      } catch (error) {
+        err = error;
       }
 
       const toolUses = newHistory.filter((chatItem) =>
@@ -287,6 +282,19 @@ export class Agent<zO, zI, M extends ModelString> {
         history.push(...newHistory);
         continue;
       }
+
+      // If streaming fails halfway through a message, retry
+      if (err) {
+        if (providerErrors < MAX_PROVIDER_ERRORS) {
+          providerErrors++;
+          // continue loop
+          history.push(...newHistory);
+          continue;
+        } else {
+          throw err;
+        }
+      }
+
       break;
     }
   }
