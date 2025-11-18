@@ -72,10 +72,10 @@ const pingSupport = new Tool({
 });
 
 const agent = new Agent({
-  model: "anthropic:claude-3-5-haiku-latest",
+  model: "google:gemini-3-pro-preview",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch],
-  reasoningEffort: "normal",
+  reasoningEffort: "minimal",
 });
 
 await agent.cli();

@@ -15,6 +15,10 @@ import type {
 } from "../types.ts";
 import { crossPlatformEnv, hashString, removeDollarSchema } from "../util.ts";
 
+// TODO: drop signature after 10 minutes or whatever
+// Mapping between function call and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
+const signatureMap = new Map<string, string>();
+
 const BASE_URL = "https://generativelanguage.googleapis.com";
 
 /** No way to specify url for google api :( */
@@ -123,6 +127,7 @@ export async function getGoogleHistory(
       const content = historyItem.content
         ? JSON.parse(historyItem.content)
         : undefined;
+      const thoughtSignature = signatureMap.get(historyItem.tool_use_id);
       googleHistory.push({
         role: "model",
         parts: [{
@@ -131,6 +136,7 @@ export async function getGoogleHistory(
             name: tool?.google.name ?? historyItem.kind,
             args: tool?.wrapperObject ? { content } : content,
           },
+          thoughtSignature,
         }],
       });
     } else if (historyItem.type === "tool_result_text") {
@@ -191,6 +197,8 @@ const nonReasoningModels = [
 // TODO: ensure this list is complete
 const alwaysReasoningModels = [
   "gemini-2.5-pro",
+  "gemini-3-pro-preview",
+  "gemini-3-pro",
 ];
 
 type GoogleToolMap = {
@@ -414,6 +422,12 @@ export class GoogleAdapter<zO, zI> {
           const tool = this.#normalizedTools.find((tool) =>
             tool.google.name === func.name
           );
+
+          // Add thoughtSignature if necessary
+          if (part.thoughtSignature) {
+            signatureMap.set(funcId, part.thoughtSignature);
+          }
+
           yield {
             type: "tool_use",
             tool_use_id: funcId,
