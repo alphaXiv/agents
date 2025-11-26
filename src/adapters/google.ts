@@ -127,7 +127,8 @@ export async function getGoogleHistory(
       const content = historyItem.content
         ? JSON.parse(historyItem.content)
         : undefined;
-      const thoughtSignature = signatureMap.get(historyItem.tool_use_id);
+      const thoughtSignature = signatureMap.get(historyItem.tool_use_id) ??
+        "context_engineering_is_the_way_to_go"; // https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#migrating_from_other_models
       googleHistory.push({
         role: "model",
         parts: [{

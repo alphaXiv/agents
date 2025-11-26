@@ -240,7 +240,8 @@ export class AnthropicAdapter<zO, zI> {
 
     const output: ChatItem[] = [];
 
-    for (const part of response.content) {
+    for (let i = 0; i < response.content.length; i++) {
+      const part = response.content[i];
       if (part.type === "thinking") {
         output.push({
           type: "output_reasoning",
@@ -248,7 +249,7 @@ export class AnthropicAdapter<zO, zI> {
         });
         signatureMap.set(part.thinking, part.signature);
       } else if (part.type === "text") {
-        if (this.#output) {
+        if (this.#output && i === response.content.length - 1) {
           const parsedBlock = part.text.split("```json")[1].split("```")[0]
             .trim();
           output.push({
