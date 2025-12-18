@@ -65,7 +65,19 @@ export type AgentOptions<zO, zI, M extends ModelString = ModelString> = {
   output?: z.ZodType<zO, zI>;
   tools?: M extends NoToolCallModels ? never : Tool<any, any>[];
   reasoningEffort?: ReasoningEffort;
+  /**
+   * APIs which are not finalized and are subject to change.
+   */
+  unstable?: UnstableAgentOptions;
 };
+
+export interface UnstableAgentOptions {
+  /**
+   * Set to `false` to disable retrying.
+   * @default true
+   */
+  retries?: boolean;
+}
 
 type AgentRunResultOutput<zO> = unknown extends zO ? undefined : zO;
 export interface AgentRunResult<zO> {
@@ -82,6 +94,8 @@ export class Agent<zO, zI, M extends ModelString> {
   #tools: Tool<any, any>[];
   #reasoningEffort: ReasoningEffort;
 
+  #noRetries = false;
+
   constructor(options: AgentOptions<zO, zI, M>) {
     const [provider, ...modelParts] = options.model.split(":");
     this.#provider = provider;
@@ -90,6 +104,19 @@ export class Agent<zO, zI, M extends ModelString> {
     this.#output = options.output;
     this.#tools = options.tools ?? [];
     this.#reasoningEffort = options.reasoningEffort ?? "normal";
+
+    if (options.unstable) {
+      const { retries = true, ...unknown } = options.unstable;
+      const unknownKeys = Object.keys(unknown);
+      if (unknownKeys.length > 0) {
+        throw new Error(
+          `Unknown unstable options passed: ${
+            unknownKeys.join(", ")
+          }. These options have have been removed in an update.`,
+        );
+      }
+      this.#noRetries = !retries;
+    }
   }
 
   async #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
@@ -167,7 +194,7 @@ export class Agent<zO, zI, M extends ModelString> {
           systemPrompt: this.#instructions,
           history: [...history, ...newHistory],
           signal,
-        }), 5);
+        }), this.#noRetries ? 1 : 5);
 
       newHistory.push(...result);
 
@@ -285,6 +312,7 @@ export class Agent<zO, zI, M extends ModelString> {
 
       // If streaming fails halfway through a message, retry
       if (err) {
+        if (this.#noRetries) throw err;
         if (providerErrors < MAX_PROVIDER_ERRORS) {
           providerErrors++;
           // continue loop
