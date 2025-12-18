@@ -2,6 +2,7 @@ import z from "zod";
 import { delay } from "@std/async/delay";
 import { Agent, Tool } from "../mod.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
+import { testingTracker } from "../src/adapters/__testing.ts";
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({
@@ -181,4 +182,59 @@ Deno.test("Abort signal can work", async () => {
 
   // wait for all delays to clear up so we don't leak timers
   await delay(250);
+});
+
+Deno.test("Agent LLM retries 5 times by default", async () => {
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    execute: () => {
+      return "throw";
+    },
+  });
+
+  const agent = new Agent({
+    model: "__testing:deterministic",
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+  });
+
+  const counter = { failures: 0 };
+  testingTracker.enterWith(counter);
+
+  await assertRejects(
+    () => agent.run("Can you tell me what cat websites there are?"),
+    Error,
+    "Deterministic Provider Error",
+  );
+  assertEquals(counter.failures, 5);
+});
+
+Deno.test("Disable retrying of an agent", async () => {
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    execute: () => {
+      return "throw";
+    },
+  });
+
+  const agent = new Agent({
+    model: "__testing:deterministic",
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+    unstable: { retries: false },
+  });
+
+  const counter = { failures: 0 };
+  testingTracker.enterWith(counter);
+
+  await assertRejects(
+    () => agent.run("Can you tell me what cat websites there are?"),
+    Error,
+    "Deterministic Provider Error",
+  );
+  assertEquals(counter.failures, 1);
 });

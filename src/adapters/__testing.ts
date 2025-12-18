@@ -1,6 +1,9 @@
 import type z from "zod";
 import type { Tool } from "../tool.ts";
 import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
 
 export class TestingAdapter<zO, zI> {
   #tools: Tool<unknown, unknown>[];
@@ -70,6 +73,14 @@ export class TestingAdapter<zO, zI> {
     }
 
     if (lastMessage.type === "tool_result_text") {
+      if (lastMessage.content === "throw") {
+        const store = testingTracker.getStore();
+        if (store) {
+          store.failures += 1;
+        }
+        throw new Error("Deterministic Provider Error");
+      }
+
       return [{
         type: "output_text",
         content: "looks like the tool call got " + lastMessage.content,
