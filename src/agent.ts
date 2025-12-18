@@ -112,7 +112,7 @@ export class Agent<zO, zI, M extends ModelString> {
         throw new Error(
           `Unknown unstable options passed: ${
             unknownKeys.join(", ")
-          }. These options have have been removed in an update.`,
+          }. These options may have been removed in an update.`,
         );
       }
       this.#noRetries = !retries;
