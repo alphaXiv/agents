@@ -1,4 +1,5 @@
 import process from "node:process";
+import { Readable } from "node:stream";
 import type { ChatItem, ChatLike, ToolResultLike } from "./types.ts";
 import { encodeHex } from "@std/encoding/hex";
 
@@ -44,6 +45,12 @@ export function convertToolResultLikeToChatItem(
       };
     }
   });
+}
+
+export function crossPlatformStdin() {
+  return Readable.toWeb(process.stdin) as ReadableStream<
+    Uint8Array<ArrayBuffer>
+  >;
 }
 
 export function crossPlatformEnv(key: string) {

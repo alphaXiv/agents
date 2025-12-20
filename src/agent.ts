@@ -14,6 +14,7 @@ import {
   crossPlatformHandleSigInt,
   crossPlatformLog,
   crossPlatformRemoveHandleSigInt,
+  crossPlatformStdin,
   runWithRetries,
 } from "./util.ts";
 import { addStreamItem } from "./client.ts";
@@ -32,6 +33,9 @@ export type ModelString =
   | "openai:gpt-5-mini"
   | "openai:gpt-5-nano"
   | "openai:gpt-4.1"
+  | "google:gemini-3-flash-preview"
+  | "google:gemini-3-pro-image-preview"
+  | "google:gemini-3-pro-preview"
   | "google:gemini-2.5-pro"
   | "google:gemini-2.5-flash"
   | "google:gemini-2.5-flash-image"
@@ -328,10 +332,14 @@ export class Agent<zO, zI, M extends ModelString> {
   }
 
   async cli() {
+    const decoder = new TextDecoder();
     const history: ChatItem[] = [];
-    while (true) {
-      const content = prompt(">");
+    const prompt = "> ";
+    crossPlatformLog(prompt);
+    for await (const chunk of crossPlatformStdin()) {
+      const content = decoder.decode(chunk).trim();
       if (!content) break;
+
       history.push({ type: "input_text", content });
 
       const abortController = new AbortController();
@@ -383,6 +391,7 @@ export class Agent<zO, zI, M extends ModelString> {
       crossPlatformLog("\x1b[0m\n");
 
       crossPlatformRemoveHandleSigInt(handler);
+      crossPlatformLog(prompt);
     }
   }
 }

@@ -72,7 +72,7 @@ const pingSupport = new Tool({
 });
 
 const agent = new Agent({
-  model: "google:gemini-3-pro-preview",
+  model: "google:gemini-3-flash-preview",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch],
   reasoningEffort: "minimal",
