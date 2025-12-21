@@ -219,7 +219,7 @@ export class AnthropicAdapter<zO, zI> {
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
     // TODO: implement structured outputs properly instead of this hack
-    const response = await this.#client.messages.create({
+    const response = await this.#client.beta.messages.create({
       model: this.#model,
       system: systemPrompt +
         (this.#output
@@ -229,6 +229,7 @@ export class AnthropicAdapter<zO, zI> {
           : ""),
       messages: anthropicHistory,
       tools: this.#normalizedTools.map(({ anthropic }) => anthropic),
+      betas: ["context-1m-2025-08-07"],
       max_tokens: maxTokensMap[this.#model] ?? 16001,
       thinking: isReasoningModel && this.#reasoningEffort === "normal"
         ? {
@@ -295,12 +296,13 @@ export class AnthropicAdapter<zO, zI> {
     const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
     // TODO: implement structured outputs properly instead of this hack
-    const response = this.#client.messages.stream({
+    const response = this.#client.beta.messages.stream({
       model: this.#model,
       system: systemPrompt,
       messages: anthropicHistory,
       tools: this.#normalizedTools.map(({ anthropic }) => anthropic),
       max_tokens: maxTokensMap[this.#model] ?? 16001,
+      betas: ["context-1m-2025-08-07"],
       thinking: isReasoningModel && this.#reasoningEffort === "normal"
         ? {
           type: "enabled",

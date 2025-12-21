@@ -50,6 +50,7 @@ export type ModelString =
   | "anthropic:claude-haiku-4-5"
   | "anthropic:claude-opus-4-0"
   | "anthropic:claude-opus-4-1"
+  | "anthropic:claude-opus-4-5"
   | "openrouter:openai/gpt-oss-20b"
   | "openrouter:openai/gpt-oss-120b"
   | "openrouter:qwen/qwen3-235b-a22b-thinking-2507"
