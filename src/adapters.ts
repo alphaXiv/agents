@@ -1,5 +1,4 @@
 import type z from "zod";
-import { TestingAdapter } from "./adapters/__testing.ts";
 import { AnthropicAdapter } from "./adapters/anthropic.ts";
 import { GoogleAdapter } from "./adapters/google.ts";
 import { OpenAIAdapter } from "./adapters/openai.ts";
@@ -35,9 +34,16 @@ export interface AdapterInstance {
 }
 
 export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {
-  "__testing": TestingAdapter,
   "openai": OpenAIAdapter,
   "google": GoogleAdapter,
   "anthropic": AnthropicAdapter,
   "openrouter": OpenRouterAdapter,
 };
+
+/** Use to register an adapter for an unsupported provider */
+export function registerAdapter(
+  prefix: string,
+  adapter: Adapter<unknown, unknown>,
+) {
+  ADAPTERS[prefix] = adapter;
+}

@@ -294,6 +294,7 @@ export class OpenRouterAdapter<zO, zI> {
       response_format: this.#output
         ? {
           type: "json_schema",
+          // deno-lint-ignore no-explicit-any
           json_schema: z.toJSONSchema(this.#output) as any,
         }
         : { type: "text" },

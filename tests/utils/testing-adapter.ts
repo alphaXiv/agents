@@ -1,6 +1,6 @@
 import type z from "zod";
-import type { Tool } from "../tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem } from "../types.ts";
+import type { Tool } from "../../src/tool.ts";
+import type { AsyncStreamItemGenerator, ChatItem } from "../../src/types.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
@@ -18,6 +18,7 @@ export class TestingAdapter<zO, zI> {
     this.#tools = tools;
   }
 
+  // deno-lint-ignore require-await
   async run({ history }: {
     systemPrompt: string;
     history: ChatItem[];

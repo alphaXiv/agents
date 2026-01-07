@@ -252,6 +252,7 @@ export class GoogleAdapter<zO, zI> {
             wrapperObject
               ? z.object({ content: tool.parameters })
               : tool.parameters,
+            // deno-lint-ignore no-explicit-any
           ) as any,
           description: tool.description,
         },

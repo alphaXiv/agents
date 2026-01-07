@@ -69,6 +69,7 @@ export function crossPlatformRemoveHandleSigInt(handler: () => void) {
   process.off("SIGINT", handler);
 }
 
+// deno-lint-ignore no-explicit-any
 export function removeDollarSchema(schema: any) {
   const { $schema: _$schema, ...result } = schema;
 
