@@ -196,6 +196,7 @@ export class AnthropicAdapter<zO, zI> {
             wrapperObject
               ? z.object({ content: tool.parameters })
               : tool.parameters,
+            // deno-lint-ignore no-explicit-any
           ) as any,
           description: tool.description,
         },
@@ -272,6 +273,7 @@ export class AnthropicAdapter<zO, zI> {
           tool_use_id: part.id,
           kind: tool?.original.name ?? part.name,
           content: tool?.isVoid ? undefined : (JSON.stringify(
+            // deno-lint-ignore no-explicit-any
             tool?.wrapperObject ? (part.input as any).content : part.input,
           )),
         });

@@ -21,7 +21,7 @@ import { addStreamItem } from "./client.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
 import { ZodVoid } from "zod";
 import { assert } from "@std/assert/assert";
-import { ReasoningEffort } from "@alphaxiv/agents";
+import type { ReasoningEffort } from "@alphaxiv/agents";
 
 const MAX_TURNS = 100;
 const MAX_PROVIDER_ERRORS = 10;
@@ -60,6 +60,7 @@ export type ModelString =
   | "openrouter:x-ai/grok-4-fast"
   | "openrouter:x-ai/grok-4"
   | "openrouter:x-ai/grok-code-fast-1"
+  // deno-lint-ignore ban-types
   | (string & {});
 
 export type NoToolCallModels = "google:gemini-2.5-flash-image";
@@ -68,6 +69,7 @@ export type AgentOptions<zO, zI, M extends ModelString = ModelString> = {
   model: M;
   instructions: string;
   output?: z.ZodType<zO, zI>;
+  // deno-lint-ignore no-explicit-any
   tools?: M extends NoToolCallModels ? never : Tool<any, any>[];
   reasoningEffort?: ReasoningEffort;
   /**
@@ -96,6 +98,7 @@ export class Agent<zO, zI, M extends ModelString> {
   #model: ModelString;
   #instructions: string;
   #output?: z.ZodType<zO, zI>;
+  // deno-lint-ignore no-explicit-any
   #tools: Tool<any, any>[];
   #reasoningEffort: ReasoningEffort;
 
