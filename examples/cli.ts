@@ -71,10 +71,29 @@ const pingSupport = new Tool({
   },
 });
 
+const getMysteryImage = new Tool({
+  name: "Get mystery image...",
+  description: "Get an image",
+  parameters: z.void(),
+  execute: () => {
+    return [
+      {
+        type: "tool_result_text",
+        content: "Below is the image I was talking about",
+      },
+      {
+        type: "tool_result_file",
+        kind: "image/png",
+        content: "https://paper-assets.alphaxiv.org/image/2510.18234v1.png",
+      },
+    ];
+  },
+});
+
 const agent = new Agent({
-  model: "anthropic:claude-sonnet-4-5",
+  model: "google:gemini-3-flash-preview",
   instructions: "You are a friendly assistant",
-  tools: [search, calculator, pingSupport, complexSearch],
+  tools: [search, calculator, pingSupport, complexSearch, getMysteryImage],
   reasoningEffort: "minimal",
 });
 

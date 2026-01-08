@@ -3,8 +3,10 @@ import { delay } from "@std/async/delay";
 import { Agent, registerAdapter, Tool } from "../mod.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { TestingAdapter, testingTracker } from "./utils/testing-adapter.ts";
+import { enableDebugMode } from "../src/constants.ts";
 
 registerAdapter("__testing", TestingAdapter);
+enableDebugMode();
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({

@@ -4,12 +4,16 @@ import type { ModelString } from "../src/agent.ts";
 import { assert } from "@std/assert/assert";
 import type { ChatItem } from "../src/types.ts";
 import { addStreamItem } from "../src/client.ts";
+import { assertEquals } from "@std/assert";
+import { enableDebugMode } from "../src/constants.ts";
+
+enableDebugMode();
 
 const workingModels: ModelString[] = [
   "anthropic:claude-haiku-4-5",
-  "google:gemini-2.5-flash-lite",
+  "google:gemini-3-flash-preview",
   "openai:gpt-4.1-nano",
-  "openrouter:openai/gpt-oss-20b",
+  "openrouter:google/gemini-3-flash-preview",
 ];
 
 const calculator = new Tool({
@@ -116,7 +120,7 @@ for (const model of workingModels) {
 
   Deno.test(`Structured output works for ${model}`, async () => {
     const agent = new Agent({
-      model: "google:gemini-2.0-flash",
+      model,
       instructions:
         "You are an expert at extracting out the title and abstract from raw text from the pdf of a research paper. The user will give you the raw text.",
       output: z.object({
@@ -130,6 +134,31 @@ for (const model of workingModels) {
     );
     assert(result.output.title.includes("Reasoning"));
     assert(result.output.abstract);
+  });
+
+  Deno.test(`Tools + structured output works for ${model}`, async () => {
+    const agent = new Agent({
+      model,
+      instructions:
+        "You are a plaintext math calculator. Always use your calculator tool to do the math then return your result as a number.",
+      tools: [calculator],
+      output: z.object({
+        result: z.number().describe("Numerical result"),
+      }),
+    });
+
+    const result = await agent.run("What is result of 23409 + 901234?");
+    assertEquals(
+      result.output.result,
+      23409 + 901234,
+      "Agent got answer wrong somehow",
+    );
+    assert(
+      result.history.find((h) =>
+        h.type === "tool_use" && h.kind === "Calculating..."
+      ),
+      "Agent did not use tool call to do math",
+    );
   });
 
   Deno.test(`Basic streaming for ${model}`, async () => {
