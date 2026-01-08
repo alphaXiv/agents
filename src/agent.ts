@@ -22,6 +22,7 @@ import { signalAsyncLocalStorage } from "./storage.ts";
 import { ZodVoid } from "zod";
 import { assert } from "@std/assert/assert";
 import type { ReasoningEffort } from "@alphaxiv/agents";
+import { DEBUG_MODE } from "./constants.ts";
 
 const MAX_TURNS = 100;
 const MAX_PROVIDER_ERRORS = 10;
@@ -225,7 +226,7 @@ export class Agent<zO, zI, M extends ModelString> {
         try {
           this.#output.parse(JSON.parse(finalItem.content));
         } catch (err) {
-          console.log("parsing failed", finalItem.content);
+          if (DEBUG_MODE) console.error("parsing failed", finalItem.content);
           const errStr = err instanceof Error
             ? err.message
             : (err as string).toString();
@@ -308,8 +309,22 @@ export class Agent<zO, zI, M extends ModelString> {
               content: toolResult.content,
             };
             newHistory.push(toolResult);
+          } else if (toolResult.type === "tool_result_file") {
+            yield {
+              type: "tool_result_file",
+              index: newHistory.length + history.length,
+              tool_use_id: toolResult.tool_use_id,
+              kind: toolResult.kind,
+              content: toolResult.content,
+            };
+            newHistory.push(toolResult);
           } else {
-            console.log(toolResult);
+            if (DEBUG_MODE) {
+              console.error(
+                "What the frick, this isn't a tool result!",
+                toolResult,
+              );
+            }
           }
         }
 

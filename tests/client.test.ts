@@ -1,6 +1,9 @@
 import { assertEquals } from "@std/assert";
 import { addStreamItem } from "../src/client.ts";
 import type { ChatItem, StreamItem } from "../src/types.ts";
+import { enableDebugMode } from "../src/constants.ts";
+
+enableDebugMode();
 
 Deno.test("Basic addStreamItem", () => {
   const basic: StreamItem[] = [
