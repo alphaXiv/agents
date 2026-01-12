@@ -5,6 +5,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
 
+async function* streamText(
+  text: string,
+  index: number,
+): AsyncStreamItemGenerator {
+  for (const char of text) {
+    yield { type: "delta_output_text", delta: char, index };
+  }
+}
+
 export class TestingAdapter<zO, zI> {
   #tools: Tool<unknown, unknown>[];
 
@@ -98,10 +107,22 @@ export class TestingAdapter<zO, zI> {
   }
 
   // TODO: add testing here
-  async *stream({}: {
+  async *stream({ systemPrompt }: {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
   }): AsyncStreamItemGenerator {
+    if (systemPrompt === "Basic test") {
+      yield* streamText(
+        "Basic test worked!",
+        0,
+      );
+      return;
+    }
+
+    yield* streamText(
+      "[undefined case]",
+      0,
+    );
   }
 }

@@ -8,6 +8,7 @@
   },
   "tasks": {
     "dev": "deno run --watch --env-file main.ts",
+    "check": "deno fmt --check && deno lint && deno task test && deno publish --dry-run --allow-dirty",
     "test": "deno test --allow-env"
   },
   "imports": {
