@@ -17,7 +17,7 @@ import {
   crossPlatformStdin,
   runWithRetries,
 } from "./util.ts";
-import { addStreamItem } from "./client.ts";
+import { StreamCollector } from "./client.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
 import { ZodVoid } from "zod";
 import { assert } from "@std/assert/assert";
@@ -273,7 +273,7 @@ export class Agent<zO, zI, M extends ModelString> {
     let providerErrors = 0;
     const history: ChatItem[] = [];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const newHistory: ChatItem[] = [];
+      const collector = new StreamCollector();
       const stream = adapter.stream({
         systemPrompt: this.#instructions,
         history: [...initialHistory, ...history],
@@ -287,13 +287,14 @@ export class Agent<zO, zI, M extends ModelString> {
             ...part,
             index: part.index + history.length,
           };
-          addStreamItem(newHistory, part);
+          collector.add(part);
           yield reIndexedPart;
         }
       } catch (error) {
         err = error;
       }
 
+      const newHistory = collector.items;
       const toolUses = newHistory.filter((chatItem) =>
         chatItem.type === "tool_use"
       );
@@ -339,7 +340,7 @@ export class Agent<zO, zI, M extends ModelString> {
         if (providerErrors < MAX_PROVIDER_ERRORS) {
           providerErrors++;
           // continue loop
-          history.push(...newHistory);
+          history.push(...collector.items);
           continue;
         } else {
           throw err;
@@ -367,15 +368,15 @@ export class Agent<zO, zI, M extends ModelString> {
       };
       crossPlatformHandleSigInt(handler);
 
-      const newHistory: ChatItem[] = [];
+      const collector = new StreamCollector();
+      let lastType: string | undefined;
       try {
         const stream = this.stream(history, { signal: abortController.signal });
         for await (const part of stream) {
-          if (part.index + 1 > newHistory.length) {
+          if (!collector.has(part.index)) {
             if (
-              newHistory.length > 0 &&
-              !(newHistory[newHistory.length - 1].type === "output_text" &&
-                part.type === "delta_output_text")
+              lastType !== undefined &&
+              !(lastType === "output_text" && part.type === "delta_output_text")
             ) {
               crossPlatformLog("\n");
             }
@@ -392,6 +393,11 @@ export class Agent<zO, zI, M extends ModelString> {
                 `[${part.tool_use_id}] Got result '${part.content}'`,
               );
             }
+            lastType = part.type === "delta_output_text"
+              ? "output_text"
+              : part.type === "delta_output_reasoning"
+              ? "output_reasoning"
+              : part.type;
           }
 
           if (part.type === "delta_output_text") {
@@ -399,14 +405,14 @@ export class Agent<zO, zI, M extends ModelString> {
           } else if (part.type === "delta_output_reasoning") {
             crossPlatformLog(part.delta);
           }
-          addStreamItem(newHistory, part);
+          collector.add(part);
         }
       } catch (err) {
         if (!abortController.signal.aborted) {
           throw err;
         }
       }
-      history.push(...newHistory);
+      history.push(...collector.items);
       crossPlatformLog("\x1b[0m\n");
 
       crossPlatformRemoveHandleSigInt(handler);

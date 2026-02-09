@@ -2,8 +2,7 @@ import { Agent, registerAdapter } from "../mod.ts";
 import { assertEquals } from "@std/assert";
 import { TestingAdapter } from "./utils/testing-adapter.ts";
 import { enableDebugMode } from "../src/constants.ts";
-import type { ChatItem } from "../src/types.ts";
-import { addStreamItem } from "../src/client.ts";
+import { StreamCollector } from "../src/client.ts";
 
 registerAdapter("__testing", TestingAdapter);
 enableDebugMode();
@@ -16,14 +15,14 @@ Deno.test("Basic streaming test", async () => {
   const run = agent.stream("<nothing>");
 
   let count = 0;
-  const output: ChatItem[] = [];
+  const collector = new StreamCollector();
   for await (const part of run) {
-    addStreamItem(output, part);
+    collector.add(part);
     count++;
   }
 
   assertEquals(count, 18);
-  assertEquals(output, [{
+  assertEquals(collector.items, [{
     type: "output_text",
     content: "Basic test worked!",
   }]);

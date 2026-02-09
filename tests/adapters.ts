@@ -2,8 +2,7 @@ import z from "zod";
 import { Agent, Tool } from "../mod.ts";
 import type { ModelString } from "../src/agent.ts";
 import { assert } from "@std/assert/assert";
-import type { ChatItem } from "../src/types.ts";
-import { addStreamItem } from "../src/client.ts";
+import { StreamCollector } from "../src/client.ts";
 import { assertEquals } from "@std/assert";
 import { enableDebugMode } from "../src/constants.ts";
 
@@ -174,10 +173,11 @@ for (const model of workingModels) {
         "What is 89089 * 32123. Please use your calculator tool. After using the tool, please output your response without formatting.",
     }];
     const run = agent.stream(originalPrompt);
-    const output: ChatItem[] = [];
+    const collector = new StreamCollector();
     for await (const part of run) {
-      addStreamItem(output, part);
+      collector.add(part);
     }
+    const output = collector.items;
 
     // TODO: gpt oss is known to be a little stupid so this test is flaky
     assert(
@@ -202,10 +202,11 @@ for (const model of workingModels) {
           "Great, now multiply that value by two, again using your calculator tool. Again, please output your response without formatting.",
       },
     ]);
-    const output2: ChatItem[] = [];
+    const collector2 = new StreamCollector();
     for await (const part of run2) {
-      addStreamItem(output2, part);
+      collector2.add(part);
     }
+    const output2 = collector2.items;
     assert(
       output2.find((h) =>
         h.type === "output_text" &&
