@@ -15,6 +15,7 @@ import {
   crossPlatformLog,
   crossPlatformRemoveHandleSigInt,
   crossPlatformStdin,
+  iteratePromiseArray,
   runWithRetries,
 } from "./util.ts";
 import { addStreamItem } from "./client.ts";
@@ -128,53 +129,49 @@ export class Agent<zO, zI, M extends ModelString> {
     }
   }
 
-  async #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
-    return await Promise.all(
-      toolUses.map(async (toolUse) => {
-        try {
-          const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
-          if (!tool) {
-            throw new Error(`Tool does not exist: ${toolUse.kind}`);
-          }
-
-          try {
-            if (!(tool.parameters instanceof ZodVoid)) {
-              assert(toolUse.content);
-              tool.parameters.parse(JSON.parse(toolUse.content));
-            }
-          } catch (err) {
-            throw new Error(
-              `Invalid parameters for tool: ${
-                err instanceof Error ? err.message : err
-              }`,
-            );
-          }
-
-          const result = await abortable(
-            signalAsyncLocalStorage.run(signal, async () => {
-              return await tool.execute({
-                param: toolUse.content
-                  ? JSON.parse(toolUse.content)
-                  : undefined,
-              });
-            }),
-            signal,
-          );
-
-          return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
-        } catch (err) {
-          if (signal.aborted) {
-            throw err;
-          }
-          return [{
-            type: "tool_result_text" as const,
-            tool_use_id: toolUse.tool_use_id,
-            content: "Error: " +
-              (err instanceof Error ? err.message : (err as string).toString()),
-          }];
+  #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
+    return toolUses.map(async (toolUse) => {
+      try {
+        const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
+        if (!tool) {
+          throw new Error(`Tool does not exist: ${toolUse.kind}`);
         }
-      }),
-    );
+
+        try {
+          if (!(tool.parameters instanceof ZodVoid)) {
+            assert(toolUse.content);
+            tool.parameters.parse(JSON.parse(toolUse.content));
+          }
+        } catch (err) {
+          throw new Error(
+            `Invalid parameters for tool: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+
+        const result = await abortable(
+          signalAsyncLocalStorage.run(signal, async () => {
+            return await tool.execute({
+              param: toolUse.content ? JSON.parse(toolUse.content) : undefined,
+            });
+          }),
+          signal,
+        );
+
+        return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
+      } catch (err) {
+        if (signal.aborted) {
+          throw err;
+        }
+        return [{
+          type: "tool_result_text" as const,
+          tool_use_id: toolUse.tool_use_id,
+          content: "Error: " +
+            (err instanceof Error ? err.message : (err as string).toString()),
+        }];
+      }
+    });
   }
 
   /** Run agent without streaming */
@@ -211,8 +208,8 @@ export class Agent<zO, zI, M extends ModelString> {
         chatItem.type === "tool_use"
       );
       if (toolUses.length > 0) {
-        const toolResults = await this.#runToolUses(toolUses, signal);
-        newHistory.push(...toolResults.flat());
+        const toolResults = this.#runToolUses(toolUses, signal);
+        newHistory.push(...(await Promise.all(toolResults)).flat());
         continue;
       }
 
@@ -299,31 +296,33 @@ export class Agent<zO, zI, M extends ModelString> {
       );
       if (toolUses.length > 0) {
         // execute and stream tools
-        const toolResults = await this.#runToolUses(toolUses, signal);
-        for (const toolResult of toolResults.flat()) {
-          if (toolResult.type === "tool_result_text") {
-            yield {
-              type: "tool_result_text",
-              index: newHistory.length + history.length,
-              tool_use_id: toolResult.tool_use_id,
-              content: toolResult.content,
-            };
-            newHistory.push(toolResult);
-          } else if (toolResult.type === "tool_result_file") {
-            yield {
-              type: "tool_result_file",
-              index: newHistory.length + history.length,
-              tool_use_id: toolResult.tool_use_id,
-              kind: toolResult.kind,
-              content: toolResult.content,
-            };
-            newHistory.push(toolResult);
-          } else {
-            if (DEBUG_MODE) {
-              console.error(
-                "What the frick, this isn't a tool result!",
-                toolResult,
-              );
+        const promises = this.#runToolUses(toolUses, signal);
+        for await (const toolResults of iteratePromiseArray(promises)) {
+          for (const toolResult of toolResults) {
+            if (toolResult.type === "tool_result_text") {
+              yield {
+                type: "tool_result_text",
+                index: newHistory.length + history.length,
+                tool_use_id: toolResult.tool_use_id,
+                content: toolResult.content,
+              };
+              newHistory.push(toolResult);
+            } else if (toolResult.type === "tool_result_file") {
+              yield {
+                type: "tool_result_file",
+                index: newHistory.length + history.length,
+                tool_use_id: toolResult.tool_use_id,
+                kind: toolResult.kind,
+                content: toolResult.content,
+              };
+              newHistory.push(toolResult);
+            } else {
+              if (DEBUG_MODE) {
+                console.error(
+                  "What the frick, this isn't a tool result!",
+                  toolResult,
+                );
+              }
             }
           }
         }

@@ -107,7 +107,7 @@ export class TestingAdapter<zO, zI> {
   }
 
   // TODO: add testing here
-  async *stream({ systemPrompt }: {
+  async *stream({ systemPrompt, history }: {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
@@ -117,6 +117,31 @@ export class TestingAdapter<zO, zI> {
         "Basic test worked!",
         0,
       );
+      return;
+    }
+
+    if (systemPrompt === "Parallel tool test") {
+      const lastMessage = history.slice().pop();
+      // First turn: yield two tool_use items to be run in parallel
+      if (!lastMessage || lastMessage.type === "input_text") {
+        yield {
+          type: "tool_use",
+          index: 0,
+          tool_use_id: "id-slow",
+          kind: "slow_tool",
+          content: '"query"',
+        };
+        yield {
+          type: "tool_use",
+          index: 1,
+          tool_use_id: "id-fast",
+          kind: "fast_tool",
+          content: '"query"',
+        };
+        return;
+      }
+      // Second turn: after tool results, return a final text reply
+      yield* streamText("done", history.length);
       return;
     }
 

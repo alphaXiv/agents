@@ -103,3 +103,35 @@ export async function hashString(str: string) {
   // Convert to hex string
   return encodeHex(hashBuffer);
 }
+
+/**
+ * Streaming `Promise.all` - Return an iterator of the promises in the order they complete.
+ */
+export async function* iteratePromiseArray<T>(
+  promises: Promise<T>[],
+): AsyncIterableIterator<T> {
+  const rest = new Set(promises);
+  const errors: unknown[] = [];
+  let resolutions: T[] = [];
+
+  for (const promise of promises) {
+    promise.then((result) => {
+      resolutions.push(result);
+      rest.delete(promise);
+    }, (error) => {
+      errors.push(error);
+      rest.delete(promise);
+    });
+  }
+
+  while (rest.size > 0) {
+    await Promise.race(rest).catch(() => {});
+    yield* resolutions;
+    resolutions = [];
+  }
+
+  if (errors.length > 0) {
+    if (errors.length === 1) throw errors[0];
+    throw new AggregateError(errors);
+  }
+}
