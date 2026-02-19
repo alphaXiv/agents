@@ -1,8 +1,11 @@
 import { Agent } from "../mod.ts";
 
 const agent = new Agent({
-  model: "anthropic:claude-haiku-4-5",
+  model: "tributary:openai:gpt-5.3-codex",
   instructions: "You are a friendly assistant",
+  unstable: {
+    retries: false,
+  },
 });
 
 const result = await agent.run([
