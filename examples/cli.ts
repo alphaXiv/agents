@@ -91,7 +91,7 @@ const getMysteryImage = new Tool({
 });
 
 const agent = new Agent({
-  model: "google:gemini-3-flash-preview",
+  model: "tributary:openai:gpt-5.3-codex-spark",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch, getMysteryImage],
   reasoningEffort: "minimal",

@@ -9,6 +9,7 @@ import type {
   ChatItem,
   ReasoningEffort,
 } from "./types.ts";
+import { TributaryAdapter } from "./adapters/tributary.ts";
 
 export interface Adapter<zO, zI> {
   new (config: {
@@ -38,6 +39,7 @@ export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {
   "google": GoogleAdapter,
   "anthropic": AnthropicAdapter,
   "openrouter": OpenRouterAdapter,
+  "tributary": TributaryAdapter,
 };
 
 /** Use to register an adapter for an unsupported provider */
