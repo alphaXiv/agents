@@ -5,7 +5,7 @@ const agent = new Agent({
   instructions: "You are a friendly assistant",
   unstable: {
     retries: false,
-  }
+  },
 });
 
 const result = await agent.run([
