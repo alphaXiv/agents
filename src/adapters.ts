@@ -9,6 +9,7 @@ import type {
   ChatItem,
   ReasoningEffort,
 } from "./types.ts";
+import { SidAdapter } from "./adapters/sid.ts";
 import { TributaryAdapter } from "./adapters/tributary.ts";
 
 export interface Adapter<zO, zI> {
@@ -40,6 +41,7 @@ export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {
   "anthropic": AnthropicAdapter,
   "openrouter": OpenRouterAdapter,
   "tributary": TributaryAdapter,
+  "sid": SidAdapter,
 };
 
 /** Use to register an adapter for an unsupported provider */

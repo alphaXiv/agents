@@ -62,6 +62,7 @@ export type ModelString =
   | "openrouter:x-ai/grok-4-fast"
   | "openrouter:x-ai/grok-4"
   | "openrouter:x-ai/grok-code-fast-1"
+  | "sid:sid-1"
   // deno-lint-ignore ban-types
   | (string & {});
 
