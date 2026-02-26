@@ -15,25 +15,17 @@ import type {
 import { crossPlatformEnv } from "../util.ts";
 import { RETRY_RESUMABILITY_PROMPT } from "../constants.ts";
 
-const supportedImageMimeTypes = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-];
-
-async function getSidHistory(
+function getSidHistory(
   history: ChatItem[],
   systemPrompt: string,
   toolMap: SidToolMap[],
-  signal: AbortSignal,
 ) {
   const sidHistory: ChatCompletionMessageParam[] = [{
     role: "system",
     content: systemPrompt,
   }];
   for (const historyItem of history) {
+    if (!historyItem) continue;
     if (historyItem.type === "input_text") {
       sidHistory.push({
         role: "user",
@@ -73,35 +65,10 @@ async function getSidHistory(
       historyItem.type === "input_file" ||
       historyItem.type === "tool_result_file"
     ) {
-      if (supportedImageMimeTypes.includes(historyItem.kind)) {
-        sidHistory.push({
-          role: "user",
-          content: [{
-            type: "image_url",
-            image_url: { url: historyItem.content },
-          }],
-        });
-      } else if (historyItem.kind.startsWith("text/")) {
-        const req = await fetch(historyItem.content, { signal });
-        const text = await req.text();
-
-        sidHistory.push({
-          role: "user",
-          content: [{
-            type: "text",
-            text: `<file>${text}</file>`,
-          }],
-        });
-      } else {
-        throw new Error(
-          "SID models don't support the following media type: " +
-            historyItem.kind,
-        );
-      }
-    } else if (historyItem.type === "output_reasoning") {
-      // no-op, don't propagate reasoning
-    } else {
-      historyItem satisfies never;
+      throw new Error(
+        "SID models don't support the following media type: " +
+          historyItem.kind,
+      );
     }
   }
 
@@ -133,10 +100,9 @@ export class SidAdapter<zO, zI> {
   #model: string;
   #output?: z.ZodType<zO, zI>;
   #normalizedTools: SidToolMap[];
-  #reasoningEffort: ReasoningEffort;
 
   constructor(
-    { model, output, tools, reasoningEffort }: {
+    { model, output, tools }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown>[];
@@ -145,7 +111,6 @@ export class SidAdapter<zO, zI> {
   ) {
     this.#model = model;
     this.#output = output;
-    this.#reasoningEffort = reasoningEffort;
     this.#normalizedTools = tools.map((tool) => {
       const name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
         /[^a-zA-Z0-9_-]/g,
@@ -176,7 +141,7 @@ export class SidAdapter<zO, zI> {
       };
     });
     this.#client = new OpenAI({
-      baseURL: crossPlatformEnv("SID_BASE_URL"),
+      baseURL: "https://api.sid-1.com/v1",
       apiKey: crossPlatformEnv("SID_API_KEY"),
     });
   }
@@ -186,11 +151,10 @@ export class SidAdapter<zO, zI> {
     history: ChatItem[];
     signal: AbortSignal;
   }): Promise<ChatItem[]> {
-    const sidHistory = await getSidHistory(
+    const sidHistory = getSidHistory(
       history,
       systemPrompt,
       this.#normalizedTools,
-      signal,
     );
 
     const response = await this.#client.chat.completions.create({
@@ -251,11 +215,10 @@ export class SidAdapter<zO, zI> {
     history: ChatItem[];
     signal: AbortSignal;
   }): AsyncStreamItemGenerator {
-    const sidHistory = await getSidHistory(
+    const sidHistory = getSidHistory(
       history,
       systemPrompt,
       this.#normalizedTools,
-      signal,
     );
 
     const response = this.#client.chat.completions.stream({
@@ -273,6 +236,7 @@ export class SidAdapter<zO, zI> {
       if (!choice) continue;
       const { delta } = choice;
 
+      // TODO: rewrite this because they don't parse reasoning, we would have to parse the reasonign ourselves (which we should do!)
       const reasoningDelta =
         (delta as unknown as { reasoning: string | undefined }).reasoning;
 
