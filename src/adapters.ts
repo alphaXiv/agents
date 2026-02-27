@@ -9,13 +9,14 @@ import type {
   ChatItem,
   ReasoningEffort,
 } from "./types.ts";
+import { SidAdapter } from "./adapters/sid.ts";
 import { TributaryAdapter } from "./adapters/tributary.ts";
 
 export interface Adapter<zO, zI> {
   new (config: {
     model: string;
     output?: z.ZodType<zO, zI>;
-    tools: Tool<unknown, unknown>[];
+    tools: Tool<unknown, unknown, unknown>[];
     reasoningEffort: ReasoningEffort;
   }): AdapterInstance;
 }
@@ -40,6 +41,7 @@ export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {
   "anthropic": AnthropicAdapter,
   "openrouter": OpenRouterAdapter,
   "tributary": TributaryAdapter,
+  "sid": SidAdapter,
 };
 
 /** Use to register an adapter for an unsupported provider */

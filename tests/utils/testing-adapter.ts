@@ -15,13 +15,13 @@ async function* streamText(
 }
 
 export class TestingAdapter<zO, zI> {
-  #tools: Tool<unknown, unknown>[];
+  #tools: Tool<unknown, unknown, unknown>[];
 
   constructor(
     { tools }: {
       model: string;
       output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown>[];
+      tools: Tool<unknown, unknown, unknown>[];
     },
   ) {
     this.#tools = tools;
@@ -82,6 +82,43 @@ export class TestingAdapter<zO, zI> {
       ];
     }
 
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Call output tool"
+    ) {
+      const tool = this.#tools.find((t) => t.name === "output_tool");
+      if (tool) {
+        return [{
+          type: "tool_use",
+          tool_use_id: "output-tool-id",
+          kind: tool.name,
+        }];
+      }
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Call output tool and search"
+    ) {
+      const outputTool = this.#tools.find((t) => t.name === "output_tool");
+      const searchTool = this.#tools.find((t) => t.name !== "output_tool");
+      if (outputTool && searchTool) {
+        return [
+          {
+            type: "tool_use",
+            tool_use_id: "search-tool-id",
+            kind: searchTool.name,
+            content: '"cats"',
+          },
+          {
+            type: "tool_use",
+            tool_use_id: "output-tool-id",
+            kind: outputTool.name,
+          },
+        ];
+      }
+    }
+
     if (lastMessage.type === "tool_result_text") {
       if (lastMessage.content === "throw") {
         const store = testingTracker.getStore();
@@ -117,6 +154,22 @@ export class TestingAdapter<zO, zI> {
         "Basic test worked!",
         0,
       );
+      return;
+    }
+
+    if (systemPrompt === "Model output stream test") {
+      const lastMessage = history.slice().pop();
+      if (!lastMessage || lastMessage.type === "input_text") {
+        yield {
+          type: "tool_use",
+          index: 0,
+          tool_use_id: "output-tool-stream-id",
+          kind: "output_tool",
+        };
+        return;
+      }
+      // Should not reach here if ModelOutput terminates the loop
+      yield* streamText("this should not appear", history.length);
       return;
     }
 

@@ -15,32 +15,24 @@ import type {
 import { crossPlatformEnv } from "../util.ts";
 import { RETRY_RESUMABILITY_PROMPT } from "../constants.ts";
 
-const supportedImageMimeTypes = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-];
-
-async function getOpenrouterHistory(
+function getSidHistory(
   history: ChatItem[],
   systemPrompt: string,
-  toolMap: OpenrouterToolMap[],
-  signal: AbortSignal,
+  toolMap: SidToolMap[],
 ) {
-  const openrouterHistory: ChatCompletionMessageParam[] = [{
-    role: "system", // TODO: select right role for each model
+  const sidHistory: ChatCompletionMessageParam[] = [{
+    role: "system",
     content: systemPrompt,
   }];
   for (const historyItem of history) {
+    if (!historyItem) continue;
     if (historyItem.type === "input_text") {
-      openrouterHistory.push({
+      sidHistory.push({
         role: "user",
         content: historyItem.content,
       });
     } else if (historyItem.type === "output_text") {
-      openrouterHistory.push({
+      sidHistory.push({
         role: "assistant",
         content: historyItem.content,
       });
@@ -48,14 +40,14 @@ async function getOpenrouterHistory(
       const tool = toolMap.find((tool) =>
         tool.original.name === historyItem.kind
       );
-      openrouterHistory.push({
+      sidHistory.push({
         role: "assistant",
         tool_calls: [
           {
             id: historyItem.tool_use_id,
             type: "function",
             function: {
-              name: tool?.openrouter.function.name ?? historyItem.kind,
+              name: tool?.sid.function.name ?? historyItem.kind,
               arguments: (tool?.wrapperObject
                 ? `{"content":${historyItem.content}}`
                 : historyItem.content) ?? "{}",
@@ -64,7 +56,7 @@ async function getOpenrouterHistory(
         ],
       });
     } else if (historyItem.type === "tool_result_text") {
-      openrouterHistory.push({
+      sidHistory.push({
         role: "tool",
         tool_call_id: historyItem.tool_use_id,
         content: historyItem.content,
@@ -73,73 +65,17 @@ async function getOpenrouterHistory(
       historyItem.type === "input_file" ||
       historyItem.type === "tool_result_file"
     ) {
-      if (supportedImageMimeTypes.includes(historyItem.kind)) {
-        openrouterHistory.push({
-          role: "user",
-          content: [{
-            type: "image_url",
-            image_url: { url: historyItem.content },
-          }],
-        });
-      } else if (historyItem.kind === "application/pdf") {
-        const req = await fetch(historyItem.content, {
-          method: "HEAD",
-        });
-        const fileSize = parseInt(
-          req.headers.get("Content-Length") ?? "9999999999999",
-        ); // If the service doesn't currently return content length, assume it's too big
-        const MAX_MEGABYTES = 4;
-        if (fileSize > MAX_MEGABYTES * 1024 * 1024) { // Openrouter seems to have an undocumented 5MB size limit on pdfs :) - 4 to be safe here
-          const req = await fetch(historyItem.content);
-          const { default: parsePdf } = await import("@lino/pdf-parse");
-          const pdfText = await parsePdf(await req.arrayBuffer());
-          openrouterHistory.push({
-            role: "user",
-            content: [{
-              type: "text",
-              text: pdfText.text.join("\n"),
-            }],
-          });
-        } else {
-          openrouterHistory.push({
-            role: "user",
-            content: [{
-              type: "file",
-              file: {
-                file_data: historyItem.content,
-              },
-            }],
-          });
-        }
-      } else if (historyItem.kind.startsWith("text/")) {
-        const req = await fetch(historyItem.content, { signal });
-        const text = await req.text();
-
-        openrouterHistory.push({
-          role: "user",
-          content: [{
-            type: "text",
-            text: `<file>${text}</file>`,
-          }],
-        });
-      } else {
-        throw new Error(
-          "OpenRouter models don't support the following media type: " +
-            historyItem.kind,
-        );
-      }
-    } else if (historyItem.type === "output_reasoning") {
-      // no-op, don't propagate reasoning
-    } else {
-      historyItem satisfies never;
+      throw new Error(
+        "SID models don't support the following media type: " +
+          historyItem.kind,
+      );
     }
   }
 
-  // Check if this is a resumability request
-  if (openrouterHistory.length > 0) {
-    const lastMessage = openrouterHistory[openrouterHistory.length - 1];
+  if (sidHistory.length > 0) {
+    const lastMessage = sidHistory[sidHistory.length - 1];
     if (lastMessage.role === "assistant") {
-      openrouterHistory.push({
+      sidHistory.push({
         role: "developer",
         content: [{
           type: "text",
@@ -149,87 +85,24 @@ async function getOpenrouterHistory(
     }
   }
 
-  return openrouterHistory;
+  return sidHistory;
 }
 
-// TODO: keep this updated (pulled from https://openrouter.ai/models?fmt=cards&input_modalities=file)
-const nativePdfSupport = [
-  "openai/gpt-5-image-mini",
-  "openai/gpt-5-image",
-  "openai/o3-deep-research",
-  "openai/o4-mini-deep-research",
-  "openai/gpt-5-pro",
-  "anthropic/claude-sonnet-4.5",
-  "google/gemini-2.5-flash-preview-09-2025",
-  "google/gemini-2.5-flash-lite-preview-09-2025",
-  "openai/gpt-5-chat",
-  "openai/gpt-5",
-  "openai/gpt-5-mini",
-  "openai/gpt-5-nano",
-  "anthropic/claude-opus-4.1",
-  "google/gemini-2.5-flash-lite",
-  "google/gemini-2.5-flash-lite-preview-06-17",
-  "google/gemini-2.5-flash",
-  "google/gemini-2.5-pro",
-  "openai/o3-pro",
-  "google/gemini-2.5-pro-preview",
-  "anthropic/claude-opus-4",
-  "anthropic/claude-sonnet-4",
-  "google/gemini-2.5-pro-preview-05-06",
-  "openai/o4-mini-high",
-  "openai/o3",
-  "openai/o4-mini",
-  "openai/gpt-4.1",
-  "openai/gpt-4.1-mini",
-  "openai/gpt-4.1-nano",
-  "openai/o1-pro",
-  "google/gemini-2.0-flash-lite-001",
-  "anthropic/claude-3.7-sonnet",
-  "anthropic/claude-3.7-sonnet",
-  "openai/o3-mini-high",
-  "google/gemini-2.0-flash-001",
-  "openai/o3-mini",
-  "openai/o1",
-  "openai/gpt-4o-2024-11-20",
-  "anthropic/claude-3.5-haiku-20241022",
-  "anthropic/claude-3.5-sonnet",
-  "openai/gpt-4o-2024-08-06",
-  "openai/gpt-4o-mini",
-  "openai/gpt-4o-mini-2024-07-18",
-  "anthropic/claude-3.5-sonnet-20240620",
-  "openai/gpt-4o",
-  "openai/gpt-4o",
-  "openai/gpt-4o-2024-05-13",
-  "google/gemini-2.5-flash-preview-05-20",
-  "google/gemini-2.5-flash-preview",
-  "google/gemini-2.5-pro-exp-03-25",
-];
-
-// TODO: ensure this list is complete
-const alwaysReasoningModels = [
-  "openai/gpt-oss-20b",
-  "openai/gpt-oss-120b",
-  "x-ai/grok-4",
-];
-
-type OpenrouterToolMap = {
+type SidToolMap = {
   original: Tool<unknown, unknown, unknown>;
-  openrouter: ChatCompletionFunctionTool;
-  /** Openrouter doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
+  sid: ChatCompletionFunctionTool;
   wrapperObject: boolean;
-  /** No parameter specified */
   isVoid: boolean;
 };
 
-export class OpenRouterAdapter<zO, zI> {
+export class SidAdapter<zO, zI> {
   #client: OpenAI;
   #model: string;
   #output?: z.ZodType<zO, zI>;
-  #normalizedTools: OpenrouterToolMap[];
-  #reasoningEffort: ReasoningEffort;
+  #normalizedTools: SidToolMap[];
 
   constructor(
-    { model, output, tools, reasoningEffort }: {
+    { model, output, tools }: {
       model: string;
       output?: z.ZodType<zO, zI>;
       tools: Tool<unknown, unknown, unknown>[];
@@ -238,9 +111,7 @@ export class OpenRouterAdapter<zO, zI> {
   ) {
     this.#model = model;
     this.#output = output;
-    this.#reasoningEffort = reasoningEffort;
     this.#normalizedTools = tools.map((tool) => {
-      // TODO: improve this mapping
       const name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
         /[^a-zA-Z0-9_-]/g,
         "",
@@ -252,7 +123,7 @@ export class OpenRouterAdapter<zO, zI> {
 
       return {
         original: tool,
-        openrouter: {
+        sid: {
           type: "function",
           function: {
             name,
@@ -270,8 +141,8 @@ export class OpenRouterAdapter<zO, zI> {
       };
     });
     this.#client = new OpenAI({
-      baseURL: "https://openrouter.ai/api/v1",
-      apiKey: crossPlatformEnv("OPENROUTER_API_KEY"),
+      baseURL: "https://api.sid-1.com/v1",
+      apiKey: crossPlatformEnv("SID_API_KEY"),
     });
   }
 
@@ -280,17 +151,16 @@ export class OpenRouterAdapter<zO, zI> {
     history: ChatItem[];
     signal: AbortSignal;
   }): Promise<ChatItem[]> {
-    const openrouterHistory = await getOpenrouterHistory(
+    const sidHistory = getSidHistory(
       history,
       systemPrompt,
       this.#normalizedTools,
-      signal,
     );
 
     const response = await this.#client.chat.completions.create({
       model: this.#model,
-      messages: openrouterHistory,
-      tools: this.#normalizedTools.map(({ openrouter }) => openrouter),
+      messages: sidHistory,
+      tools: this.#normalizedTools.map(({ sid }) => sid),
       response_format: this.#output
         ? {
           type: "json_schema",
@@ -298,18 +168,6 @@ export class OpenRouterAdapter<zO, zI> {
           json_schema: z.toJSONSchema(this.#output) as any,
         }
         : { type: "text" },
-      // @ts-expect-error openrouter isn't type safe :(
-      reasoning: alwaysReasoningModels.includes(this.#model) ? undefined : {
-        enabled: this.#reasoningEffort === "normal",
-      },
-      plugins: nativePdfSupport.includes(this.#model) ? undefined : [
-        {
-          id: "file-parser",
-          pdf: {
-            engine: "pdf-text",
-          },
-        },
-      ],
     }, { signal });
 
     const output: ChatItem[] = [];
@@ -334,7 +192,7 @@ export class OpenRouterAdapter<zO, zI> {
     for (const toolUse of choice.message.tool_calls ?? []) {
       assert(toolUse.type === "function");
       const tool = this.#normalizedTools.find((tool) =>
-        tool.openrouter.function.name === toolUse.function.name
+        tool.sid.function.name === toolUse.function.name
       );
       const content = JSON.parse(toolUse.function.arguments);
       output.push({
@@ -357,45 +215,30 @@ export class OpenRouterAdapter<zO, zI> {
     history: ChatItem[];
     signal: AbortSignal;
   }): AsyncStreamItemGenerator {
-    const openrouterHistory = await getOpenrouterHistory(
+    const sidHistory = getSidHistory(
       history,
       systemPrompt,
       this.#normalizedTools,
-      signal,
     );
 
     const response = this.#client.chat.completions.stream({
       model: this.#model,
-      messages: openrouterHistory,
-      tools: this.#normalizedTools.map(({ openrouter }) => openrouter),
-      // openrouter-specific extensions
-      reasoning: alwaysReasoningModels.includes(this.#model) ? undefined : {
-        enabled: this.#reasoningEffort === "normal",
-      },
-      plugins: nativePdfSupport.includes(this.#model) ? undefined : [
-        {
-          id: "file-parser",
-          pdf: {
-            engine: "pdf-text",
-          },
-        },
-      ],
+      messages: sidHistory,
+      tools: this.#normalizedTools.map(({ sid }) => sid),
     }, { signal });
 
     const toolMap: ChatItem[] = [];
-
-    const deltas = [];
 
     let lastType = "";
     let lastIndex = -1;
     for await (const part of response) {
       const choice = part.choices[0];
-      if (!choice) continue; // Skip empty choices
+      if (!choice) continue;
       const { delta } = choice;
-      deltas.push(delta);
 
-      // @ts-expect-error Handle reasoning content, this is a openrouter-specific extension
-      const reasoningDelta = delta.reasoning as string | undefined;
+      // TODO: rewrite this because they don't parse reasoning, we would have to parse the reasonign ourselves (which we should do!)
+      const reasoningDelta =
+        (delta as unknown as { reasoning: string | undefined }).reasoning;
 
       if (reasoningDelta) {
         if (lastType !== "reasoning") {
@@ -428,7 +271,7 @@ export class OpenRouterAdapter<zO, zI> {
           lastIndex++;
 
           const tool = this.#normalizedTools.find((tool) =>
-            tool.openrouter.function.name === callFunction.name
+            tool.sid.function.name === callFunction.name
           );
           assert(call.id);
 
@@ -473,6 +316,5 @@ export class OpenRouterAdapter<zO, zI> {
         }
       }
     }
-    // console.log(deltas);
   }
 }

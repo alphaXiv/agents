@@ -1,7 +1,7 @@
 import type z from "zod";
 import { abortable } from "@std/async/abortable";
 import { ADAPTERS } from "./adapters.ts";
-import type { Tool } from "./tool.ts";
+import { ModelOutput, type Tool } from "./tool.ts";
 import type {
   AsyncStreamItemGenerator,
   ChatItem,
@@ -62,17 +62,41 @@ export type ModelString =
   | "openrouter:x-ai/grok-4-fast"
   | "openrouter:x-ai/grok-4"
   | "openrouter:x-ai/grok-code-fast-1"
+  | "sid:sid-1"
   // deno-lint-ignore ban-types
   | (string & {});
 
 export type NoToolCallModels = "google:gemini-2.5-flash-image";
 
-export type AgentOptions<zO, zI, M extends ModelString = ModelString> = {
+// deno-fmt-ignore
+// deno-lint-ignore no-explicit-any
+type ExtractModelOutput<Tools extends readonly Tool<any, any, any>[]> = Tools[number] extends Tool<any, any, infer MO> ? MO : never;
+
+// deno-lint-ignore no-explicit-any
+type ResolveAgentOutput<zO, Tools extends readonly Tool<any, any, any>[]> =
+  // If the model has structured output
+  unknown extends zO ? (
+      // It doesn't, extract out the model output from tools and return that + undefined
+      [ExtractModelOutput<Tools>] extends [never] ? undefined
+        : ExtractModelOutput<Tools> | undefined
+    )
+    : (
+      // It does, extract out the model output from tools and return that + the structured output
+      [ExtractModelOutput<Tools>] extends [never] ? zO
+        : zO | ExtractModelOutput<Tools>
+    );
+
+export type AgentOptions<
+  zO,
+  zI,
+  M extends ModelString = ModelString,
+  // deno-lint-ignore no-explicit-any
+  Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
+> = {
   model: M;
   instructions: string;
   output?: z.ZodType<zO, zI>;
-  // deno-lint-ignore no-explicit-any
-  tools?: M extends NoToolCallModels ? never : Tool<any, any>[];
+  tools?: M extends NoToolCallModels ? never : [...Tools];
   reasoningEffort?: ReasoningEffort;
   /**
    * APIs which are not finalized and are subject to change.
@@ -88,25 +112,30 @@ export interface UnstableAgentOptions {
   retries?: boolean;
 }
 
-type AgentRunResultOutput<zO> = unknown extends zO ? undefined : zO;
 export interface AgentRunResult<zO> {
   history: ChatItem[];
-  output: AgentRunResultOutput<zO>;
+  output: zO;
   outputText: string;
 }
 
-export class Agent<zO, zI, M extends ModelString> {
+export class Agent<
+  zO,
+  zI,
+  M extends ModelString,
+  // deno-lint-ignore no-explicit-any
+  const Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
+> {
   #provider: string;
   #model: ModelString;
   #instructions: string;
   #output?: z.ZodType<zO, zI>;
   // deno-lint-ignore no-explicit-any
-  #tools: Tool<any, any>[];
+  #tools: Tool<any, any, any>[];
   #reasoningEffort: ReasoningEffort;
 
   #noRetries = false;
 
-  constructor(options: AgentOptions<zO, zI, M>) {
+  constructor(options: AgentOptions<zO, zI, M, Tools>) {
     const [provider, ...modelParts] = options.model.split(":");
     this.#provider = provider;
     this.#model = modelParts.join(":");
@@ -159,9 +188,11 @@ export class Agent<zO, zI, M extends ModelString> {
           signal,
         );
 
+        if (result instanceof ModelOutput) throw result;
+
         return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
       } catch (err) {
-        if (signal.aborted) {
+        if (err instanceof ModelOutput || signal.aborted) {
           throw err;
         }
         return [{
@@ -180,7 +211,7 @@ export class Agent<zO, zI, M extends ModelString> {
     options?: {
       signal: AbortSignal;
     },
-  ): Promise<AgentRunResult<zO>> {
+  ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
     const signal = options?.signal ?? signalAsyncLocalStorage.getStore() ??
       new AbortController().signal;
     const history = convertChatLikeToChatItem(chatLike, "input_text");
@@ -209,7 +240,21 @@ export class Agent<zO, zI, M extends ModelString> {
       );
       if (toolUses.length > 0) {
         const toolResults = this.#runToolUses(toolUses, signal);
-        newHistory.push(...(await Promise.all(toolResults)).flat());
+        try {
+          newHistory.push(...(await Promise.all(toolResults)).flat());
+        } catch (err) {
+          if (err instanceof ModelOutput) {
+            const value = err.value as ResolveAgentOutput<zO, Tools>;
+            return {
+              history: [...history, ...newHistory],
+              output: value,
+              outputText: typeof value === "string"
+                ? value
+                : JSON.stringify(value),
+            };
+          }
+          throw err;
+        }
         continue;
       }
 
@@ -242,7 +287,7 @@ export class Agent<zO, zI, M extends ModelString> {
           ? JSON.parse(
             finalItem.type === "output_text" ? finalItem.content : "",
           )
-          : undefined) as AgentRunResultOutput<zO>,
+          : undefined) as ResolveAgentOutput<zO, Tools>,
         outputText: newHistory.filter((history) =>
           history.type === "output_text"
         ).map((history) => history.content).join("\n"),
@@ -297,34 +342,39 @@ export class Agent<zO, zI, M extends ModelString> {
       if (toolUses.length > 0) {
         // execute and stream tools
         const promises = this.#runToolUses(toolUses, signal);
-        for await (const toolResults of iteratePromiseArray(promises)) {
-          for (const toolResult of toolResults) {
-            if (toolResult.type === "tool_result_text") {
-              yield {
-                type: "tool_result_text",
-                index: newHistory.length + history.length,
-                tool_use_id: toolResult.tool_use_id,
-                content: toolResult.content,
-              };
-              newHistory.push(toolResult);
-            } else if (toolResult.type === "tool_result_file") {
-              yield {
-                type: "tool_result_file",
-                index: newHistory.length + history.length,
-                tool_use_id: toolResult.tool_use_id,
-                kind: toolResult.kind,
-                content: toolResult.content,
-              };
-              newHistory.push(toolResult);
-            } else {
-              if (DEBUG_MODE) {
-                console.error(
-                  "What the frick, this isn't a tool result!",
-                  toolResult,
-                );
+        try {
+          for await (const toolResults of iteratePromiseArray(promises)) {
+            for (const toolResult of toolResults) {
+              if (toolResult.type === "tool_result_text") {
+                yield {
+                  type: "tool_result_text",
+                  index: newHistory.length + history.length,
+                  tool_use_id: toolResult.tool_use_id,
+                  content: toolResult.content,
+                };
+                newHistory.push(toolResult);
+              } else if (toolResult.type === "tool_result_file") {
+                yield {
+                  type: "tool_result_file",
+                  index: newHistory.length + history.length,
+                  tool_use_id: toolResult.tool_use_id,
+                  kind: toolResult.kind,
+                  content: toolResult.content,
+                };
+                newHistory.push(toolResult);
+              } else {
+                if (DEBUG_MODE) {
+                  console.error(
+                    "What the frick, this isn't a tool result!",
+                    toolResult,
+                  );
+                }
               }
             }
           }
+        } catch (err) {
+          if (err instanceof ModelOutput) return;
+          throw err;
         }
 
         // continue loop
