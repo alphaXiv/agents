@@ -89,7 +89,7 @@ function getSidHistory(
 }
 
 type SidToolMap = {
-  original: Tool<unknown, unknown>;
+  original: Tool<unknown, unknown, unknown>;
   sid: ChatCompletionFunctionTool;
   wrapperObject: boolean;
   isVoid: boolean;
@@ -105,7 +105,7 @@ export class SidAdapter<zO, zI> {
     { model, output, tools }: {
       model: string;
       output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown>[];
+      tools: Tool<unknown, unknown, unknown>[];
       reasoningEffort: ReasoningEffort;
     },
   ) {

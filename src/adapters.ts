@@ -16,7 +16,7 @@ export interface Adapter<zO, zI> {
   new (config: {
     model: string;
     output?: z.ZodType<zO, zI>;
-    tools: Tool<unknown, unknown>[];
+    tools: Tool<unknown, unknown, unknown>[];
     reasoningEffort: ReasoningEffort;
   }): AdapterInstance;
 }

@@ -3,6 +3,7 @@ export {
   type ExecuteFunc,
   type ExecuteFuncInput,
   type ExecuteResult,
+  ModelOutput,
   Tool,
 } from "./src/tool.ts";
 export type {
@@ -13,3 +14,8 @@ export type {
   StreamItem,
 } from "./src/types.ts";
 export { registerAdapter } from "./src/adapters.ts";
+export {
+  SidEmbeddingSearchTool,
+  SidReportHelpfulIdsTool,
+  SidTextSearchTool,
+} from "./src/tools/sid.ts";

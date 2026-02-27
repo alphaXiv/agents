@@ -164,7 +164,7 @@ async function getOpenAIHistory(
 }
 
 type OpenAIToolMap = {
-  original: Tool<unknown, unknown>;
+  original: Tool<unknown, unknown, unknown>;
   openai: OpenAI.Responses.FunctionTool;
   /** OpenAI doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
@@ -181,7 +181,7 @@ export class OpenAIAdapter<zO, zI> {
     { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown>[];
+      tools: Tool<unknown, unknown, unknown>[];
       reasoningEffort: ReasoningEffort;
     },
   ) {

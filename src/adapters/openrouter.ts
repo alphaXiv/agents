@@ -213,7 +213,7 @@ const alwaysReasoningModels = [
 ];
 
 type OpenrouterToolMap = {
-  original: Tool<unknown, unknown>;
+  original: Tool<unknown, unknown, unknown>;
   openrouter: ChatCompletionFunctionTool;
   /** Openrouter doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
@@ -232,7 +232,7 @@ export class OpenRouterAdapter<zO, zI> {
     { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown>[];
+      tools: Tool<unknown, unknown, unknown>[];
       reasoningEffort: ReasoningEffort;
     },
   ) {

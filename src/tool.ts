@@ -2,18 +2,30 @@ import type z from "zod";
 import type { ToolResultLike } from "./types.ts";
 import { delay } from "@std/async/delay";
 
-export type ExecuteResult = ToolResultLike | Promise<ToolResultLike>;
+export class ModelOutput<T> {
+  value: T;
+  constructor(value: T) {
+    this.value = value;
+  }
+}
+
+export type ExecuteResult<MO = never> =
+  | ToolResultLike
+  | ModelOutput<MO>
+  | Promise<ToolResultLike | ModelOutput<MO>>;
 
 export type ExecuteFuncInput<O> = {
   param: O;
 };
-export type ExecuteFunc<O> = (input: ExecuteFuncInput<O>) => ExecuteResult;
+export type ExecuteFunc<O, MO = never> = (
+  input: ExecuteFuncInput<O>,
+) => ExecuteResult<MO>;
 
-export class Tool<zO, zI> {
+export class Tool<zO, zI, TModelOutput = never> {
   #name: string;
   #description: string;
   #parameters: z.ZodType<zO, zI>;
-  #execute: ExecuteFunc<zO>;
+  #execute: ExecuteFunc<zO, TModelOutput>;
   #retries: number;
 
   constructor({
@@ -26,7 +38,7 @@ export class Tool<zO, zI> {
     name: string;
     description: string;
     parameters: z.ZodType<zO, zI>;
-    execute: ExecuteFunc<zO>;
+    execute: ExecuteFunc<zO, TModelOutput>;
     retries?: number;
   }) {
     this.#name = name;
@@ -48,7 +60,9 @@ export class Tool<zO, zI> {
     return this.#parameters;
   }
 
-  async execute(input: ExecuteFuncInput<zO>): Promise<ToolResultLike> {
+  async execute(
+    input: ExecuteFuncInput<zO>,
+  ): Promise<ToolResultLike | ModelOutput<TModelOutput>> {
     let lastError: unknown;
     for (let i = 0; i < this.#retries + 1; i++) {
       try {

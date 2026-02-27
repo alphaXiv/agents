@@ -134,7 +134,7 @@ async function getTributaryHistory(
 }
 
 type TributaryToolMap = {
-  original: Tool<unknown, unknown>;
+  original: Tool<unknown, unknown, unknown>;
   tributary: ChatCompletionFunctionTool;
   /** Tributary doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
@@ -153,7 +153,7 @@ export class TributaryAdapter<zO, zI> {
     { model, output, tools, reasoningEffort }: {
       model: string;
       output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown>[];
+      tools: Tool<unknown, unknown, unknown>[];
       reasoningEffort: ReasoningEffort;
     },
   ) {
