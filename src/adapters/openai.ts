@@ -31,7 +31,10 @@ const nonReasoningModels = [
   "gpt-4.1",
 ];
 
-function getModelReasoning(model: string, idealReasoning: ReasoningEffort): OpenAI.ReasoningEffort | undefined {
+function getModelReasoning(
+  model: string,
+  idealReasoning: ReasoningEffort,
+): OpenAI.ReasoningEffort | undefined {
   if (nonReasoningModels.includes(model)) {
     return undefined;
   }
