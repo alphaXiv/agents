@@ -31,6 +31,24 @@ const nonReasoningModels = [
   "gpt-4.1",
 ];
 
+function getModelReasoning(
+  model: string,
+  idealReasoning: ReasoningEffort,
+): OpenAI.ReasoningEffort | undefined {
+  if (nonReasoningModels.includes(model)) {
+    return undefined;
+  }
+  if (idealReasoning === "normal") {
+    return undefined; // "just pick the default"
+  } else if (idealReasoning === "minimal") {
+    if (model === "gpt-5.4") { // gpt-5.4 doesn't support minimal reasoning
+      return "none";
+    }
+    return "minimal";
+  }
+  idealReasoning satisfies never;
+}
+
 async function getOpenAIFile(
   historyItem: ChatItemToolResultFile | ChatItemInputFile,
   signal: AbortSignal,
@@ -246,10 +264,7 @@ export class OpenAIAdapter<zO, zI> {
       },
       reasoning: {
         summary: "auto",
-        effort: this.#reasoningEffort === "normal" ||
-            nonReasoningModels.includes(this.#model)
-          ? undefined
-          : "minimal",
+        effort: getModelReasoning(this.#model, this.#reasoningEffort),
       },
     }, { signal });
 
@@ -317,10 +332,7 @@ export class OpenAIAdapter<zO, zI> {
       tools: this.#normalizedTools.map(({ openai }) => openai),
       reasoning: {
         summary: "auto",
-        effort: this.#reasoningEffort === "normal" ||
-            nonReasoningModels.includes(this.#model)
-          ? undefined
-          : "minimal",
+        effort: getModelReasoning(this.#model, this.#reasoningEffort),
       },
     }, { signal });
 

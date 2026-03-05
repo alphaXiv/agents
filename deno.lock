@@ -7,10 +7,10 @@
     "jsr:@std/async@^1.0.15": "1.0.15",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.12",
-    "npm:@anthropic-ai/sdk@0.67": "0.67.0",
+    "npm:@anthropic-ai/sdk@0.67": "0.67.0_zod@4.1.12",
     "npm:@google/genai@^1.25.0": "1.25.0",
     "npm:@types/node@*": "24.2.0",
-    "npm:openai@^6.6.0": "6.6.0",
+    "npm:openai@^6.26.0": "6.26.0_zod@4.1.12",
     "npm:pdfjs-dist@^5.4.394": "5.4.394",
     "npm:zod@4": "4.1.12"
   },
@@ -38,10 +38,14 @@
     }
   },
   "npm": {
-    "@anthropic-ai/sdk@0.67.0": {
+    "@anthropic-ai/sdk@0.67.0_zod@4.1.12": {
       "integrity": "sha512-Buxbf6jYJ+pPtfCgXe1pcFtZmdXPrbdqhBjiscFt9irS1G0hCsmR/fPA+DwKTk4GPjqeNnnCYNecXH6uVZ4G/A==",
       "dependencies": [
-        "json-schema-to-ts"
+        "json-schema-to-ts",
+        "zod"
+      ],
+      "optionalPeers": [
+        "zod"
       ],
       "bin": true
     },
@@ -239,8 +243,14 @@
         "whatwg-url"
       ]
     },
-    "openai@6.6.0": {
-      "integrity": "sha512-1yWk4cBsHF5Bq9TreHYOHY7pbqdlT74COnm8vPx7WKn36StS+Hyk8DdAitnLaw67a5Cudkz5EmlFQjSrNnrA2w==",
+    "openai@6.26.0_zod@4.1.12": {
+      "integrity": "sha512-zd23dbWTjiJ6sSAX6s0HrCZi41JwTA1bQVs0wLQPZ2/5o2gxOJA5wh7yOAUgwYybfhDXyhwlpeQf7Mlgx8EOCA==",
+      "dependencies": [
+        "zod"
+      ],
+      "optionalPeers": [
+        "zod"
+      ],
       "bin": true
     },
     "pdfjs-dist@5.4.394": {
@@ -290,7 +300,7 @@
       "jsr:@std/encoding@^1.0.10",
       "npm:@anthropic-ai/sdk@0.67",
       "npm:@google/genai@^1.25.0",
-      "npm:openai@^6.6.0",
+      "npm:openai@^6.26.0",
       "npm:zod@4"
     ]
   }
