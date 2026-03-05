@@ -30,6 +30,9 @@ const MAX_PROVIDER_ERRORS = 10;
 
 export type ModelString =
   | "__testing:deterministic"
+  | "openai:gpt-5.4"
+  | "openai:gpt-5.2"
+  | "openai:gpt-5.1"
   | "openai:gpt-5-pro"
   | "openai:gpt-5"
   | "openai:gpt-5-mini"
