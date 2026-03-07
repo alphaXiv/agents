@@ -1,7 +1,6 @@
-import type z from "zod";
-import type { Tool } from "../../src/tool.ts";
-import type { AdapterStreamIterator, ChatItem } from "../../src/types.ts";
+import type { AdapterStreamIterator } from "../../src/types.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { Adapter } from "../../src/adapters.ts";
 
 export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
 
@@ -29,24 +28,10 @@ async function* streamToolUse(
   };
 }
 
-export class TestingAdapter<zO, zI> {
-  #tools: Tool<unknown, unknown, unknown>[];
+export const testingAdapter: Adapter<"deterministic"> = {
+  name: "testing",
 
-  constructor(
-    { tools }: {
-      model: string;
-      output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown, unknown>[];
-    },
-  ) {
-    this.#tools = tools;
-  }
-
-  async *stream({ systemPrompt, history }: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): AdapterStreamIterator {
+  async *stream({ systemPrompt, history, tools }) {
     if (systemPrompt === "Basic test") {
       yield* streamText("Basic test worked!", 0);
       return;
@@ -127,7 +112,7 @@ export class TestingAdapter<zO, zI> {
       lastMessage.type === "input_text" &&
       lastMessage.content === "Can you tell me what cat websites there are?"
     ) {
-      const searchTool = this.#tools[0];
+      const searchTool = tools[0];
       if (searchTool) {
         yield* streamToolUse(0, "search-tool-id", searchTool.name, '"cats"');
         return;
@@ -138,7 +123,7 @@ export class TestingAdapter<zO, zI> {
       lastMessage.type === "input_text" &&
       lastMessage.content === "Call output tool"
     ) {
-      const tool = this.#tools.find((t) => t.name === "output_tool");
+      const tool = tools.find((t) => t.name === "output_tool");
       if (tool) {
         yield* streamToolUse(0, "output-tool-id", tool.name);
         return;
@@ -149,8 +134,8 @@ export class TestingAdapter<zO, zI> {
       lastMessage.type === "input_text" &&
       lastMessage.content === "Call output tool and search"
     ) {
-      const outputTool = this.#tools.find((t) => t.name === "output_tool");
-      const searchTool = this.#tools.find((t) => t.name !== "output_tool");
+      const outputTool = tools.find((t) => t.name === "output_tool");
+      const searchTool = tools.find((t) => t.name !== "output_tool");
       if (outputTool && searchTool) {
         yield* streamToolUse(0, "search-tool-id", searchTool.name, '"cats"');
         yield* streamToolUse(1, "output-tool-id", outputTool.name);
@@ -175,5 +160,5 @@ export class TestingAdapter<zO, zI> {
     }
 
     yield* streamText("[undefined case]", 0);
-  }
-}
+  },
+};

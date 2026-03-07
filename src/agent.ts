@@ -1,13 +1,21 @@
-import type z from "zod";
+import type { ReasoningEffort } from "@alphaxiv/agents";
+import { assert } from "@std/assert/assert";
 import { abortable } from "@std/async/abortable";
-import { ADAPTERS } from "./adapters.ts";
+import type z from "zod";
+import { ZodVoid } from "zod";
+import { type Adapter, ADAPTERS } from "./adapters.ts";
+import { addStreamItem } from "./client.ts";
+import { DEBUG_MODE } from "./constants.ts";
+import { signalAsyncLocalStorage } from "./storage.ts";
 import { ModelOutput, type Tool } from "./tool.ts";
 import type {
+  AdapterStreamIterator,
   AgentStreamIterator,
   ChatItem,
   ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
+  StreamItem,
 } from "./types.ts";
 import {
   convertChatLikeToChatItem,
@@ -18,12 +26,6 @@ import {
   crossPlatformStdin,
   iteratePromiseArray,
 } from "./util.ts";
-import { addStreamItem } from "./client.ts";
-import { signalAsyncLocalStorage } from "./storage.ts";
-import { ZodVoid } from "zod";
-import { assert } from "@std/assert/assert";
-import type { ReasoningEffort } from "@alphaxiv/agents";
-import { DEBUG_MODE } from "./constants.ts";
 
 const MAX_TURNS = 100;
 const MAX_PROVIDER_ERRORS = 5;
@@ -94,8 +96,25 @@ export type AgentOptions<
   M extends ModelString = ModelString,
   // deno-lint-ignore no-explicit-any
   Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
+  A extends Adapter<M> = Adapter<M>,
 > = {
+  /**
+   * By default, the adapter is derived from the model string, and you don't
+   * need to worry about setting one yourself. But if you need to hit a custom
+   * API, that's what this is for. For example, you can call a custom
+   * OpenAI-compatible endpoint with `adapter: openAiAdapter({ url: '...' })`.
+   */
+  adapter?: A; // TODO: "adapter" or "provider"
+  /**
+   * By default, the `ModelString` is parsed for an adapter prefix like
+   * `openai:` or `anthropic:`, which will call that adapter with the given
+   * model. Any string value is allowed, even if it isn't listed in the enum,
+   * but it is up to the provider to actually support it.
+   *
+   * When passing a custom adapter, this type depends on the adapter's type.
+   */
   model: M;
+  /** What this is agent intended to do. Equivilent to a "system prompt". */
   instructions: string;
   output?: z.ZodType<zO, zI>;
   tools?: M extends NoToolCallModels ? never : [...Tools];
@@ -126,9 +145,10 @@ export class Agent<
   M extends ModelString,
   // deno-lint-ignore no-explicit-any
   const Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
+  A extends Adapter<M> = Adapter<M>,
 > {
-  #provider: string;
-  #model: ModelString;
+  #adapter: A | Promise<A>;
+  #model: M;
   #instructions: string;
   #output?: z.ZodType<zO, zI>;
   // deno-lint-ignore no-explicit-any
@@ -137,13 +157,26 @@ export class Agent<
 
   #noRetries = false;
 
-  constructor(options: AgentOptions<zO, zI, M, Tools>) {
-    const [provider, ...modelParts] = options.model.split(":");
-    this.#provider = provider;
-    this.#model = modelParts.join(":");
+  constructor(options: AgentOptions<zO, zI, M, Tools, A>) {
+    if (options.adapter) {
+      this.#adapter = options.adapter;
+      this.#model = options.model;
+    } else {
+      const [provider, ...modelParts] = options.model.split(":");
+      const factory = ADAPTERS[provider];
+
+      if (!factory) {
+        throw new Error(
+          "Could not resolve provider " + JSON.stringify(provider),
+        );
+      }
+      this.#adapter = factory() as A | Promise<A>;
+      this.#model = modelParts.join(":") as M;
+    }
+
     this.#instructions = options.instructions;
     this.#output = options.output;
-    this.#tools = options.tools ?? [];
+    this.#tools = options.tools?.slice() ?? [];
     this.#reasoningEffort = options.reasoningEffort ?? "normal";
 
     if (options.unstable) {
@@ -200,9 +233,7 @@ export class Agent<
         items: convertToolResultLikeToChatItem(result, use.tool_use_id),
       };
     } catch (err) {
-      if (err instanceof ModelOutput || signal.aborted) {
-        throw err;
-      }
+      if (err instanceof ModelOutput || signal.aborted) throw err;
       return {
         id: use.tool_use_id,
         items: [{
@@ -237,18 +268,6 @@ export class Agent<
     options?.signal.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
-    const adapterClass = ADAPTERS[this.#provider];
-    if (!adapterClass) {
-      throw new Error(
-        "Could not resolve provider " + JSON.stringify(this.#provider),
-      );
-    }
-    const adapter = new adapterClass({
-      model: this.#model,
-      output: this.#output,
-      tools: this.#tools,
-      reasoningEffort: this.#reasoningEffort,
-    });
 
     // prepare a separate signal for tools that can be cancelled if a provider
     // fails too much. note that we do persist tool calls between assistant runs,
@@ -270,12 +289,22 @@ export class Agent<
       let failed = false;
       let err: unknown;
       try {
-        const stream = adapter.stream({
+        const stream = normalizeAdapterOutputToStream(adapter.stream({
+          model: this.#model,
+          output: this.#output,
+          tools: this.#tools,
+          reasoningEffort: this.#reasoningEffort,
           systemPrompt: this.#instructions,
           history: [...initialHistory, ...history],
           signal,
-        });
-        for await (const part of stream) {
+        }));
+
+        while (true) {
+          const { value: part, done } = await stream.next();
+          if (done) {
+            break;
+          }
+
           const reIndexedPart = {
             ...part,
             index: part.index + history.length,
@@ -287,7 +316,7 @@ export class Agent<
           if (part.type === "tool_use") {
             assert(
               !pendingTools.has(part.tool_use_id),
-              `Provider ${this.#provider} did not use unique tool use id: ${part.tool_use_id}`,
+              `Provider ${adapter.name} did not use unique tool use id: ${part.tool_use_id}`,
             );
             pendingTools.set(
               part.tool_use_id,
@@ -302,6 +331,8 @@ export class Agent<
 
       // process tool outputs before re-looping
       if (pendingTools.size > 0) {
+    if (this.#adapter instanceof Promise) this.#adapter = await this.#adapter;
+    const adapter = this.#adapter;
         try {
           for await (
             const result of iteratePromiseArray(pendingTools.values())
@@ -342,7 +373,7 @@ export class Agent<
           }
 
           if (err instanceof ModelOutput) {
-            const { value } = err;
+            const { output } = err;
             toolController.abort(
               new Error(
                 "Tool calls cancelled due to one returning ModelOutput",
@@ -350,10 +381,10 @@ export class Agent<
             );
             return {
               history: newHistory,
-              output: err.value,
-              outputText: typeof value === "string"
-                ? value
-                : JSON.stringify(value),
+              output,
+              outputText: typeof output === "string"
+                ? output
+                : JSON.stringify(output),
             };
           }
 
@@ -481,4 +512,66 @@ export class Agent<
       crossPlatformLog(prompt);
     }
   }
+}
+
+function normalizeAdapterOutputToStream(
+  input: AdapterStreamIterator | Promise<AdapterStreamSingleResult>,
+) {
+  if ("next" in input) return input;
+  return convertChatItemsToStream(input);
+}
+
+async function* convertChatItemsToStream(
+  input: Promise<AdapterStreamSingleResult>,
+): AdapterStreamIterator {
+  const { inputTokens, outputTokens, items } = await input;
+  let index = 0;
+  for (const item of items) {
+    if (item.type === "output_text") {
+      yield {
+        type: "delta_output_text",
+        delta: item.content,
+        index,
+      };
+      index += 1;
+    } else if (item.type === "output_reasoning") {
+      yield {
+        type: "delta_output_reasoning",
+        delta: item.content,
+        index,
+      };
+      index += 1;
+    } else if (item.type === "tool_use") {
+      yield {
+        type: "tool_use",
+        tool_use_id: item.tool_use_id,
+        kind: item.kind,
+        content: item.content,
+        index,
+      };
+      index += 1;
+    } else if (item.type === "tool_result_text") {
+      yield {
+        type: "tool_result_text",
+        tool_use_id: item.tool_use_id,
+        content: item.content,
+        index,
+      };
+      index += 1;
+    } else if (item.type === "tool_result_file") {
+      yield {
+        type: "tool_result_file",
+        tool_use_id: item.tool_use_id,
+        kind: item.kind,
+        content: item.content,
+        index,
+      };
+      index += 1;
+    } else {
+      throw new Error(
+        "Adapters cannot emit chat item type " + JSON.stringify(item.type),
+      );
+    }
+  }
+  return { inputTokens, outputTokens };
 }

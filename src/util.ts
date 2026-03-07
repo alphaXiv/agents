@@ -141,3 +141,11 @@ export async function* iteratePromiseArray<T>(
     throw new AggregateError(errors);
   }
 }
+
+export function requireEnv(name: string) {
+  const value = crossPlatformEnv(name);
+  if (!value) {
+    throw new Error(`Missing required environment variable ${name}`);
+  }
+  return value;
+}

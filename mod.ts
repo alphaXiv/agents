@@ -13,7 +13,6 @@ export type {
   ReasoningEffort,
   StreamItem,
 } from "./src/types.ts";
-export { registerAdapter } from "./src/adapters.ts";
 export {
   SidEmbeddingSearchTool,
   SidReportHelpfulIdsTool,

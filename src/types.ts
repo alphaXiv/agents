@@ -1,4 +1,4 @@
-import { AgentRunResult } from "@alphaxiv/agents";
+import type { AgentRunResult } from "@alphaxiv/agents";
 
 export type ChatItemToolUse = {
   type: "tool_use";
@@ -104,7 +104,7 @@ export type StreamItem = BaseStreamItem & StreamItemType;
 
 export type AdapterStreamIterator = AsyncGenerator<
   StreamItem,
-  void,
+  ChatItem[] | void,
   unknown
 >;
 

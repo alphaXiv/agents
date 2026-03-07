@@ -7,21 +7,30 @@ import {
 } from "@google/genai";
 import z from "zod";
 import { assert } from "@std/assert";
+import type {
+  Adapter,
+  AdapterStreamOptions,
+  AdapterTypeOptions,
+} from "../adapters.ts";
 import type { Tool } from "../tool.ts";
 import type {
   AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "../types.ts";
-import { crossPlatformEnv, hashString, removeDollarSchema } from "../util.ts";
+import { hashString, removeDollarSchema } from "../util.ts";
 
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between function call and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
 const signatureMap = new Map<string, string>();
 
-const BASE_URL = "https://generativelanguage.googleapis.com";
+function getGoogleFileBaseUrl(url: string) {
+  return new URL(
+    "v1beta/files/",
+    url.endsWith("/") ? url : `${url}/`,
+  ).toString();
+}
 
-/** No way to specify url for google api :( */
 async function ensureFileUploaded(
   gemini: GoogleGenAI,
   url: string,
@@ -102,9 +111,10 @@ async function ensureFileUploaded(
   }
 }
 
-export async function getGoogleHistory(
+async function getGoogleHistory(
   history: ChatItem[],
   gemini: GoogleGenAI,
+  apiBaseUrl: string,
   toolMap: GoogleToolMap[],
   signal: AbortSignal,
 ) {
@@ -145,13 +155,14 @@ export async function getGoogleHistory(
         item.type === "tool_use" &&
         item.tool_use_id === historyItem.tool_use_id
       );
-      assert(toolCall);
+      assert(toolCall?.type === "tool_use");
+      const tool = toolMap.find((tool) => tool.original.name === toolCall.kind);
       googleHistory.push({
         role: "user",
         parts: [{
           functionResponse: {
             id: historyItem.tool_use_id,
-            name: toolCall.type === "tool_use" ? toolCall.kind : undefined, // TODO: figure out why type narrowing is trolling me here
+            name: tool?.google.name ?? toolCall.kind,
             response: { content: historyItem.content },
           },
         }],
@@ -170,7 +181,8 @@ export async function getGoogleHistory(
         role: "user",
         parts: [{
           fileData: {
-            fileUri: `${BASE_URL}/v1beta/files/${fileName}`,
+            fileUri: new URL(fileName, getGoogleFileBaseUrl(apiBaseUrl))
+              .toString(),
             mimeType: historyItem.kind,
           },
         }],
@@ -211,176 +223,104 @@ type GoogleToolMap = {
   isVoid: boolean;
 };
 
-// TODO: support both output schema and tools in same agent
-export class GoogleAdapter<zO, zI> {
-  #client: GoogleGenAI;
-  #model: string;
-  #output?: z.ZodType<zO, zI>;
-  #normalizedTools: GoogleToolMap[];
-  #reasoningEffort: ReasoningEffort;
-
-  constructor(
-    { model, output, tools, reasoningEffort }: {
-      model: string;
-      output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown, unknown>[];
-      reasoningEffort: ReasoningEffort;
-    },
-  ) {
-    this.#model = model;
-    this.#output = output;
-    this.#reasoningEffort = reasoningEffort;
-    this.#normalizedTools = tools.map((tool) => {
-      let name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
-        /[^a-zA-Z0-9_-]/g,
-        "",
-      );
-      if (!/^[a-zA-Z_]/.test(name)) {
-        name = "_" + name; // Ensure name starts with letter or underscore
-      }
-      name = name.slice(0, 64); // Limit to 64 characters
-
-      const isVoid = tool.parameters instanceof z.ZodVoid;
-      const wrapperObject = !isVoid &&
-        !(tool.parameters instanceof z.ZodObject);
-
-      return {
-        original: tool,
-        google: {
-          name,
-          parameters: isVoid ? undefined : z.toJSONSchema(
-            wrapperObject
-              ? z.object({ content: tool.parameters })
-              : tool.parameters,
-            // deno-lint-ignore no-explicit-any
-          ) as any,
-          description: tool.description,
-        },
-        wrapperObject,
-        isVoid,
-      };
-    });
-    this.#client = new GoogleGenAI({
-      apiKey: crossPlatformEnv("GEMINI_API_KEY"),
-    });
-  }
-
-  async run({ history, systemPrompt, signal }: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): Promise<ChatItem[]> {
-    const googleHistory = await getGoogleHistory(
-      history,
-      this.#client,
-      this.#normalizedTools,
-      signal,
+function normalizeGoogleTools(
+  tools: Tool<unknown, unknown, unknown>[],
+): GoogleToolMap[] {
+  return tools.map((tool) => {
+    let name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
+      /[^a-zA-Z0-9_-]/g,
+      "",
     );
-
-    const isReasoningModel = !nonReasoningModels.includes(this.#model);
-
-    const response = await this.#client.models.generateContent({
-      model: this.#model,
-      contents: googleHistory,
-      config: {
-        tools: this.#normalizedTools.length
-          ? [{
-            functionDeclarations: this.#normalizedTools.map(({ google }) =>
-              google
-            ),
-          }]
-          : undefined,
-        systemInstruction: systemPrompt,
-        thinkingConfig: isReasoningModel
-          ? {
-            includeThoughts: true,
-            thinkingBudget: this.#reasoningEffort === "minimal" &&
-                !alwaysReasoningModels.includes(this.#model)
-              ? 0
-              : undefined,
-          }
-          : undefined,
-        responseMimeType: this.#output ? "application/json" : undefined,
-        responseSchema: this.#output
-          ? removeDollarSchema(z.toJSONSchema(this.#output))
-          : undefined,
-        abortSignal: signal,
-      },
-    });
-
-    const output: ChatItem[] = [];
-
-    const candidate = response.candidates?.[0];
-    assert(candidate);
-
-    for (const part of candidate.content?.parts ?? []) {
-      if (part.text) {
-        if (part.thought) {
-          output.push({
-            type: "output_reasoning",
-            content: part.text,
-          });
-        } else {
-          output.push({
-            type: "output_text",
-            content: part.text,
-          });
-        }
-      } else if (part.functionCall) {
-        const func = part.functionCall;
-        const funcId = func.id ?? crypto.randomUUID();
-        assert(func.name && func.args);
-        const tool = this.#normalizedTools.find((tool) =>
-          tool.google.name === func.name
-        );
-        output.push({
-          type: "tool_use",
-          tool_use_id: funcId,
-          kind: tool?.original.name ?? func.name,
-          content: tool?.isVoid ? undefined : JSON.stringify(
-            tool?.wrapperObject ? func.args.content : func.args,
-          ),
-        });
-      }
+    if (!/^[a-zA-Z_]/.test(name)) {
+      name = "_" + name; // Ensure name starts with letter or underscore
     }
+    name = name.slice(0, 64); // Limit to 64 characters
 
-    return output;
-  }
+    const isVoid = tool.parameters instanceof z.ZodVoid;
+    const wrapperObject = !isVoid &&
+      !(tool.parameters instanceof z.ZodObject);
 
-  async *stream({ history, systemPrompt, signal }: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): AdapterStreamIterator {
+    return {
+      original: tool,
+      google: {
+        name,
+        parameters: isVoid ? undefined : z.toJSONSchema(
+          wrapperObject
+            ? z.object({ content: tool.parameters })
+            : tool.parameters,
+          // deno-lint-ignore no-explicit-any
+        ) as any,
+        description: tool.description,
+      },
+      wrapperObject,
+      isVoid,
+    };
+  });
+}
+
+function getGoogleThinking(
+  model: string,
+  reasoningEffort: ReasoningEffort,
+) {
+  const isReasoningModel = !nonReasoningModels.includes(model);
+  return isReasoningModel
+    ? {
+      includeThoughts: true,
+      thinkingBudget: reasoningEffort === "minimal" &&
+          !alwaysReasoningModels.includes(model)
+        ? 0
+        : undefined,
+    }
+    : undefined;
+}
+
+export interface GoogleAdapterOptions {
+  url: string;
+  apiKey: string;
+}
+
+export function googleAdapter<Models extends string>(
+  options: GoogleAdapterOptions & AdapterTypeOptions<Models>,
+): Adapter<Models> {
+  const google = new GoogleGenAI({
+    apiKey: options.apiKey,
+    httpOptions: {
+      baseUrl: options.url,
+    },
+  });
+
+  async function* stream<zO, zI>({
+    model,
+    output,
+    tools,
+    reasoningEffort,
+    systemPrompt,
+    history,
+    signal,
+  }: AdapterStreamOptions<zO, zI, Models>): AdapterStreamIterator {
+    const normalizedTools = normalizeGoogleTools(tools);
     const googleHistory = await getGoogleHistory(
       history,
-      this.#client,
-      this.#normalizedTools,
+      google,
+      options.url,
+      normalizedTools,
       signal,
     );
 
-    const isReasoningModel = !nonReasoningModels.includes(this.#model);
-
-    const response = await this.#client.models.generateContentStream({
-      model: this.#model,
+    const response = await google.models.generateContentStream({
+      model,
       contents: googleHistory,
       config: {
-        tools: this.#normalizedTools.length
+        tools: normalizedTools.length
           ? [{
-            functionDeclarations: this.#normalizedTools.map(({ google }) =>
-              google
-            ),
+            functionDeclarations: normalizedTools.map(({ google }) => google),
           }]
           : undefined,
         systemInstruction: systemPrompt,
-        thinkingConfig: isReasoningModel
-          ? {
-            includeThoughts: true,
-            thinkingBudget: this.#reasoningEffort === "minimal" &&
-                !alwaysReasoningModels.includes(this.#model)
-              ? 0
-              : undefined,
-          }
+        thinkingConfig: getGoogleThinking(model, reasoningEffort),
+        responseMimeType: output ? "application/json" : undefined,
+        responseSchema: output
+          ? removeDollarSchema(z.toJSONSchema(output))
           : undefined,
         abortSignal: signal,
       },
@@ -420,12 +360,11 @@ export class GoogleAdapter<zO, zI> {
 
           const func = part.functionCall;
           const funcId = func.id ?? crypto.randomUUID();
-          assert(func.name && func.args);
-          const tool = this.#normalizedTools.find((tool) =>
+          assert(func.name);
+          const tool = normalizedTools.find((tool) =>
             tool.google.name === func.name
           );
 
-          // Add thoughtSignature if necessary
           if (part.thoughtSignature) {
             signatureMap.set(funcId, part.thoughtSignature);
           }
@@ -434,15 +373,15 @@ export class GoogleAdapter<zO, zI> {
             type: "tool_use",
             tool_use_id: funcId,
             kind: tool?.original.name ?? func.name,
-            content: tool?.isVoid
-              ? undefined
-              : (tool?.wrapperObject
-                ? JSON.stringify(part.functionCall.args!.content)
-                : JSON.stringify(part.functionCall.args)),
+            content: tool?.isVoid ? undefined : JSON.stringify(
+              tool?.wrapperObject ? func.args?.content : func.args,
+            ),
             index: lastIndex,
           };
         }
       }
     }
   }
+
+  return { name: "google", stream };
 }
