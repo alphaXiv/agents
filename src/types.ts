@@ -1,3 +1,5 @@
+import { AgentRunResult } from "@alphaxiv/agents";
+
 export type ChatItemToolUse = {
   type: "tool_use";
   /** Provider generated string representing the id of the tool call */
@@ -100,8 +102,14 @@ export type ReasoningEffort = "minimal" | "normal"; // TODO: investigate adding 
 
 export type StreamItem = BaseStreamItem & StreamItemType;
 
-export type AsyncStreamItemGenerator = AsyncGenerator<
+export type AdapterStreamIterator = AsyncGenerator<
   StreamItem,
   void,
+  unknown
+>;
+
+export type AgentStreamIterator<T = unknown> = AsyncGenerator<
+  StreamItem,
+  AgentRunResult<T>,
   unknown
 >;

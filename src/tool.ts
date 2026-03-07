@@ -16,6 +16,7 @@ export type ExecuteResult<MO = never> =
 
 export type ExecuteFuncInput<O> = {
   param: O;
+  signal: AbortSignal;
 };
 export type ExecuteFunc<O, MO = never> = (
   input: ExecuteFuncInput<O>,

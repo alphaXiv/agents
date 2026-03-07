@@ -8,7 +8,7 @@ import { assert } from "@std/assert";
 
 import type { Tool } from "../tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "../types.ts";
@@ -268,7 +268,7 @@ export class TributaryAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AdapterStreamIterator {
     const tributaryHistory = await getTributaryHistory(
       history,
       systemPrompt,

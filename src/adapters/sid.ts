@@ -8,7 +8,7 @@ import { assert } from "@std/assert";
 
 import type { Tool } from "../tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "../types.ts";
@@ -214,7 +214,7 @@ export class SidAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AdapterStreamIterator {
     const sidHistory = getSidHistory(
       history,
       systemPrompt,

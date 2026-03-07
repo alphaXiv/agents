@@ -9,7 +9,7 @@ import z from "zod";
 import { assert } from "@std/assert";
 import type { Tool } from "../tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "../types.ts";
@@ -351,7 +351,7 @@ export class GoogleAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AdapterStreamIterator {
     const googleHistory = await getGoogleHistory(
       history,
       this.#client,

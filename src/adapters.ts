@@ -5,7 +5,7 @@ import { OpenAIAdapter } from "./adapters/openai.ts";
 import { OpenRouterAdapter } from "./adapters/openrouter.ts";
 import type { Tool } from "./tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "./types.ts";
@@ -22,17 +22,11 @@ export interface Adapter<zO, zI> {
 }
 
 export interface AdapterInstance {
-  run(params: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): Promise<ChatItem[]>;
-
   stream(params: {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator;
+  }): AdapterStreamIterator;
 }
 
 export const ADAPTERS: Record<string, Adapter<unknown, unknown>> = {

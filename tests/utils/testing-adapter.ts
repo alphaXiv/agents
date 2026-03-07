@@ -1,6 +1,6 @@
 import type z from "zod";
 import type { Tool } from "../../src/tool.ts";
-import type { AsyncStreamItemGenerator, ChatItem } from "../../src/types.ts";
+import type { AdapterStreamIterator, ChatItem } from "../../src/types.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
@@ -8,10 +8,25 @@ export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
 async function* streamText(
   text: string,
   index: number,
-): AsyncStreamItemGenerator {
+): AdapterStreamIterator {
   for (const char of text) {
     yield { type: "delta_output_text", delta: char, index };
   }
+}
+
+async function* streamToolUse(
+  index: number,
+  tool_use_id: string,
+  kind: string,
+  content?: string,
+): AdapterStreamIterator {
+  yield {
+    type: "tool_use",
+    index,
+    tool_use_id,
+    kind,
+    content,
+  };
 }
 
 export class TestingAdapter<zO, zI> {
@@ -27,133 +42,13 @@ export class TestingAdapter<zO, zI> {
     this.#tools = tools;
   }
 
-  // deno-lint-ignore require-await
-  async run({ history }: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): Promise<ChatItem[]> {
-    const lastMessage = history.slice().pop();
-    if (!lastMessage) {
-      return [{
-        type: "output_text",
-        content: "How can I assist you today?",
-      }];
-    }
-    if (
-      lastMessage.type === "input_text" &&
-      lastMessage.content.toLowerCase().includes("hello")
-    ) {
-      return [{
-        type: "output_text",
-        content: "Hey! How are you doing?",
-      }];
-    }
-
-    if (
-      lastMessage.type === "input_text" &&
-      lastMessage.content === "Can you give me a temperature estimate?"
-    ) {
-      return [{ type: "output_text", content: "0" }];
-    }
-
-    if (
-      lastMessage.type === "input_text" &&
-      lastMessage.content === "Can you give me a cat name?"
-    ) {
-      return [{
-        type: "output_text",
-        content: JSON.stringify({ name: "Bingus" }),
-      }];
-    }
-
-    if (
-      lastMessage.type === "input_text" &&
-      lastMessage.content === "Can you tell me what cat websites there are?"
-    ) {
-      const searchTool = this.#tools[0];
-      return [
-        {
-          type: "tool_use",
-          tool_use_id: Math.random().toString(),
-          kind: searchTool.name,
-          content: '"cats"',
-        },
-      ];
-    }
-
-    if (
-      lastMessage.type === "input_text" &&
-      lastMessage.content === "Call output tool"
-    ) {
-      const tool = this.#tools.find((t) => t.name === "output_tool");
-      if (tool) {
-        return [{
-          type: "tool_use",
-          tool_use_id: "output-tool-id",
-          kind: tool.name,
-        }];
-      }
-    }
-
-    if (
-      lastMessage.type === "input_text" &&
-      lastMessage.content === "Call output tool and search"
-    ) {
-      const outputTool = this.#tools.find((t) => t.name === "output_tool");
-      const searchTool = this.#tools.find((t) => t.name !== "output_tool");
-      if (outputTool && searchTool) {
-        return [
-          {
-            type: "tool_use",
-            tool_use_id: "search-tool-id",
-            kind: searchTool.name,
-            content: '"cats"',
-          },
-          {
-            type: "tool_use",
-            tool_use_id: "output-tool-id",
-            kind: outputTool.name,
-          },
-        ];
-      }
-    }
-
-    if (lastMessage.type === "tool_result_text") {
-      if (lastMessage.content === "throw") {
-        const store = testingTracker.getStore();
-        if (store) {
-          store.failures += 1;
-        }
-        throw new Error("Deterministic Provider Error");
-      }
-
-      return [{
-        type: "output_text",
-        content: "looks like the tool call got " + lastMessage.content,
-      }];
-    }
-
-    return [
-      {
-        type: "output_text",
-        content:
-          "I'm sorry, but I seem to be having issues processing your request...",
-      },
-    ];
-  }
-
-  // TODO: add testing here
   async *stream({ systemPrompt, history }: {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AdapterStreamIterator {
     if (systemPrompt === "Basic test") {
-      yield* streamText(
-        "Basic test worked!",
-        0,
-      );
+      yield* streamText("Basic test worked!", 0);
       return;
     }
 
@@ -169,7 +64,7 @@ export class TestingAdapter<zO, zI> {
         return;
       }
       // Should not reach here if ModelOutput terminates the loop
-      yield* streamText("this should not appear", history.length);
+      yield* streamText("this should not appear", 0);
       return;
     }
 
@@ -194,13 +89,91 @@ export class TestingAdapter<zO, zI> {
         return;
       }
       // Second turn: after tool results, return a final text reply
-      yield* streamText("done", history.length);
+      yield* streamText("done", 0);
       return;
     }
 
-    yield* streamText(
-      "[undefined case]",
-      0,
-    );
+    const lastMessage = history.at(-1);
+    if (!lastMessage) {
+      yield* streamText("How can I assist you today?", 0);
+      return;
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content.toLowerCase().includes("hello")
+    ) {
+      yield* streamText("Hey! How are you doing?", 0);
+      return;
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Can you give me a temperature estimate?"
+    ) {
+      yield* streamText("0", 0);
+      return;
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Can you give me a cat name?"
+    ) {
+      yield* streamText(JSON.stringify({ name: "Bingus" }), 0);
+      return;
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Can you tell me what cat websites there are?"
+    ) {
+      const searchTool = this.#tools[0];
+      if (searchTool) {
+        yield* streamToolUse(0, "search-tool-id", searchTool.name, '"cats"');
+        return;
+      }
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Call output tool"
+    ) {
+      const tool = this.#tools.find((t) => t.name === "output_tool");
+      if (tool) {
+        yield* streamToolUse(0, "output-tool-id", tool.name);
+        return;
+      }
+    }
+
+    if (
+      lastMessage.type === "input_text" &&
+      lastMessage.content === "Call output tool and search"
+    ) {
+      const outputTool = this.#tools.find((t) => t.name === "output_tool");
+      const searchTool = this.#tools.find((t) => t.name !== "output_tool");
+      if (outputTool && searchTool) {
+        yield* streamToolUse(0, "search-tool-id", searchTool.name, '"cats"');
+        yield* streamToolUse(1, "output-tool-id", outputTool.name);
+        return;
+      }
+    }
+
+    if (lastMessage.type === "tool_result_text") {
+      if (lastMessage.content === "throw") {
+        const store = testingTracker.getStore();
+        if (store) {
+          store.failures += 1;
+        }
+        throw new Error("Deterministic Provider Error");
+      }
+
+      yield* streamText(
+        "looks like the tool call got " + lastMessage.content,
+        0,
+      );
+      return;
+    }
+
+    yield* streamText("[undefined case]", 0);
   }
 }

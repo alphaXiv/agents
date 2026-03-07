@@ -3,8 +3,9 @@ import { abortable } from "@std/async/abortable";
 import { ADAPTERS } from "./adapters.ts";
 import { ModelOutput, type Tool } from "./tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AgentStreamIterator,
   ChatItem,
+  ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
 } from "./types.ts";
@@ -16,7 +17,6 @@ import {
   crossPlatformRemoveHandleSigInt,
   crossPlatformStdin,
   iteratePromiseArray,
-  runWithRetries,
 } from "./util.ts";
 import { addStreamItem } from "./client.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
@@ -26,10 +26,9 @@ import type { ReasoningEffort } from "@alphaxiv/agents";
 import { DEBUG_MODE } from "./constants.ts";
 
 const MAX_TURNS = 100;
-const MAX_PROVIDER_ERRORS = 10;
+const MAX_PROVIDER_ERRORS = 5;
 
 export type ModelString =
-  | "__testing:deterministic"
   | "openai:gpt-5.4"
   | "openai:gpt-5.2"
   | "openai:gpt-5.1"
@@ -161,172 +160,121 @@ export class Agent<
     }
   }
 
-  #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
-    return toolUses.map(async (toolUse) => {
+  async #runTool(
+    use: ChatItemToolUse,
+    signal: AbortSignal,
+  ): Promise<{ id: string; items: ChatItemToolResult[] }> {
+    try {
+      const tool = this.#tools.find((tool) => tool.name === use.kind);
+      if (!tool) {
+        throw new Error(`Tool does not exist: ${use.kind}`);
+      }
+
       try {
-        const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
-        if (!tool) {
-          throw new Error(`Tool does not exist: ${toolUse.kind}`);
+        if (!(tool.parameters instanceof ZodVoid)) {
+          assert(use.content);
+          tool.parameters.parse(JSON.parse(use.content));
         }
-
-        try {
-          if (!(tool.parameters instanceof ZodVoid)) {
-            assert(toolUse.content);
-            tool.parameters.parse(JSON.parse(toolUse.content));
-          }
-        } catch (err) {
-          throw new Error(
-            `Invalid parameters for tool: ${
-              err instanceof Error ? err.message : err
-            }`,
-          );
-        }
-
-        const result = await abortable(
-          signalAsyncLocalStorage.run(signal, async () => {
-            return await tool.execute({
-              param: toolUse.content ? JSON.parse(toolUse.content) : undefined,
-            });
-          }),
-          signal,
-        );
-
-        if (result instanceof ModelOutput) throw result;
-
-        return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
       } catch (err) {
-        if (err instanceof ModelOutput || signal.aborted) {
-          throw err;
-        }
-        return [{
-          type: "tool_result_text" as const,
-          tool_use_id: toolUse.tool_use_id,
-          content: "Error: " +
-            (err instanceof Error ? err.message : (err as string).toString()),
-        }];
-      }
-    });
-  }
-
-  /** Run agent without streaming */
-  async run(
-    chatLike: ChatLike,
-    options?: {
-      signal: AbortSignal;
-    },
-  ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
-    const signal = options?.signal ?? signalAsyncLocalStorage.getStore() ??
-      new AbortController().signal;
-    const history = convertChatLikeToChatItem(chatLike, "input_text");
-    const adapterClass = ADAPTERS[this.#provider];
-    if (!adapterClass) throw new Error("Could not resolve provider");
-    const adapter = new adapterClass({
-      model: this.#model,
-      output: this.#output,
-      tools: this.#tools,
-      reasoningEffort: this.#reasoningEffort,
-    });
-
-    const newHistory: ChatItem[] = [];
-    for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const result = await runWithRetries(() =>
-        adapter.run({
-          systemPrompt: this.#instructions,
-          history: [...history, ...newHistory],
-          signal,
-        }), this.#noRetries ? 1 : 5);
-
-      newHistory.push(...result);
-
-      const toolUses = result.filter((chatItem) =>
-        chatItem.type === "tool_use"
-      );
-      if (toolUses.length > 0) {
-        const toolResults = this.#runToolUses(toolUses, signal);
-        try {
-          newHistory.push(...(await Promise.all(toolResults)).flat());
-        } catch (err) {
-          if (err instanceof ModelOutput) {
-            const value = err.value as ResolveAgentOutput<zO, Tools>;
-            return {
-              history: [...history, ...newHistory],
-              output: value,
-              outputText: typeof value === "string"
-                ? value
-                : JSON.stringify(value),
-            };
-          }
-          throw err;
-        }
-        continue;
+        throw new Error(
+          `Invalid parameters for tool: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
       }
 
-      const finalItem = newHistory[newHistory.length - 1];
-      if (this.#output) {
-        if (finalItem.type !== "output_text") {
-          // TODO: add error
-          continue;
-        }
-
-        try {
-          this.#output.parse(JSON.parse(finalItem.content));
-        } catch (err) {
-          if (DEBUG_MODE) console.error("parsing failed", finalItem.content);
-          const errStr = err instanceof Error
-            ? err.message
-            : (err as string).toString();
-          newHistory.push({
-            type: "output_text",
-            content: "Sorry, my output has an error: " + errStr +
-              "\n I will try again.",
+      const result = await abortable(
+        signalAsyncLocalStorage.run(signal, async () => {
+          return await tool.execute({
+            param: use.content ? JSON.parse(use.content) : undefined,
+            signal,
           });
-          continue;
-        }
-      }
+        }),
+        signal,
+      );
+
+      if (result instanceof ModelOutput) throw result;
 
       return {
-        history: newHistory,
-        output: (this.#output
-          ? JSON.parse(
-            finalItem.type === "output_text" ? finalItem.content : "",
-          )
-          : undefined) as ResolveAgentOutput<zO, Tools>,
-        outputText: newHistory.filter((history) =>
-          history.type === "output_text"
-        ).map((history) => history.content).join("\n"),
+        id: use.tool_use_id,
+        items: convertToolResultLikeToChatItem(result, use.tool_use_id),
+      };
+    } catch (err) {
+      if (err instanceof ModelOutput || signal.aborted) {
+        throw err;
+      }
+      return {
+        id: use.tool_use_id,
+        items: [{
+          type: "tool_result_text" as const,
+          tool_use_id: use.tool_use_id,
+          content: "Error: " +
+            (err instanceof Error ? err.message : (err as string).toString()),
+        }],
       };
     }
-
-    throw new Error("MAX TURNS EXCEEDED");
   }
 
-  /** Run agent with streaming */
+  /**
+   * Run the agent without streaming. Internally this just runs a stream and
+   * collects the output for you.
+   */
+  async run(
+    chatLike: ChatLike,
+    options?: { signal: AbortSignal },
+  ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
+    const result = this.stream(chatLike, options);
+    while (true) {
+      const next = await result.next();
+      if (next.done) return next.value;
+    }
+  }
+
+  /** Run the agent, streaming the response and tool calls. */
   async *stream(chatLike: ChatLike, options?: {
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AgentStreamIterator<ResolveAgentOutput<zO, Tools>> {
+    options?.signal.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
     const adapterClass = ADAPTERS[this.#provider];
-    if (!adapterClass) throw new Error("Could not resolve provider");
+    if (!adapterClass) {
+      throw new Error(
+        "Could not resolve provider " + JSON.stringify(this.#provider),
+      );
+    }
     const adapter = new adapterClass({
       model: this.#model,
       output: this.#output,
       tools: this.#tools,
       reasoningEffort: this.#reasoningEffort,
     });
+
+    // prepare a separate signal for tools that can be cancelled if a provider
+    // fails too much. note that we do persist tool calls between assistant runs,
+    // but in the failure case we have to abort.
+    const toolController = new AbortController();
+    signal.addEventListener("abort", () => toolController.abort(signal.reason));
+
+    // tool use id -> result from tool
+    const pendingTools = new Map<
+      string,
+      Promise<{ id: string; items: ChatItemToolResult[] }>
+    >();
 
     let providerErrors = 0;
     const history: ChatItem[] = [];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const newHistory: ChatItem[] = [];
-      const stream = adapter.stream({
-        systemPrompt: this.#instructions,
-        history: [...initialHistory, ...history],
-        signal,
-      });
 
+      let failed = false;
       let err: unknown;
       try {
+        const stream = adapter.stream({
+          systemPrompt: this.#instructions,
+          history: [...initialHistory, ...history],
+          signal,
+        });
         for await (const part of stream) {
           const reIndexedPart = {
             ...part,
@@ -334,20 +282,33 @@ export class Agent<
           };
           addStreamItem(newHistory, part);
           yield reIndexedPart;
+
+          // execute tools immediately
+          if (part.type === "tool_use") {
+            assert(
+              !pendingTools.has(part.tool_use_id),
+              `Provider ${this.#provider} did not use unique tool use id: ${part.tool_use_id}`,
+            );
+            pendingTools.set(
+              part.tool_use_id,
+              this.#runTool(part, toolController.signal),
+            );
+          }
         }
       } catch (error) {
         err = error;
+        failed = true;
       }
 
-      const toolUses = newHistory.filter((chatItem) =>
-        chatItem.type === "tool_use"
-      );
-      if (toolUses.length > 0) {
-        // execute and stream tools
-        const promises = this.#runToolUses(toolUses, signal);
+      // process tool outputs before re-looping
+      if (pendingTools.size > 0) {
         try {
-          for await (const toolResults of iteratePromiseArray(promises)) {
-            for (const toolResult of toolResults) {
+          for await (
+            const result of iteratePromiseArray(pendingTools.values())
+          ) {
+            pendingTools.delete(result.id);
+
+            for (const toolResult of result.items) {
               if (toolResult.type === "tool_result_text") {
                 yield {
                   type: "tool_result_text",
@@ -365,18 +326,37 @@ export class Agent<
                   content: toolResult.content,
                 };
                 newHistory.push(toolResult);
-              } else {
-                if (DEBUG_MODE) {
-                  console.error(
-                    "What the frick, this isn't a tool result!",
-                    toolResult,
-                  );
-                }
-              }
+              } else toolResult satisfies never;
             }
           }
         } catch (err) {
-          if (err instanceof ModelOutput) return;
+          let index = newHistory.length + history.length;
+          for (const tool_use_id of pendingTools.keys()) {
+            yield {
+              type: "tool_result_text",
+              index,
+              tool_use_id,
+              content: "Error: Tool call was cancelled",
+            };
+            index += 1;
+          }
+
+          if (err instanceof ModelOutput) {
+            const { value } = err;
+            toolController.abort(
+              new Error(
+                "Tool calls cancelled due to one returning ModelOutput",
+              ),
+            );
+            return {
+              history: newHistory,
+              output: err.value,
+              outputText: typeof value === "string"
+                ? value
+                : JSON.stringify(value),
+            };
+          }
+
           throw err;
         }
 
@@ -386,10 +366,10 @@ export class Agent<
       }
 
       // If streaming fails halfway through a message, retry
-      if (err) {
+      if (failed) {
         if (this.#noRetries) throw err;
+        providerErrors++;
         if (providerErrors < MAX_PROVIDER_ERRORS) {
-          providerErrors++;
           // continue loop
           history.push(...newHistory);
           continue;
@@ -398,8 +378,44 @@ export class Agent<
         }
       }
 
-      break;
+      history.push(...newHistory);
+
+      const finalItem = history.at(-1);
+      let output: ResolveAgentOutput<zO, Tools>;
+      if (this.#output) {
+        if (!finalItem || finalItem.type !== "output_text") {
+          throw new Error("LLM did not output");
+        }
+
+        try {
+          output = this.#output.parse(
+            JSON.parse(finalItem.content),
+          ) as ResolveAgentOutput<zO, Tools>;
+        } catch (err) {
+          if (DEBUG_MODE) console.error("parsing failed", finalItem.content);
+          const errStr = err instanceof Error
+            ? err.message
+            : (err as string).toString();
+          history.push({
+            type: "output_text",
+            content: "Sorry, my output has an error: " + errStr +
+              "\n I will try again.",
+          });
+          continue;
+        }
+      } else {
+        output = undefined as ResolveAgentOutput<zO, Tools>;
+      }
+
+      return {
+        history,
+        output,
+        outputText: history
+          .filter((history) => history.type === "output_text")
+          .map((history) => history.content).join("\n"),
+      };
     }
+    throw new Error("MAX TURNS EXCEEDED");
   }
 
   async cli() {

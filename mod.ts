@@ -7,7 +7,7 @@ export {
   Tool,
 } from "./src/tool.ts";
 export type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ChatLike,
   ReasoningEffort,

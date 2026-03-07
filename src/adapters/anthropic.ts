@@ -3,7 +3,7 @@ import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages
 import z from "zod";
 import type { Tool } from "../tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "../types.ts";
@@ -289,7 +289,7 @@ export class AnthropicAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AdapterStreamIterator {
     const anthropicHistory = await getAnthropicHistory(
       history,
       this.#normalizedTools,

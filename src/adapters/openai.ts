@@ -9,7 +9,7 @@ import type {
 } from "openai/resources/responses/responses";
 import type { Tool } from "../tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ChatItemInputFile,
   ChatItemToolResultFile,
@@ -317,7 +317,7 @@ export class OpenAIAdapter<zO, zI> {
     systemPrompt: string;
     history: ChatItem[];
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AdapterStreamIterator {
     const openAIHistory = await getOpenAIHistory(
       history,
       this.#normalizedTools,
