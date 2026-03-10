@@ -1,12 +1,17 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@clo/lib@3.0.0": "3.0.0",
     "jsr:@lino/pdf-parse@~0.3.1": "0.3.1",
     "jsr:@std/assert@^1.0.15": "1.0.15",
     "jsr:@std/async@*": "1.0.15",
     "jsr:@std/async@^1.0.15": "1.0.15",
+    "jsr:@std/bytes@^1.0.6": "1.0.6",
+    "jsr:@std/crypto@^1.0.5": "1.0.5",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.12",
+    "jsr:@std/uuid@*": "1.1.0",
+    "jsr:@std/uuid@^1.1.0": "1.1.0",
     "npm:@anthropic-ai/sdk@0.67": "0.67.0_zod@4.1.12",
     "npm:@google/genai@^1.25.0": "1.25.0",
     "npm:@types/node@*": "24.2.0",
@@ -15,6 +20,9 @@
     "npm:zod@4": "4.1.12"
   },
   "jsr": {
+    "@clo/lib@3.0.0": {
+      "integrity": "0c806e34505442ad4969e0b66c032e6cb3f27513b27b02c53990ce8494d1f805"
+    },
     "@lino/pdf-parse@0.3.1": {
       "integrity": "2ef1da48f826dd74e22bfc30110effc82f239a17e930c1f8bd610415e40ff690",
       "dependencies": [
@@ -30,11 +38,24 @@
     "@std/async@1.0.15": {
       "integrity": "55d1d9d04f99403fe5730ab16bdcc3c47f658a6bf054cafb38a50f046238116e"
     },
+    "@std/bytes@1.0.6": {
+      "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
+    },
+    "@std/crypto@1.0.5": {
+      "integrity": "0dcfbb319fe0bba1bd3af904ceb4f948cde1b92979ec1614528380ed308a3b40"
+    },
     "@std/encoding@1.0.10": {
       "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    },
+    "@std/uuid@1.1.0": {
+      "integrity": "6268db2ccf172849c9be80763354ca305d49ef4af41fe995623d44fcc3f7457c",
+      "dependencies": [
+        "jsr:@std/bytes",
+        "jsr:@std/crypto"
+      ]
     }
   },
   "npm": {
@@ -298,6 +319,7 @@
       "jsr:@std/assert@^1.0.15",
       "jsr:@std/async@^1.0.15",
       "jsr:@std/encoding@^1.0.10",
+      "jsr:@std/uuid@^1.1.0",
       "npm:@anthropic-ai/sdk@0.67",
       "npm:@google/genai@^1.25.0",
       "npm:openai@^6.26.0",

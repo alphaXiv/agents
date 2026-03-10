@@ -314,6 +314,7 @@ export function anthropicAdapter<Models extends string>(
         }
       } else if (part.type === "content_block_start") {
         if (part.content_block.type === "tool_use") {
+          yield { type: "unstable_tracing_tool_use_start" };
           parts[part.index] = {
             type: "tool_use",
             kind: part.content_block.name,
@@ -354,6 +355,12 @@ export function anthropicAdapter<Models extends string>(
         };
       }
     }
+
+    const final = await response.finalMessage();
+    return {
+      outputTokens: final.usage.output_tokens,
+      inputTokens: final.usage.input_tokens,
+    };
   }
 
   return { name: "anthropic", stream };

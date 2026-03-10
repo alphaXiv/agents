@@ -2,10 +2,8 @@ import z from "zod";
 import { delay } from "@std/async/delay";
 import { Agent, Tool } from "../mod.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assertObjectMatch } from "@std/assert/object-match";
 import { testingAdapter, testingTracker } from "./utils/testing-adapter.ts";
-import { enableDebugMode } from "../src/constants.ts";
-
-enableDebugMode();
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({
@@ -14,10 +12,11 @@ Deno.test("Basic input out of agents works", async () => {
     instructions: "You are a friendly assistant",
   });
   const run = await agent.run("Hello!");
-  assertEquals(run.history, [{
+  assertEquals(run.history.length, 1);
+  assertObjectMatch(run.history[0], {
     type: "output_text",
     content: "Hey! How are you doing?",
-  }]);
+  });
 });
 
 Deno.test("History input out of agents works", async () => {
@@ -30,10 +29,11 @@ Deno.test("History input out of agents works", async () => {
     type: "input_text",
     content: "Hello!",
   }]);
-  assertEquals(run.history, [{
+  assertEquals(run.history.length, 1);
+  assertObjectMatch(run.history[0], {
     type: "output_text",
     content: "Hey! How are you doing?",
-  }]);
+  });
 });
 
 Deno.test("Structured output works", async () => {

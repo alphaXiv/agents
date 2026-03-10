@@ -11,6 +11,8 @@ async function* streamText(
   for (const char of text) {
     yield { type: "delta_output_text", delta: char, index };
   }
+
+  return { inputTokens: 0, outputTokens: 0 };
 }
 
 async function* streamToolUse(
@@ -26,6 +28,7 @@ async function* streamToolUse(
     kind,
     content,
   };
+  return { inputTokens: 0, outputTokens: 0 };
 }
 
 export const testingAdapter: Adapter<"deterministic"> = {
@@ -34,7 +37,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
   async *stream({ systemPrompt, history, tools }) {
     if (systemPrompt === "Basic test") {
       yield* streamText("Basic test worked!", 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     if (systemPrompt === "Model output stream test") {
@@ -46,18 +49,18 @@ export const testingAdapter: Adapter<"deterministic"> = {
           tool_use_id: "output-tool-stream-id",
           kind: "output_tool",
         };
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
       // Should not reach here if ModelOutput terminates the loop
       yield* streamText("this should not appear", 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     if (systemPrompt === "Structured output retry stream test") {
       const lastMessage = history.at(-1);
       if (!lastMessage || lastMessage.type === "input_text") {
         yield* streamText(JSON.stringify({ name: 123 }), 0);
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
 
       if (
@@ -67,7 +70,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
         )
       ) {
         yield* streamText(JSON.stringify({ name: "Bingus" }), 0);
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
 
       throw new Error(
@@ -93,17 +96,17 @@ export const testingAdapter: Adapter<"deterministic"> = {
           kind: "fast_tool",
           content: '"query"',
         };
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
       // Second turn: after tool results, return a final text reply
       yield* streamText("done", 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     const lastMessage = history.at(-1);
     if (!lastMessage) {
       yield* streamText("How can I assist you today?", 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     if (
@@ -111,7 +114,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
       lastMessage.content.toLowerCase().includes("hello")
     ) {
       yield* streamText("Hey! How are you doing?", 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     if (
@@ -119,7 +122,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
       lastMessage.content === "Can you give me a temperature estimate?"
     ) {
       yield* streamText("0", 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     if (
@@ -127,7 +130,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
       lastMessage.content === "Can you give me a cat name?"
     ) {
       yield* streamText(JSON.stringify({ name: "Bingus" }), 0);
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     if (
@@ -137,7 +140,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
       const searchTool = tools[0];
       if (searchTool) {
         yield* streamToolUse(0, "search-tool-id", searchTool.name, '"cats"');
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
     }
 
@@ -148,7 +151,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
       const tool = tools.find((t) => t.name === "output_tool");
       if (tool) {
         yield* streamToolUse(0, "output-tool-id", tool.name);
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
     }
 
@@ -161,7 +164,7 @@ export const testingAdapter: Adapter<"deterministic"> = {
       if (outputTool && searchTool) {
         yield* streamToolUse(0, "search-tool-id", searchTool.name, '"cats"');
         yield* streamToolUse(1, "output-tool-id", outputTool.name);
-        return;
+        return { inputTokens: 0, outputTokens: 0 };
       }
     }
 
@@ -178,9 +181,10 @@ export const testingAdapter: Adapter<"deterministic"> = {
         "looks like the tool call got " + lastMessage.content,
         0,
       );
-      return;
+      return { inputTokens: 0, outputTokens: 0 };
     }
 
     yield* streamText("[undefined case]", 0);
+    return { inputTokens: 0, outputTokens: 0 };
   },
 };

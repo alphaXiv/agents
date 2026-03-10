@@ -1,13 +1,11 @@
 import { Agent, Tool } from "../mod.ts";
 import { assertEquals } from "@std/assert";
+import { assertObjectMatch } from "@std/assert/object-match";
 import z from "zod";
 import { delay } from "@std/async/delay";
-import { enableDebugMode } from "../src/constants.ts";
 import type { ChatItem, StreamItem } from "../src/types.ts";
 import { addStreamItem } from "../src/client.ts";
 import { testingAdapter } from "./utils/testing-adapter.ts";
-
-enableDebugMode();
 
 Deno.test("Basic streaming test", async () => {
   const agent = new Agent({
@@ -25,10 +23,11 @@ Deno.test("Basic streaming test", async () => {
   }
 
   assertEquals(count, 18);
-  assertEquals(output, [{
+  assertEquals(output.length, 1);
+  assertObjectMatch(output[0], {
     type: "output_text",
     content: "Basic test worked!",
-  }]);
+  });
 });
 
 Deno.test("Parallel tool calls are streamed one by one in settlement order", async () => {

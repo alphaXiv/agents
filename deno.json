@@ -24,6 +24,7 @@
     "@std/assert": "jsr:@std/assert@^1.0.15",
     "@std/async": "jsr:@std/async@^1.0.15",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
+    "@std/uuid": "jsr:@std/uuid@^1.1.0",
     "openai": "npm:openai@^6.26.0",
     "zod": "npm:zod@^4.0.0"
   }

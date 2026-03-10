@@ -62,6 +62,20 @@ export type ChatItem =
   | ChatItemToolResultText
   | ChatItemToolResultFile;
 
+/**
+ * Agent runs return ChatItem and StreamItem items decorated with a tracing ID.
+ * Traces are not needed as input anywhere, and you can ignore them if you don't
+ * require it.
+ */
+export type WithTraceId<T> = T & {
+  /**
+   * ID of the {@linkcode TraceEvent} that created this item. For tools, this
+   * points to the tool's trace id, and not the message trace for generating the
+   * tool use.
+   */
+  trace: string;
+};
+
 export type ToolResultLike = string | ({
   type: "tool_result_file";
   kind: string;
@@ -102,16 +116,33 @@ export type ReasoningEffort = "minimal" | "normal"; // TODO: investigate adding 
 
 export type StreamItem = BaseStreamItem & StreamItemType;
 
+/**
+ * Hints an adapter can send to the agents SDK, used currently for tracing purposes only.
+ * These are not forwarded
+ */
+type UnstableStreamHints = { type: "unstable_tracing_tool_use_start" };
+
 export type AdapterStreamIterator = AsyncGenerator<
-  StreamItem,
-  ChatItem[] | void,
+  StreamItem | UnstableStreamHints,
+  ProviderStreamMetadata,
   unknown
 >;
 
 export type AgentStreamIterator<T = unknown> = AsyncGenerator<
-  StreamItem,
+  WithTraceId<StreamItem>,
   AgentRunResult<T>,
   unknown
 >;
 
 export type Awaitable<T> = T | Promise<T>;
+
+export interface ProviderStreamMetadata {
+  /** Count of input tokens */
+  inputTokens: number | null;
+  /** Count of output tokens. If the provider is unable to classify, then all tokens are "output" tokens. */
+  outputTokens: number | null;
+}
+
+export interface AdapterStreamSingleResult extends ProviderStreamMetadata {
+  items: ChatItem[];
+}

@@ -52,14 +52,12 @@ export function addStreamItem(
  * create testing adapters that do not do any streaming, but need to fufill the
  * streaming interface.
  */
-export async function* convertChatItemsToStream(
-  input: {
-    items: ChatItem[];
-    // inputTokens: number
-    // outputTokens: number
-  },
-): AdapterStreamIterator {
-  const { /* inputTokens, outputTokens,*/ items } = input;
+export async function* convertChatItemsToStream(input: {
+  items: ChatItem[];
+  inputTokens: number;
+  outputTokens: number;
+}): AdapterStreamIterator {
+  const { inputTokens, outputTokens, items } = input;
   let index = 0;
   for (const item of items) {
     if (item.type === "output_text") {
@@ -108,5 +106,5 @@ export async function* convertChatItemsToStream(
       );
     }
   }
-  // return { inputTokens, outputTokens };
+  return { inputTokens, outputTokens };
 }

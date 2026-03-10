@@ -504,6 +504,8 @@ export function openAiCompletionsAdapter<Models extends string>(
             continue;
           }
 
+          yield { type: "unstable_tracing_tool_use_start" };
+
           const tool = normalizedTools.find((tool) =>
             tool.openai.function.name === call.function?.name
           );
@@ -546,6 +548,12 @@ export function openAiCompletionsAdapter<Models extends string>(
           : getToolUseContent(tool, toolUse.content ?? ""),
       };
     }
+
+    const final = await response.totalUsage();
+    return {
+      inputTokens: final.prompt_tokens,
+      outputTokens: final.completion_tokens,
+    };
   }
 
   return { name: options.name, stream };
