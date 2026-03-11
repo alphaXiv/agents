@@ -9,13 +9,11 @@ import { DEBUG_MODE } from "./constants.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
 import { ModelOutput, type Tool } from "./tool.ts";
 import type {
-  AdapterStreamIterator,
   AgentStreamIterator,
   ChatItem,
   ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
-  StreamItem,
 } from "./types.ts";
 import {
   convertChatLikeToChatItem,
@@ -24,6 +22,7 @@ import {
   crossPlatformLog,
   crossPlatformRemoveHandleSigInt,
   crossPlatformStdin,
+  errMessage,
   iteratePromiseArray,
 } from "./util.ts";
 
@@ -268,6 +267,8 @@ export class Agent<
     options?.signal.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
+    if (this.#adapter instanceof Promise) this.#adapter = await this.#adapter;
+    const adapter = this.#adapter;
 
     // prepare a separate signal for tools that can be cancelled if a provider
     // fails too much. note that we do persist tool calls between assistant runs,
@@ -289,7 +290,7 @@ export class Agent<
       let failed = false;
       let err: unknown;
       try {
-        const stream = normalizeAdapterOutputToStream(adapter.stream({
+        const stream = await adapter.stream({
           model: this.#model,
           output: this.#output,
           tools: this.#tools,
@@ -297,7 +298,7 @@ export class Agent<
           systemPrompt: this.#instructions,
           history: [...initialHistory, ...history],
           signal,
-        }));
+        });
 
         while (true) {
           const { value: part, done } = await stream.next();
@@ -331,8 +332,6 @@ export class Agent<
 
       // process tool outputs before re-looping
       if (pendingTools.size > 0) {
-    if (this.#adapter instanceof Promise) this.#adapter = await this.#adapter;
-    const adapter = this.#adapter;
         try {
           for await (
             const result of iteratePromiseArray(pendingTools.values())
@@ -424,14 +423,18 @@ export class Agent<
           ) as ResolveAgentOutput<zO, Tools>;
         } catch (err) {
           if (DEBUG_MODE) console.error("parsing failed", finalItem.content);
-          const errStr = err instanceof Error
-            ? err.message
-            : (err as string).toString();
+          const content = "Sorry, my output has an error: " +
+            errMessage(err) +
+            "\nI will try again to produce a JSON response.";
           history.push({
             type: "output_text",
-            content: "Sorry, my output has an error: " + errStr +
-              "\n I will try again.",
+            content,
           });
+          yield {
+            type: "delta_output_text",
+            index: history.length - 1,
+            delta: content,
+          };
           continue;
         }
       } else {
@@ -512,66 +515,4 @@ export class Agent<
       crossPlatformLog(prompt);
     }
   }
-}
-
-function normalizeAdapterOutputToStream(
-  input: AdapterStreamIterator | Promise<AdapterStreamSingleResult>,
-) {
-  if ("next" in input) return input;
-  return convertChatItemsToStream(input);
-}
-
-async function* convertChatItemsToStream(
-  input: Promise<AdapterStreamSingleResult>,
-): AdapterStreamIterator {
-  const { inputTokens, outputTokens, items } = await input;
-  let index = 0;
-  for (const item of items) {
-    if (item.type === "output_text") {
-      yield {
-        type: "delta_output_text",
-        delta: item.content,
-        index,
-      };
-      index += 1;
-    } else if (item.type === "output_reasoning") {
-      yield {
-        type: "delta_output_reasoning",
-        delta: item.content,
-        index,
-      };
-      index += 1;
-    } else if (item.type === "tool_use") {
-      yield {
-        type: "tool_use",
-        tool_use_id: item.tool_use_id,
-        kind: item.kind,
-        content: item.content,
-        index,
-      };
-      index += 1;
-    } else if (item.type === "tool_result_text") {
-      yield {
-        type: "tool_result_text",
-        tool_use_id: item.tool_use_id,
-        content: item.content,
-        index,
-      };
-      index += 1;
-    } else if (item.type === "tool_result_file") {
-      yield {
-        type: "tool_result_file",
-        tool_use_id: item.tool_use_id,
-        kind: item.kind,
-        content: item.content,
-        index,
-      };
-      index += 1;
-    } else {
-      throw new Error(
-        "Adapters cannot emit chat item type " + JSON.stringify(item.type),
-      );
-    }
-  }
-  return { inputTokens, outputTokens };
 }

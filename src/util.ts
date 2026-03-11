@@ -149,3 +149,22 @@ export function requireEnv(name: string) {
   }
   return value;
 }
+
+/** Retrieve an error message from any value */
+export function errMessage(error: unknown): string {
+  const message = (error as null | { message: unknown })?.message ?? error;
+  try {
+    return typeof message === "string"
+      ? message
+      // NOTE: typescript standard library lies here (https://github.com/mattpocock/ts-reset/pull/190)
+      : String(JSON.stringify(message) as string | undefined);
+  } catch {
+    /* fallthrough */
+  }
+  try {
+    return String(message);
+  } catch {
+    /* fallthrough */
+  }
+  return `Could not stringify error message ${typeof message}`;
+}

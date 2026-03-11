@@ -53,6 +53,28 @@ export const testingAdapter: Adapter<"deterministic"> = {
       return;
     }
 
+    if (systemPrompt === "Structured output retry stream test") {
+      const lastMessage = history.at(-1);
+      if (!lastMessage || lastMessage.type === "input_text") {
+        yield* streamText(JSON.stringify({ name: 123 }), 0);
+        return;
+      }
+
+      if (
+        lastMessage.type === "output_text" &&
+        lastMessage.content.includes(
+          "I will try again to produce a JSON response.",
+        )
+      ) {
+        yield* streamText(JSON.stringify({ name: "Bingus" }), 0);
+        return;
+      }
+
+      throw new Error(
+        `Unexpected history item for structured retry test: ${lastMessage.type}`,
+      );
+    }
+
     if (systemPrompt === "Parallel tool test") {
       const lastMessage = history.slice().pop();
       // First turn: yield two tool_use items to be run in parallel

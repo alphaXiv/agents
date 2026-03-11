@@ -3,9 +3,9 @@ import type { ToolResultLike } from "./types.ts";
 import { delay } from "@std/async/delay";
 
 export class ModelOutput<T> {
-  value: T;
-  constructor(value: T) {
-    this.value = value;
+  output: T;
+  constructor(output: T) {
+    this.output = output;
   }
 }
 

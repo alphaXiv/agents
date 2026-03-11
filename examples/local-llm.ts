@@ -1,6 +1,6 @@
 import z from "zod";
 import { Agent, Tool } from "@alphaxiv/agents";
-import { lmStudioAdapter } from "../src/adapters/lmstudio.ts";
+import { lmStudioAdapter } from "@alphaxiv/agents/lmstudio";
 
 const calculator = new Tool({
   name: "Calculating...",

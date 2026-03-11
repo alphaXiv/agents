@@ -6,11 +6,11 @@
     ".": "./mod.ts",
     "./client": "./src/client.ts",
 
-    "./adapters/openai-responses": "./src/adapters/openai-responses.ts",
-    "./adapters/openai-completions": "./src/adapters/openai-completions.ts",
-    "./adapters/anthropic": "./src/adapters/anthropic.ts",
-    "./adapters/google": "./src/adapters/google.ts",
-    "./adapters/lmstudio": "./src/adapters/lmstudio.ts"
+    "./openai-responses": "./src/adapters/openai-responses.ts",
+    "./openai-completions": "./src/adapters/openai-completions.ts",
+    "./anthropic": "./src/adapters/anthropic.ts",
+    "./google": "./src/adapters/google.ts",
+    "./lmstudio": "./src/adapters/lmstudio.ts"
   },
   "tasks": {
     "dev": "deno run --watch --env-file main.ts",

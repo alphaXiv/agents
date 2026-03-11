@@ -113,3 +113,5 @@ export type AgentStreamIterator<T = unknown> = AsyncGenerator<
   AgentRunResult<T>,
   unknown
 >;
+
+export type Awaitable<T> = T | Promise<T>;

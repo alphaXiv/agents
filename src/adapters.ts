@@ -2,11 +2,11 @@ import type z from "zod";
 import type { Tool } from "./tool.ts";
 import type {
   AdapterStreamIterator,
-  AdapterStreamSingleResult,
+  Awaitable,
   ChatItem,
   ReasoningEffort,
 } from "./types.ts";
-import { crossPlatformEnv } from "./util.ts";
+import { crossPlatformEnv, requireEnv } from "./util.ts";
 
 export interface AdapterStreamOptions<
   zO,
@@ -37,21 +37,12 @@ export interface AdapterTypeOptions<Models extends string> {
 }
 
 export interface Adapter<Model extends string = string> {
+  /** Name of the provider. Shown in traces and error messages. */
   name: string;
 
   stream<zO, zI>(
     config: AdapterStreamOptions<zO, zI, Model>,
-  ): AdapterStreamIterator | Promise<AdapterStreamSingleResult>;
-
-  // TODO: shouldRetry?(err: unknown): boolean;
-}
-
-function requireEnv(name: string) {
-  const value = crossPlatformEnv(name);
-  if (!value) {
-    throw new Error(`Missing required environment variable ${name}`);
-  }
-  return value;
+  ): Awaitable<AdapterStreamIterator>;
 }
 
 export const ADAPTERS: Record<string, () => Adapter | Promise<Adapter>> = {
