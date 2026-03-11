@@ -1,3 +1,22 @@
+/**
+ * Adapter implementation for Gemini APIs using `@google/genai`.
+ * ```ts
+ * const adapter = googleAdapter({
+ *   name: "google", // display name according to who is running the API
+ *   url: "https://generativelanguage.googleapis.com",
+ *   apiKey: process.env.GEMINI_API_KEY,
+ * });
+ *
+ * const agent = new Agent({
+ *   adapter,
+ *   model: "gemini-2.0-flash"
+ * });
+ * ```
+ * If you are using the default provider and API key environment variable, you
+ * can omit the `adapter` property and use a unified model string like
+ * `model: "google:gemini-2.0-flash"`.
+ * @module
+ */
 import {
   ApiError,
   type Content,
@@ -275,6 +294,7 @@ function getGoogleThinking(
 }
 
 export interface GoogleAdapterOptions {
+  name: string;
   url: string;
   apiKey: string;
 }

@@ -104,7 +104,7 @@ export type AgentOptions<
    * API, that's what this is for. For example, you can call a custom
    * OpenAI-compatible endpoint with `adapter: openAiAdapter({ url: '...' })`.
    */
-  adapter?: A; // TODO: "adapter" or "provider"
+  adapter?: A;
   /**
    * By default, the `ModelString` is parsed for an adapter prefix like
    * `openai:` or `anthropic:`, which will call that adapter with the given

@@ -1,3 +1,22 @@
+/**
+ * Adapter implementation for Anthropic-style APIs using `@anthropic-ai/sdk`.
+ * ```ts
+ * const adapter = anthropicAdapter({
+ *   name: "anthropic", // display name according to who is running the API
+ *   url: "https://api.anthropic.com",
+ *   apiKey: process.env.ANTHROPIC_API_KEY,
+ * });
+ *
+ * const agent = new Agent({
+ *   adapter,
+ *   model: "claude-4.6-sonnet"
+ * });
+ * ```
+ * If you are using the default provider and API key environment variable, you
+ * can omit the `adapter` property and use a unified model string like
+ * `model: "anthropic:claude-4.6-sonnet"`.
+ * @module
+ */
 import Anthropic from "@anthropic-ai/sdk";
 import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages";
 import z from "zod";
@@ -227,6 +246,7 @@ function extractStructuredOutput(text: string) {
 }
 
 export interface AnthropicAdapterOptions {
+  name: string;
   /** example: "https://api.anthropic.com" */
   url: string;
   apiKey: string;

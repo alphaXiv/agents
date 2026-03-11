@@ -1,3 +1,22 @@
+/**
+ * Adapter implementation for OpenAI's Responses API using the `openai` package.
+ * ```ts
+ * const adapter = openAiResponsesAdapter({
+ *   name: "openai", // display name according to who is running the API
+ *   url: "https://api.openai.com/v1",
+ *   apiKey: process.env.OPENAI_API_KEY,
+ * });
+ *
+ * const agent = new Agent({
+ *   adapter,
+ *   model: "gpt-5.4"
+ * });
+ * ```
+ * If you are using the default provider and API key environment variable, you
+ * can omit the `adapter` property and use a unified model string like
+ * `model: "openai:gpt-5.4"`.
+ * @module
+ */
 import OpenAI from "openai";
 import z from "zod";
 import { assert } from "@std/assert";
@@ -37,6 +56,8 @@ const nonReasoningModels = [
 ];
 
 export interface OpenaiResponsesAdapterOptions {
+  name: string;
+
   /** example: "http://localhost:1234/v1" */
   url: string;
   apiKey: string;
@@ -192,7 +213,7 @@ export function openAiResponsesAdapter<Models extends string>(
     }
   }
 
-  return { name: "openai", stream };
+  return { name: options.name, stream };
 }
 
 function getModelReasoning(

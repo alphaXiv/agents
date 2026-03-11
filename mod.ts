@@ -8,6 +8,8 @@ export {
 } from "./src/tool.ts";
 export type {
   AdapterStreamIterator,
+  AdapterStreamSingleResult,
+  AgentStreamIterator,
   ChatItem,
   ChatLike,
   ReasoningEffort,

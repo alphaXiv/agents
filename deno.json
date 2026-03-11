@@ -3,8 +3,14 @@
   "version": "0.4.0",
   "license": "MIT",
   "exports": {
+    ".": "./mod.ts",
     "./client": "./src/client.ts",
-    ".": "./mod.ts"
+
+    "./adapters/openai-responses": "./src/adapters/openai-responses.ts",
+    "./adapters/openai-completions": "./src/adapters/openai-completions.ts",
+    "./adapters/anthropic": "./src/adapters/anthropic.ts",
+    "./adapters/google": "./src/adapters/google.ts",
+    "./adapters/lmstudio": "./src/adapters/lmstudio.ts"
   },
   "tasks": {
     "dev": "deno run --watch --env-file main.ts",

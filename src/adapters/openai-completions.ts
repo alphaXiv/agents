@@ -1,3 +1,19 @@
+/**
+ * Adapter implementation for OpenAI-compatible chat completions APIs using the `openai` package.
+ * ```ts
+ * const adapter = openAiCompletionsAdapter({
+ *   name: "my-provider",
+ *   url: "https://api.example.com/v1",
+ *   apiKey: process.env.MY_PROVIDER_API_KEY,
+ * });
+ *
+ * const agent = new Agent({
+ *   adapter,
+ *   model: "gpt-4.1"
+ * });
+ * ```
+ * @module
+ */
 import OpenAI from "openai";
 import type {
   ChatCompletionFunctionTool,

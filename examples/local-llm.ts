@@ -27,6 +27,7 @@ const calculator = new Tool({
 });
 
 const lmStudio = lmStudioAdapter({
+  name: "localhost lmstudio",
   url: "http://localhost:1234/v1",
   apiKey: null,
   // optionally indicate the supported models
@@ -34,7 +35,7 @@ const lmStudio = lmStudioAdapter({
 });
 
 const agent = new Agent({
-  adapter: lmStudio, // optional. defaults to automatic
+  adapter: lmStudio,
   model: "qwen/qwen3.5-35b-a3b",
 
   instructions: "You are a friendly assistant",
