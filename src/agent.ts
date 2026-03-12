@@ -267,8 +267,7 @@ export class Agent<
     options?.signal.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
-    if (this.#adapter instanceof Promise) this.#adapter = await this.#adapter;
-    const adapter = this.#adapter;
+    const adapter = await this.#adapter;
 
     // prepare a separate signal for tools that can be cancelled if a provider
     // fails too much. note that we do persist tool calls between assistant runs,
