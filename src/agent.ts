@@ -1,12 +1,19 @@
-import type z from "zod";
+import { assert } from "@std/assert/assert";
 import { abortable } from "@std/async/abortable";
-import { ADAPTERS } from "./adapters.ts";
+import type z from "zod";
+import { ZodVoid } from "zod";
+import { type Adapter, ADAPTERS } from "./adapters.ts";
+import { addStreamItem } from "./client.ts";
+import { DEBUG_MODE } from "./constants.ts";
+import { signalAsyncLocalStorage } from "./storage.ts";
 import { ModelOutput, type Tool } from "./tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AgentStreamIterator,
   ChatItem,
+  ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
+  ReasoningEffort,
 } from "./types.ts";
 import {
   convertChatLikeToChatItem,
@@ -15,21 +22,14 @@ import {
   crossPlatformLog,
   crossPlatformRemoveHandleSigInt,
   crossPlatformStdin,
+  errMessage,
   iteratePromiseArray,
-  runWithRetries,
 } from "./util.ts";
-import { addStreamItem } from "./client.ts";
-import { signalAsyncLocalStorage } from "./storage.ts";
-import { ZodVoid } from "zod";
-import { assert } from "@std/assert/assert";
-import type { ReasoningEffort } from "@alphaxiv/agents";
-import { DEBUG_MODE } from "./constants.ts";
 
 const MAX_TURNS = 100;
-const MAX_PROVIDER_ERRORS = 10;
+const MAX_PROVIDER_ERRORS = 5;
 
 export type ModelString =
-  | "__testing:deterministic"
   | "openai:gpt-5.4"
   | "openai:gpt-5.2"
   | "openai:gpt-5.1"
@@ -95,8 +95,25 @@ export type AgentOptions<
   M extends ModelString = ModelString,
   // deno-lint-ignore no-explicit-any
   Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
+  A extends Adapter<M> = Adapter<M>,
 > = {
+  /**
+   * By default, the adapter is derived from the model string, and you don't
+   * need to worry about setting one yourself. But if you need to hit a custom
+   * API, that's what this is for. For example, you can call a custom
+   * OpenAI-compatible endpoint with `adapter: openAiAdapter({ url: '...' })`.
+   */
+  adapter?: A;
+  /**
+   * By default, the `ModelString` is parsed for an adapter prefix like
+   * `openai:` or `anthropic:`, which will call that adapter with the given
+   * model. Any string value is allowed, even if it isn't listed in the enum,
+   * but it is up to the provider to actually support it.
+   *
+   * When passing a custom adapter, this type depends on the adapter's type.
+   */
   model: M;
+  /** What this is agent intended to do. Equivilent to a "system prompt". */
   instructions: string;
   output?: z.ZodType<zO, zI>;
   tools?: M extends NoToolCallModels ? never : [...Tools];
@@ -127,9 +144,10 @@ export class Agent<
   M extends ModelString,
   // deno-lint-ignore no-explicit-any
   const Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
+  A extends Adapter<M> = Adapter<M>,
 > {
-  #provider: string;
-  #model: ModelString;
+  #adapter: A | Promise<A>;
+  #model: M;
   #instructions: string;
   #output?: z.ZodType<zO, zI>;
   // deno-lint-ignore no-explicit-any
@@ -138,13 +156,26 @@ export class Agent<
 
   #noRetries = false;
 
-  constructor(options: AgentOptions<zO, zI, M, Tools>) {
-    const [provider, ...modelParts] = options.model.split(":");
-    this.#provider = provider;
-    this.#model = modelParts.join(":");
+  constructor(options: AgentOptions<zO, zI, M, Tools, A>) {
+    if (options.adapter) {
+      this.#adapter = options.adapter;
+      this.#model = options.model;
+    } else {
+      const [provider, ...modelParts] = options.model.split(":");
+      const factory = ADAPTERS[provider];
+
+      if (!factory) {
+        throw new Error(
+          "Could not resolve provider " + JSON.stringify(provider),
+        );
+      }
+      this.#adapter = factory() as A | Promise<A>;
+      this.#model = modelParts.join(":") as M;
+    }
+
     this.#instructions = options.instructions;
     this.#output = options.output;
-    this.#tools = options.tools ?? [];
+    this.#tools = options.tools?.slice() ?? [];
     this.#reasoningEffort = options.reasoningEffort ?? "normal";
 
     if (options.unstable) {
@@ -161,193 +192,152 @@ export class Agent<
     }
   }
 
-  #runToolUses(toolUses: ChatItemToolUse[], signal: AbortSignal) {
-    return toolUses.map(async (toolUse) => {
+  async #runTool(
+    use: ChatItemToolUse,
+    signal: AbortSignal,
+  ): Promise<{ id: string; items: ChatItemToolResult[] }> {
+    try {
+      const tool = this.#tools.find((tool) => tool.name === use.kind);
+      if (!tool) {
+        throw new Error(`Tool does not exist: ${use.kind}`);
+      }
+
       try {
-        const tool = this.#tools.find((tool) => tool.name === toolUse.kind);
-        if (!tool) {
-          throw new Error(`Tool does not exist: ${toolUse.kind}`);
+        if (!(tool.parameters instanceof ZodVoid)) {
+          assert(use.content);
+          tool.parameters.parse(JSON.parse(use.content));
         }
-
-        try {
-          if (!(tool.parameters instanceof ZodVoid)) {
-            assert(toolUse.content);
-            tool.parameters.parse(JSON.parse(toolUse.content));
-          }
-        } catch (err) {
-          throw new Error(
-            `Invalid parameters for tool: ${
-              err instanceof Error ? err.message : err
-            }`,
-          );
-        }
-
-        const result = await abortable(
-          signalAsyncLocalStorage.run(signal, async () => {
-            return await tool.execute({
-              param: toolUse.content ? JSON.parse(toolUse.content) : undefined,
-            });
-          }),
-          signal,
-        );
-
-        if (result instanceof ModelOutput) throw result;
-
-        return convertToolResultLikeToChatItem(result, toolUse.tool_use_id);
       } catch (err) {
-        if (err instanceof ModelOutput || signal.aborted) {
-          throw err;
-        }
-        return [{
-          type: "tool_result_text" as const,
-          tool_use_id: toolUse.tool_use_id,
-          content: "Error: " +
-            (err instanceof Error ? err.message : (err as string).toString()),
-        }];
-      }
-    });
-  }
-
-  /** Run agent without streaming */
-  async run(
-    chatLike: ChatLike,
-    options?: {
-      signal: AbortSignal;
-    },
-  ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
-    const signal = options?.signal ?? signalAsyncLocalStorage.getStore() ??
-      new AbortController().signal;
-    const history = convertChatLikeToChatItem(chatLike, "input_text");
-    const adapterClass = ADAPTERS[this.#provider];
-    if (!adapterClass) throw new Error("Could not resolve provider");
-    const adapter = new adapterClass({
-      model: this.#model,
-      output: this.#output,
-      tools: this.#tools,
-      reasoningEffort: this.#reasoningEffort,
-    });
-
-    const newHistory: ChatItem[] = [];
-    for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const result = await runWithRetries(() =>
-        adapter.run({
-          systemPrompt: this.#instructions,
-          history: [...history, ...newHistory],
-          signal,
-        }), this.#noRetries ? 1 : 5);
-
-      newHistory.push(...result);
-
-      const toolUses = result.filter((chatItem) =>
-        chatItem.type === "tool_use"
-      );
-      if (toolUses.length > 0) {
-        const toolResults = this.#runToolUses(toolUses, signal);
-        try {
-          newHistory.push(...(await Promise.all(toolResults)).flat());
-        } catch (err) {
-          if (err instanceof ModelOutput) {
-            const value = err.value as ResolveAgentOutput<zO, Tools>;
-            return {
-              history: [...history, ...newHistory],
-              output: value,
-              outputText: typeof value === "string"
-                ? value
-                : JSON.stringify(value),
-            };
-          }
-          throw err;
-        }
-        continue;
+        throw new Error(
+          `Invalid parameters for tool: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
       }
 
-      const finalItem = newHistory[newHistory.length - 1];
-      if (this.#output) {
-        if (finalItem.type !== "output_text") {
-          // TODO: add error
-          continue;
-        }
-
-        try {
-          this.#output.parse(JSON.parse(finalItem.content));
-        } catch (err) {
-          if (DEBUG_MODE) console.error("parsing failed", finalItem.content);
-          const errStr = err instanceof Error
-            ? err.message
-            : (err as string).toString();
-          newHistory.push({
-            type: "output_text",
-            content: "Sorry, my output has an error: " + errStr +
-              "\n I will try again.",
+      const result = await abortable(
+        signalAsyncLocalStorage.run(signal, async () => {
+          return await tool.execute({
+            param: use.content ? JSON.parse(use.content) : undefined,
+            signal,
           });
-          continue;
-        }
-      }
+        }),
+        signal,
+      );
+
+      if (result instanceof ModelOutput) throw result;
 
       return {
-        history: newHistory,
-        output: (this.#output
-          ? JSON.parse(
-            finalItem.type === "output_text" ? finalItem.content : "",
-          )
-          : undefined) as ResolveAgentOutput<zO, Tools>,
-        outputText: newHistory.filter((history) =>
-          history.type === "output_text"
-        ).map((history) => history.content).join("\n"),
+        id: use.tool_use_id,
+        items: convertToolResultLikeToChatItem(result, use.tool_use_id),
+      };
+    } catch (err) {
+      if (err instanceof ModelOutput || signal.aborted) throw err;
+      return {
+        id: use.tool_use_id,
+        items: [{
+          type: "tool_result_text" as const,
+          tool_use_id: use.tool_use_id,
+          content: "Error: " +
+            (err instanceof Error ? err.message : (err as string).toString()),
+        }],
       };
     }
-
-    throw new Error("MAX TURNS EXCEEDED");
   }
 
-  /** Run agent with streaming */
+  /**
+   * Run the agent without streaming. Internally this just runs a stream and
+   * collects the output for you.
+   */
+  async run(
+    chatLike: ChatLike,
+    options?: { signal: AbortSignal },
+  ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
+    const result = this.stream(chatLike, options);
+    while (true) {
+      const next = await result.next();
+      if (next.done) return next.value;
+    }
+  }
+
+  /** Run the agent, streaming the response and tool calls. */
   async *stream(chatLike: ChatLike, options?: {
     signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+  }): AgentStreamIterator<ResolveAgentOutput<zO, Tools>> {
+    options?.signal.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
-    const adapterClass = ADAPTERS[this.#provider];
-    if (!adapterClass) throw new Error("Could not resolve provider");
-    const adapter = new adapterClass({
-      model: this.#model,
-      output: this.#output,
-      tools: this.#tools,
-      reasoningEffort: this.#reasoningEffort,
-    });
+    const adapter = await this.#adapter;
+
+    // prepare a separate signal for tools that can be cancelled if a provider
+    // fails too much. note that we do persist tool calls between assistant runs,
+    // but in the failure case we have to abort.
+    const toolController = new AbortController();
+    signal.addEventListener("abort", () => toolController.abort(signal.reason));
+
+    // tool use id -> result from tool
+    const pendingTools = new Map<
+      string,
+      Promise<{ id: string; items: ChatItemToolResult[] }>
+    >();
 
     let providerErrors = 0;
     const history: ChatItem[] = [];
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const newHistory: ChatItem[] = [];
-      const stream = adapter.stream({
-        systemPrompt: this.#instructions,
-        history: [...initialHistory, ...history],
-        signal,
-      });
 
+      let failed = false;
       let err: unknown;
       try {
-        for await (const part of stream) {
+        const stream = await adapter.stream({
+          model: this.#model,
+          output: this.#output,
+          tools: this.#tools,
+          reasoningEffort: this.#reasoningEffort,
+          systemPrompt: this.#instructions,
+          history: [...initialHistory, ...history].filter(Boolean),
+          signal,
+        });
+
+        while (true) {
+          const { value: part, done } = await stream.next();
+          if (done) {
+            break;
+          }
+
           const reIndexedPart = {
             ...part,
             index: part.index + history.length,
           };
           addStreamItem(newHistory, part);
           yield reIndexedPart;
+
+          // execute tools immediately
+          if (part.type === "tool_use") {
+            assert(
+              !pendingTools.has(part.tool_use_id),
+              `Provider ${adapter.name} did not use unique tool use id: ${part.tool_use_id}`,
+            );
+            pendingTools.set(
+              part.tool_use_id,
+              this.#runTool(part, toolController.signal),
+            );
+          }
         }
       } catch (error) {
         err = error;
+        failed = true;
       }
 
-      const toolUses = newHistory.filter((chatItem) =>
-        chatItem.type === "tool_use"
-      );
-      if (toolUses.length > 0) {
-        // execute and stream tools
-        const promises = this.#runToolUses(toolUses, signal);
+      // process tool outputs before re-looping
+      if (pendingTools.size > 0) {
         try {
-          for await (const toolResults of iteratePromiseArray(promises)) {
-            for (const toolResult of toolResults) {
+          for await (
+            const result of iteratePromiseArray(pendingTools.values())
+          ) {
+            pendingTools.delete(result.id);
+
+            for (const toolResult of result.items) {
               if (toolResult.type === "tool_result_text") {
                 yield {
                   type: "tool_result_text",
@@ -365,19 +355,38 @@ export class Agent<
                   content: toolResult.content,
                 };
                 newHistory.push(toolResult);
-              } else {
-                if (DEBUG_MODE) {
-                  console.error(
-                    "What the frick, this isn't a tool result!",
-                    toolResult,
-                  );
-                }
-              }
+              } else toolResult satisfies never;
             }
           }
         } catch (err) {
-          if (err instanceof ModelOutput) return;
-          throw err;
+          // catching here is only for returning ModelOutput OR abort signal, which should cancel all tools so that all tools have an output.
+          let index = newHistory.length + history.length;
+          for (const tool_use_id of pendingTools.keys()) {
+            yield {
+              type: "tool_result_text",
+              index,
+              tool_use_id,
+              content: "Error: Tool call was cancelled",
+            };
+            index += 1;
+          }
+
+          signal.throwIfAborted(); // throw if the abort signal fired
+          assert(err instanceof ModelOutput); // if it didn't, it better fricking be a ModelOutput otherwise there's an agents sdk bug
+
+          const { output } = err;
+          toolController.abort(
+            new Error(
+              "Tool calls cancelled due to one returning ModelOutput",
+            ),
+          );
+          return {
+            history: newHistory,
+            output,
+            outputText: typeof output === "string"
+              ? output
+              : JSON.stringify(output),
+          };
         }
 
         // continue loop
@@ -386,10 +395,10 @@ export class Agent<
       }
 
       // If streaming fails halfway through a message, retry
-      if (err) {
+      if (failed) {
         if (this.#noRetries) throw err;
+        providerErrors++;
         if (providerErrors < MAX_PROVIDER_ERRORS) {
-          providerErrors++;
           // continue loop
           history.push(...newHistory);
           continue;
@@ -398,8 +407,50 @@ export class Agent<
         }
       }
 
-      break;
+      history.push(...newHistory);
+
+      const finalItem = history.at(-1);
+      let output: ResolveAgentOutput<zO, Tools>;
+      if (this.#output) {
+        if (!finalItem || finalItem.type !== "output_text") {
+          // TODO: we should think hard about what this should really do
+          continue;
+        }
+
+        try {
+          output = this.#output.parse(
+            JSON.parse(finalItem.content),
+          ) as ResolveAgentOutput<zO, Tools>;
+        } catch (err) {
+          if (DEBUG_MODE) console.error("parsing failed", finalItem.content);
+          const content = "Sorry, my output has an error: " +
+            errMessage(err) +
+            "\nI will try again to produce a JSON response.";
+          history.push({
+            type: "output_text",
+            content,
+          });
+          yield {
+            type: "delta_output_text",
+            index: history.length - 1,
+            delta: content,
+          };
+          continue;
+        }
+      } else {
+        output = undefined as ResolveAgentOutput<zO, Tools>;
+      }
+
+      return {
+        history: history.filter(Boolean),
+        output,
+        outputText: history
+          .filter(Boolean)
+          .filter((history) => history.type === "output_text")
+          .map((history) => history.content).join("\n"),
+      };
     }
+    throw new Error("MAX TURNS EXCEEDED");
   }
 
   async cli() {

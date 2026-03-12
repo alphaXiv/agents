@@ -1,16 +1,16 @@
 import z from "zod";
 import { delay } from "@std/async/delay";
-import { Agent, registerAdapter, Tool } from "../mod.ts";
+import { Agent, Tool } from "../mod.ts";
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { TestingAdapter, testingTracker } from "./utils/testing-adapter.ts";
+import { testingAdapter, testingTracker } from "./utils/testing-adapter.ts";
 import { enableDebugMode } from "../src/constants.ts";
 
-registerAdapter("__testing", TestingAdapter);
 enableDebugMode();
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant",
   });
   const run = await agent.run("Hello!");
@@ -22,7 +22,8 @@ Deno.test("Basic input out of agents works", async () => {
 
 Deno.test("History input out of agents works", async () => {
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant",
   });
   const run = await agent.run([{
@@ -37,7 +38,8 @@ Deno.test("History input out of agents works", async () => {
 
 Deno.test("Structured output works", async () => {
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions:
       "You are a friendly assistant who can spit out a temperature guesstimate",
     output: z.number(),
@@ -52,7 +54,8 @@ Deno.test("Structured output works", async () => {
 
 Deno.test("Structured output 2 works", async () => {
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant who can name cats",
     output: z.object({
       name: z.string().describe("The cat's name"),
@@ -79,7 +82,8 @@ Deno.test("Tool calls can work", async () => {
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -101,7 +105,8 @@ Deno.test("Dubious calls without retry will fail", async () => {
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -131,7 +136,8 @@ Deno.test("Dubious calls will work with retry", async () => {
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -157,7 +163,8 @@ Deno.test("Abort signal can work", async () => {
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -199,7 +206,8 @@ Deno.test("Agent LLM retries 5 times by default", async () => {
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -226,7 +234,8 @@ Deno.test("Disable retrying of an agent", async () => {
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "You are a friendly assistant.",
     tools: [search],
     unstable: { retries: false },

@@ -1,18 +1,18 @@
-import { Agent, registerAdapter, Tool } from "../mod.ts";
+import { Agent, Tool } from "../mod.ts";
 import { assertEquals } from "@std/assert";
 import z from "zod";
 import { delay } from "@std/async/delay";
-import { TestingAdapter } from "./utils/testing-adapter.ts";
 import { enableDebugMode } from "../src/constants.ts";
 import type { ChatItem, StreamItem } from "../src/types.ts";
 import { addStreamItem } from "../src/client.ts";
+import { testingAdapter } from "./utils/testing-adapter.ts";
 
-registerAdapter("__testing", TestingAdapter);
 enableDebugMode();
 
 Deno.test("Basic streaming test", async () => {
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "Basic test",
   });
   const run = agent.stream("<nothing>");
@@ -49,7 +49,8 @@ Deno.test("Parallel tool calls are streamed one by one in settlement order", asy
   });
 
   const agent = new Agent({
-    model: "__testing:deterministic",
+    adapter: testingAdapter,
+    model: "deterministic",
     instructions: "Parallel tool test",
     tools: [slowTool, fastTool],
   });

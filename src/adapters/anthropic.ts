@@ -1,9 +1,33 @@
+/**
+ * Adapter implementation for Anthropic-style APIs using `@anthropic-ai/sdk`.
+ * ```ts
+ * const adapter = anthropicAdapter({
+ *   name: "anthropic", // display name according to who is running the API
+ *   url: "https://api.anthropic.com",
+ *   apiKey: process.env.ANTHROPIC_API_KEY,
+ * });
+ *
+ * const agent = new Agent({
+ *   adapter,
+ *   model: "claude-4.6-sonnet"
+ * });
+ * ```
+ * If you are using the default provider and API key environment variable, you
+ * can omit the `adapter` property and use a unified model string like
+ * `model: "anthropic:claude-4.6-sonnet"`.
+ * @module
+ */
 import Anthropic from "@anthropic-ai/sdk";
 import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages";
 import z from "zod";
+import type {
+  Adapter,
+  AdapterStreamOptions,
+  AdapterTypeOptions,
+} from "../adapters.ts";
 import type { Tool } from "../tool.ts";
 import type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
   ChatItem,
   ReasoningEffort,
 } from "../types.ts";
@@ -156,161 +180,105 @@ type AnthropicToolMap = {
   isVoid: boolean;
 };
 
-export class AnthropicAdapter<zO, zI> {
-  #client: Anthropic;
-  #model: string;
-  #output?: z.ZodType<zO, zI>;
-  #normalizedTools: AnthropicToolMap[];
-  #reasoningEffort: ReasoningEffort;
-
-  constructor(
-    { model, output, tools, reasoningEffort }: {
-      model: string;
-      output?: z.ZodType<zO, zI>;
-      tools: Tool<unknown, unknown, unknown>[];
-      reasoningEffort: ReasoningEffort;
-    },
-  ) {
-    this.#model = model;
-    this.#output = output;
-    this.#reasoningEffort = reasoningEffort;
-    this.#normalizedTools = tools.map((tool) => {
-      let name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
-        /[^a-zA-Z0-9_-]/g,
-        "",
-      );
-      if (!/^[a-zA-Z_]/.test(name)) {
-        name = "_" + name; // Ensure name starts with letter or underscore
-      }
-      name = name.slice(0, 64); // Limit to 64 characters
-
-      const isVoid = tool.parameters instanceof z.ZodVoid;
-      const wrapperObject = !isVoid &&
-        !(tool.parameters instanceof z.ZodObject);
-
-      return {
-        original: tool,
-        anthropic: {
-          name,
-          input_schema: isVoid ? { type: "object" } : z.toJSONSchema(
-            wrapperObject
-              ? z.object({ content: tool.parameters })
-              : tool.parameters,
-            // deno-lint-ignore no-explicit-any
-          ) as any,
-          description: tool.description,
-        },
-        wrapperObject,
-        isVoid,
-      };
-    });
-    this.#client = new Anthropic();
-  }
-
-  async run({ history, systemPrompt, signal }: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): Promise<ChatItem[]> {
-    const anthropicHistory = await getAnthropicHistory(
-      history,
-      this.#normalizedTools,
-      signal,
+function normalizeAnthropicTools(
+  tools: Tool<unknown, unknown, unknown>[],
+): AnthropicToolMap[] {
+  return tools.map((tool) => {
+    let name = tool.name.toLowerCase().replaceAll(" ", "_").replace(
+      /[^a-zA-Z0-9_-]/g,
+      "",
     );
-    const isReasoningModel = !nonReasoningModels.includes(this.#model);
-
-    // TODO: implement structured outputs properly instead of this hack
-    const response = await this.#client.beta.messages.create({
-      model: this.#model,
-      system: systemPrompt +
-        (this.#output
-          ? `\n\n<system-requirement>Your final output message must match this below JSON schema exactly. Wrap your response in a code block (i.e. \`\`\`json \`\`\`) :\n${
-            z.toJSONSchema(this.#output)
-          }</system-requirement>`
-          : ""),
-      messages: anthropicHistory,
-      tools: this.#normalizedTools.map(({ anthropic }) => anthropic),
-      betas: ["context-1m-2025-08-07"],
-      max_tokens: maxTokensMap[this.#model] ?? 16001,
-      thinking: isReasoningModel && this.#reasoningEffort === "normal"
-        ? {
-          type: "enabled",
-          budget_tokens: 16000,
-        }
-        : undefined,
-    }, { signal });
-
-    const output: ChatItem[] = [];
-
-    for (let i = 0; i < response.content.length; i++) {
-      const part = response.content[i];
-      if (part.type === "thinking") {
-        output.push({
-          type: "output_reasoning",
-          content: part.thinking,
-        });
-        signatureMap.set(part.thinking, part.signature);
-      } else if (part.type === "text") {
-        if (this.#output && i === response.content.length - 1) {
-          const parsedBlock = part.text.split("```json")[1].split("```")[0]
-            .trim();
-          output.push({
-            type: "output_text",
-            content: parsedBlock,
-          });
-        } else {
-          output.push({
-            type: "output_text",
-            content: part.text,
-          });
-        }
-      } else if (part.type === "tool_use") {
-        const tool = this.#normalizedTools.find((tool) =>
-          tool.anthropic.name === part.name
-        );
-        output.push({
-          type: "tool_use",
-          tool_use_id: part.id,
-          kind: tool?.original.name ?? part.name,
-          content: tool?.isVoid ? undefined : (JSON.stringify(
-            // deno-lint-ignore no-explicit-any
-            tool?.wrapperObject ? (part.input as any).content : part.input,
-          )),
-        });
-      } else {
-        console.warn("Unrecognized type", part);
-      }
+    if (!/^[a-zA-Z_]/.test(name)) {
+      name = "_" + name; // Ensure name starts with letter or underscore
     }
+    name = name.slice(0, 64); // Limit to 64 characters
 
-    return output;
-  }
+    const isVoid = tool.parameters instanceof z.ZodVoid;
+    const wrapperObject = !isVoid &&
+      !(tool.parameters instanceof z.ZodObject);
 
-  async *stream({ history, systemPrompt, signal }: {
-    systemPrompt: string;
-    history: ChatItem[];
-    signal: AbortSignal;
-  }): AsyncStreamItemGenerator {
+    return {
+      original: tool,
+      anthropic: {
+        name,
+        input_schema: isVoid ? { type: "object" } : z.toJSONSchema(
+          wrapperObject
+            ? z.object({ content: tool.parameters })
+            : tool.parameters,
+          // deno-lint-ignore no-explicit-any
+        ) as any,
+        description: tool.description,
+      },
+      wrapperObject,
+      isVoid,
+    };
+  });
+}
+
+function getAnthropicThinking(
+  model: string,
+  reasoningEffort: ReasoningEffort,
+) {
+  const isReasoningModel = !nonReasoningModels.includes(model);
+  return isReasoningModel && reasoningEffort === "normal"
+    ? {
+      type: "enabled" as const,
+      budget_tokens: 16000,
+    }
+    : undefined;
+}
+
+function getAnthropicSystemPrompt<zO, zI>(
+  systemPrompt: string,
+  output?: z.ZodType<zO, zI>,
+) {
+  if (!output) return systemPrompt;
+
+  return systemPrompt +
+    `\n\n<system-requirement>Your final output message must match this below JSON schema exactly. Wrap your response in a code block (i.e. \`\`\`json \`\`\`) :\n${
+      z.toJSONSchema(output)
+    }</system-requirement>`;
+}
+
+export interface AnthropicAdapterOptions {
+  name: string;
+  /** example: "https://api.anthropic.com" */
+  url: string;
+  apiKey: string;
+}
+
+export function anthropicAdapter<Models extends string>(
+  options: AnthropicAdapterOptions & AdapterTypeOptions<Models>,
+): Adapter<Models> {
+  const anthropic = new Anthropic({
+    apiKey: options.apiKey,
+    baseURL: options.url,
+  });
+
+  async function* stream<zO, zI>({
+    model,
+    output,
+    tools,
+    reasoningEffort,
+    systemPrompt,
+    history,
+    signal,
+  }: AdapterStreamOptions<zO, zI, Models>): AdapterStreamIterator {
+    const normalizedTools = normalizeAnthropicTools(tools);
     const anthropicHistory = await getAnthropicHistory(
       history,
-      this.#normalizedTools,
+      normalizedTools,
       signal,
     );
-    const isReasoningModel = !nonReasoningModels.includes(this.#model);
 
-    // TODO: implement structured outputs properly instead of this hack
-    const response = this.#client.beta.messages.stream({
-      model: this.#model,
-      system: systemPrompt,
+    const response = anthropic.beta.messages.stream({
+      model,
+      system: getAnthropicSystemPrompt(systemPrompt, output),
       messages: anthropicHistory,
-      tools: this.#normalizedTools.map(({ anthropic }) => anthropic),
-      max_tokens: maxTokensMap[this.#model] ?? 16001,
+      tools: normalizedTools.map(({ anthropic }) => anthropic),
+      max_tokens: maxTokensMap[model] ?? 16001,
       betas: ["context-1m-2025-08-07"],
-      thinking: isReasoningModel && this.#reasoningEffort === "normal"
-        ? {
-          type: "enabled",
-          budget_tokens: 16000,
-        }
-        : undefined,
+      thinking: getAnthropicThinking(model, reasoningEffort),
     }, { signal });
 
     const parts: ChatItem[] = [];
@@ -356,7 +324,7 @@ export class AnthropicAdapter<zO, zI> {
       } else if (part.type === "content_block_stop") {
         const endingPart = parts[part.index];
         if (endingPart.type === "tool_use") {
-          const tool = this.#normalizedTools.find((tool) =>
+          const tool = normalizedTools.find((tool) =>
             tool.anthropic.name === endingPart.kind
           );
           yield {
@@ -373,5 +341,20 @@ export class AnthropicAdapter<zO, zI> {
         }
       }
     }
+
+    if (output) {
+      const part = parts.at(-1);
+      if (part && part.type === "output_text") {
+        const parsedBlock = part.content.split("```json")[1].split("```")[0]
+          .trim();
+        yield {
+          type: "delta_output_text",
+          delta: parsedBlock,
+          index: parts.length,
+        };
+      }
+    }
   }
+
+  return { name: "anthropic", stream };
 }

@@ -7,13 +7,13 @@ export {
   Tool,
 } from "./src/tool.ts";
 export type {
-  AsyncStreamItemGenerator,
+  AdapterStreamIterator,
+  AgentStreamIterator,
   ChatItem,
   ChatLike,
   ReasoningEffort,
   StreamItem,
 } from "./src/types.ts";
-export { registerAdapter } from "./src/adapters.ts";
 export {
   SidEmbeddingSearchTool,
   SidReportHelpfulIdsTool,

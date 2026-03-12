@@ -1,11 +1,16 @@
 import process from "node:process";
 import { Readable } from "node:stream";
-import type { ChatItem, ChatLike, ToolResultLike } from "./types.ts";
+import type {
+  ChatItem,
+  ChatItemToolResult,
+  ChatLike,
+  ToolResultLike,
+} from "./types.ts";
 import { encodeHex } from "@std/encoding/hex";
 
-export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
+export function convertChatLikeToChatItem(
   chatLike: ChatLike,
-  type: T,
+  type: ChatItem["type"],
 ): ChatItem[] {
   if (typeof chatLike === "string") {
     if (type === "input_text" || type === "output_text") {
@@ -23,7 +28,7 @@ export function convertChatLikeToChatItem<T extends ChatItem["type"]>(
 export function convertToolResultLikeToChatItem(
   toolResultLike: ToolResultLike,
   toolUseId: string,
-): ChatItem[] {
+): ChatItemToolResult[] {
   if (typeof toolResultLike === "string") {
     return [{
       type: "tool_result_text",
@@ -108,13 +113,14 @@ export async function hashString(str: string) {
  * Streaming `Promise.all` - Return an iterator of the promises in the order they complete.
  */
 export async function* iteratePromiseArray<T>(
-  promises: Promise<T>[],
+  promises: Iterable<Promise<T>>,
 ): AsyncIterableIterator<T> {
-  const rest = new Set(promises);
+  const pending = Array.from(promises);
+  const rest = new Set(pending);
   const errors: unknown[] = [];
   let resolutions: T[] = [];
 
-  for (const promise of promises) {
+  for (const promise of pending) {
     promise.then((result) => {
       resolutions.push(result);
       rest.delete(promise);
@@ -134,4 +140,31 @@ export async function* iteratePromiseArray<T>(
     if (errors.length === 1) throw errors[0];
     throw new AggregateError(errors);
   }
+}
+
+export function requireEnv(name: string) {
+  const value = crossPlatformEnv(name);
+  if (!value) {
+    throw new Error(`Missing required environment variable ${name}`);
+  }
+  return value;
+}
+
+/** Retrieve an error message from any value */
+export function errMessage(error: unknown): string {
+  const message = (error as null | { message: unknown })?.message ?? error;
+  try {
+    return typeof message === "string"
+      ? message
+      // NOTE: typescript standard library lies here (https://github.com/mattpocock/ts-reset/pull/190)
+      : String(JSON.stringify(message) as string | undefined);
+  } catch {
+    /* fallthrough */
+  }
+  try {
+    return String(message);
+  } catch {
+    /* fallthrough */
+  }
+  return `Could not stringify error message ${typeof message}`;
 }
