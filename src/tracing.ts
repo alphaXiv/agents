@@ -305,3 +305,55 @@ export async function withTrace<T>(
     throw err;
   }
 }
+
+/**
+ * Stateful tracking of message trace objects. Since adapters are usually not
+ * capable of knowing when a message ends (outside of tools), the end times have
+ * to be inferred based on the start of a next item. Since only one item is
+ * active at once, that makes this pretty simple: just restart the trace if the
+ * index changes.
+ *
+ * This use-case is why the lower level `newTrace` function does not enforce
+ * callback wrapping.
+ */
+export class MessageTracer {
+  current: {
+    trace: ActiveTrace<"message">;
+    index: number;
+  } | null = null;
+  modelTrace: TraceRef;
+
+  constructor(modelTrace: TraceRef) {
+    this.modelTrace = modelTrace;
+  }
+
+  startOrContinue({ index, type }: { index: number; type: ChatItem["type"] }) {
+    // if the index is different than the one we're locked in on tracing, replace it
+    if (!this.current || this.current.index !== index) {
+      this.endMessageTraceIfStarted();
+      const trace = newTrace({
+        type: "message",
+        parent: this.modelTrace,
+        content: { type },
+      });
+      this.current = { trace, index };
+    }
+    return this.current.trace.id;
+  }
+
+  endMessageTraceIfStarted() {
+    if (this.current) this.current.trace.success();
+    this.current = null;
+  }
+
+  cancel() {
+    if (this.current) {
+      this.current.trace.error(new Error("Cancelled by provider error"));
+    }
+    this.current = null;
+  }
+
+  [Symbol.dispose]() {
+    this.endMessageTraceIfStarted();
+  }
+}

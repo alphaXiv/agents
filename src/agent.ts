@@ -9,6 +9,7 @@ import { signalAsyncLocalStorage } from "./storage.ts";
 import { ModelOutput, type Tool } from "./tool.ts";
 import {
   type ActiveTrace,
+  MessageTracer,
   newTrace,
   type Tracer,
   tracerAsyncLocalStorage,
@@ -217,7 +218,7 @@ export class Agent<
     traceId: string,
     parent: TraceRef,
   ): Promise<RunToolResult> {
-    using t = newTrace({
+    using trace = newTrace({
       id: traceId,
       type: "tool",
       parent,
@@ -246,7 +247,7 @@ export class Agent<
         signalAsyncLocalStorage.run(
           signal,
           () =>
-            tracerAsyncLocalStorage.run(t, async () => {
+            tracerAsyncLocalStorage.run(trace, async () => {
               return await tool.execute({
                 param: use.content ? JSON.parse(use.content) : undefined,
                 signal,
@@ -260,11 +261,15 @@ export class Agent<
 
       return {
         id: use.tool_use_id,
-        items: convertToolResultLikeToChatItem(result, use.tool_use_id, t.id),
+        items: convertToolResultLikeToChatItem(
+          result,
+          use.tool_use_id,
+          trace.id,
+        ),
       };
     } catch (err) {
       if (err instanceof ModelOutput) throw err;
-      t.error(err);
+      trace.error(err);
       if (signal.aborted) throw err;
       return {
         id: use.tool_use_id,
@@ -273,7 +278,7 @@ export class Agent<
           tool_use_id: use.tool_use_id,
           content: "Error: " +
             (err instanceof Error ? err.message : (err as string).toString()),
-          trace: t.id,
+          trace: trace.id,
         }],
       };
     }
@@ -304,7 +309,7 @@ export class Agent<
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
     const adapter = await this.#adapter;
 
-    using tAgent = newTrace({
+    using agentTrace = newTrace({
       type: "agent",
       content: this.#name ? { name: this.#name } : {},
       tracers: options?.tracers,
@@ -335,9 +340,9 @@ export class Agent<
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const newHistory: WithTraceId<ChatItem>[] = [];
 
-        using tModel = newTrace({
+        using modelTrace = newTrace({
           type: "model",
-          parent: tAgent,
+          parent: agentTrace,
           content: {
             reason: modelCallReason,
             provider: adapter.name,
@@ -346,7 +351,7 @@ export class Agent<
             outputTokens: null,
           },
         });
-        using messageTracer = new MessageTracer(tModel);
+        using messageTracer = new MessageTracer(modelTrace);
 
         let failed = false;
         let err: unknown;
@@ -367,7 +372,7 @@ export class Agent<
               messageTracer.endMessageTraceIfStarted();
               if (part.inputTokens) totalInputTokens += part.inputTokens;
               if (part.outputTokens) totalOutputTokens += part.outputTokens;
-              tModel.success({
+              modelTrace.success({
                 inputTokens: part.inputTokens,
                 outputTokens: part.outputTokens,
               });
@@ -384,7 +389,7 @@ export class Agent<
               trace = generate();
               pendingTools.set(
                 part.tool_use_id,
-                this.#runTool(part, toolController.signal, trace, tAgent),
+                this.#runTool(part, toolController.signal, trace, agentTrace),
               );
             }
 
@@ -405,7 +410,7 @@ export class Agent<
             } else {
               // other message types always force stopping the current trace
               messageTracer.endMessageTraceIfStarted();
-              trace ??= tModel.id;
+              trace ??= modelTrace.id;
             }
 
             const reIndexedPart = {
@@ -418,7 +423,7 @@ export class Agent<
           }
         } catch (error) {
           messageTracer.cancel();
-          tModel.error(error);
+          modelTrace.error(error);
           err = error;
           failed = true;
 
@@ -465,7 +470,7 @@ export class Agent<
                 index,
                 tool_use_id,
                 content: "Error: Tool call was cancelled",
-                trace: tAgent.id,
+                trace: agentTrace.id,
               };
               index += 1;
             }
@@ -513,7 +518,7 @@ export class Agent<
         let output: ResolveAgentOutput<zO, Tools>;
         if (this.#output) {
           if (!finalItem || finalItem.type !== "output_text") {
-            tAgent.log(
+            agentTrace.log(
               "Retrying to due provider missing a final output_text for structured output",
             );
             modelCallReason = "retry-missing-output";
@@ -526,7 +531,7 @@ export class Agent<
               JSON.parse(finalItem.content),
             ) as ResolveAgentOutput<zO, Tools>;
           } catch (err) {
-            tAgent.log(
+            agentTrace.log(
               "Retrying due to failed structured output parse from " +
                 JSON.stringify(finalItem.content),
               err,
@@ -537,13 +542,13 @@ export class Agent<
             history.push({
               type: "output_text",
               content,
-              trace: tAgent.id,
+              trace: agentTrace.id,
             });
             yield {
               type: "delta_output_text",
               index: history.length - 1,
               delta: content,
-              trace: tAgent.id,
+              trace: agentTrace.id,
             };
             modelCallReason = "retry-malformed-output";
             continue;
@@ -562,7 +567,7 @@ export class Agent<
 
       throw new Error("Exceeded maximum turns (" + MAX_TURNS + ")");
     } catch (err) {
-      tAgent.error(err);
+      agentTrace.error(err);
       throw err;
     }
   }
@@ -629,54 +634,6 @@ export class Agent<
       crossPlatformRemoveHandleSigInt(handler);
       crossPlatformLog(prompt);
     }
-  }
-}
-
-/**
- * Stateful tracking of message trace objects.
- *
- * This use-case is why the lower
- * level `newTrace` function does not enforce callback wrapping.
- */
-class MessageTracer {
-  current: {
-    trace: ActiveTrace<"message">;
-    index: number;
-  } | null = null;
-  modelTrace: TraceRef;
-
-  constructor(modelTrace: TraceRef) {
-    this.modelTrace = modelTrace;
-  }
-
-  startOrContinue({ index, type }: { index: number; type: ChatItem["type"] }) {
-    // if the index is different than the one we're locked in on tracing, replace it
-    if (!this.current || this.current.index !== index) {
-      this.endMessageTraceIfStarted();
-      const trace = newTrace({
-        type: "message",
-        parent: this.modelTrace,
-        content: { type },
-      });
-      this.current = { trace, index };
-    }
-    return this.current.trace.id;
-  }
-
-  endMessageTraceIfStarted() {
-    if (this.current) this.current.trace.success();
-    this.current = null;
-  }
-
-  cancel() {
-    if (this.current) {
-      this.current.trace.error(new Error("Cancelled by provider error"));
-    }
-    this.current = null;
-  }
-
-  [Symbol.dispose]() {
-    this.endMessageTraceIfStarted();
   }
 }
 
