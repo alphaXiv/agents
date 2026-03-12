@@ -240,11 +240,6 @@ function getAnthropicSystemPrompt<zO, zI>(
     }</system-requirement>`;
 }
 
-function extractStructuredOutput(text: string) {
-  const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  return (codeBlockMatch?.[1] ?? text).trim();
-}
-
 export interface AnthropicAdapterOptions {
   name: string;
   /** example: "https://api.anthropic.com" */
@@ -295,13 +290,11 @@ export function anthropicAdapter<Models extends string>(
             parts[part.index] = { type: "output_text", content: "" };
           }
           parts[part.index].content += delta.text;
-          if (!output) {
-            yield {
-              type: "delta_output_text",
-              delta: delta.text,
-              index: part.index,
-            };
-          }
+          yield {
+            type: "delta_output_text",
+            delta: delta.text,
+            index: part.index,
+          };
         } else if (delta.type === "thinking_delta") {
           if (!parts[part.index]) {
             parts[part.index] = { type: "output_reasoning", content: "" };
@@ -317,9 +310,7 @@ export function anthropicAdapter<Models extends string>(
           assert(thinkingPart.type === "output_reasoning");
           signatureMap.set(thinkingPart.content, delta.signature);
         } else if (delta.type === "input_json_delta") {
-          const toolPart = parts[part.index];
-          assert(toolPart.type === "tool_use");
-          toolPart.content = (toolPart.content ?? "") + delta.partial_json;
+          parts[part.index].content += delta.partial_json;
         }
       } else if (part.type === "content_block_start") {
         if (part.content_block.type === "tool_use") {
@@ -332,8 +323,6 @@ export function anthropicAdapter<Models extends string>(
         }
       } else if (part.type === "content_block_stop") {
         const endingPart = parts[part.index];
-        if (!endingPart) continue;
-
         if (endingPart.type === "tool_use") {
           const tool = normalizedTools.find((tool) =>
             tool.anthropic.name === endingPart.kind
@@ -349,13 +338,20 @@ export function anthropicAdapter<Models extends string>(
                 : endingPart.content)
               : undefined,
           };
-        } else if (endingPart.type === "output_text" && output) {
-          yield {
-            type: "delta_output_text",
-            delta: extractStructuredOutput(endingPart.content),
-            index: part.index,
-          };
         }
+      }
+    }
+
+    if (output) {
+      const part = parts.at(-1);
+      if (part && part.type === "output_text") {
+        const parsedBlock = part.content.split("```json")[1].split("```")[0]
+          .trim();
+        yield {
+          type: "delta_output_text",
+          delta: parsedBlock,
+          index: parts.length,
+        };
       }
     }
   }
