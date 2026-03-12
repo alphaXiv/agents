@@ -359,7 +359,7 @@ export class Agent<
             }
           }
         } catch (err) {
-          // catching here is only for returning ModelOutput, which should cancel all tools so that all tools have an output.
+          // catching here is only for returning ModelOutput OR abort signal, which should cancel all tools so that all tools have an output.
           let index = newHistory.length + history.length;
           for (const tool_use_id of pendingTools.keys()) {
             yield {
@@ -371,7 +371,8 @@ export class Agent<
             index += 1;
           }
 
-          assert(err instanceof ModelOutput);
+          signal.throwIfAborted(); // throw if the abort signal fired
+          assert(err instanceof ModelOutput); // if it didn't, it better fricking be a ModelOutput otherwise there's an agents sdk bug
 
           const { output } = err;
           toolController.abort(
