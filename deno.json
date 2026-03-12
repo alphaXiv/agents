@@ -3,8 +3,8 @@
   "version": "0.3.22",
   "license": "MIT",
   "exports": {
-    "./client": "./src/client.ts",
-    ".": "./mod.ts"
+    ".": "./mod.ts",
+    "./client": "./src/client.ts"
   },
   "tasks": {
     "dev": "deno run --watch --env-file main.ts",
