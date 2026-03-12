@@ -1,4 +1,3 @@
-import type { ReasoningEffort } from "@alphaxiv/agents";
 import { assert } from "@std/assert/assert";
 import { abortable } from "@std/async/abortable";
 import type z from "zod";
@@ -14,6 +13,7 @@ import type {
   ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
+  ReasoningEffort,
 } from "./types.ts";
 import {
   convertChatLikeToChatItem,
