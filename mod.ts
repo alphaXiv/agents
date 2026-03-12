@@ -1,4 +1,9 @@
-export { Agent, type AgentOptions, type AgentRunResult } from "./src/agent.ts";
+export {
+  Agent,
+  type AgentOptions,
+  type AgentRunResult,
+  type ModelString,
+} from "./src/agent.ts";
 export {
   type ExecuteFunc,
   type ExecuteFuncInput,
@@ -24,23 +29,20 @@ export {
   type ActiveCustomTrace,
   type AgentTraceEvent,
   type BaseTraceEvent,
+  type LogTraceEvent,
+  type MessageTraceEvent,
   type ModelTraceEvent,
+  type PartialTraceEvent,
   registerGlobalTracer,
   type ToolTraceEvent,
+  type TraceContent,
   type TraceEvent,
   type Tracer,
+  type TraceType,
   withTrace,
-} from "./src/tracing.ts";
-export type {
-  LogTraceEvent,
-  MessageTraceEvent,
-  PartialTraceEvent,
-  TraceContent,
-  TraceType,
 } from "./src/tracing.ts";
 export type {
   Adapter,
   AdapterStreamOptions,
   AdapterTypeOptions,
 } from "./src/adapters.ts";
-export type { ModelString } from "./src/agent.ts";
