@@ -359,6 +359,7 @@ export class Agent<
             }
           }
         } catch (err) {
+          // catching here is only for returning ModelOutput, which should cancel all tools so that all tools have an output.
           let index = newHistory.length + history.length;
           for (const tool_use_id of pendingTools.keys()) {
             yield {
@@ -370,23 +371,21 @@ export class Agent<
             index += 1;
           }
 
-          if (err instanceof ModelOutput) {
-            const { output } = err;
-            toolController.abort(
-              new Error(
-                "Tool calls cancelled due to one returning ModelOutput",
-              ),
-            );
-            return {
-              history: newHistory,
-              output,
-              outputText: typeof output === "string"
-                ? output
-                : JSON.stringify(output),
-            };
-          }
+          assert(err instanceof ModelOutput);
 
-          throw err;
+          const { output } = err;
+          toolController.abort(
+            new Error(
+              "Tool calls cancelled due to one returning ModelOutput",
+            ),
+          );
+          return {
+            history: newHistory,
+            output,
+            outputText: typeof output === "string"
+              ? output
+              : JSON.stringify(output),
+          };
         }
 
         // continue loop
@@ -413,7 +412,8 @@ export class Agent<
       let output: ResolveAgentOutput<zO, Tools>;
       if (this.#output) {
         if (!finalItem || finalItem.type !== "output_text") {
-          throw new Error("LLM did not output");
+          // TODO: we should think hard about what this should really do
+          continue;
         }
 
         try {
