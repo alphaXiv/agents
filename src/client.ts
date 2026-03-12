@@ -57,7 +57,7 @@ export function addStreamItem(
 
 /**
  * Convert a non-streaming chat result into a chat stream. This is useful to
- * create testing adapters that do not do any streaming, but need to fufill the
+ * create testing adapters that do not do any streaming, but need to fulfill the
  * streaming interface.
  */
 export async function* convertChatItemsToStream(input: {

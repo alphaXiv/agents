@@ -121,7 +121,7 @@ export type AgentOptions<
    * When passing a custom adapter, this type depends on the adapter's type.
    */
   model: M;
-  /** What this is agent intended to do. Equivilent to a "system prompt". */
+  /** What this is agent intended to do. Equivalent to a "system prompt". */
   instructions: string;
   /** Enable structured output */
   output?: z.ZodType<zO, zI>;

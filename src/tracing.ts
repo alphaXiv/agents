@@ -5,11 +5,11 @@ import { errMessage } from "./util.ts";
 
 export interface Tracer {
   /**
-   * Recieve start metadata. Allows you to represent pending traces in your DB.
+   * Receive start metadata. Allows you to represent pending traces in your DB.
    * Note that `log` traces do not go through this path.
    */
   start?: (event: PartialTraceEvent) => void;
-  /** Recieve full event metadata */
+  /** Receive full event metadata */
   event: (event: TraceEvent) => void;
 }
 
@@ -101,7 +101,7 @@ export interface ModelTraceEvent extends BaseTraceEvent {
 /**
  * A message from the LLM model. These are measured from the first stream event
  * seen until the start of the next message, or by the end of the stream. A
- * provider may be able to indicate percise end times, but most do not.
+ * provider may be able to indicate precise end times, but most do not.
  */
 export interface MessageTraceEvent extends BaseTraceEvent {
   type: "message";
