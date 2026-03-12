@@ -380,14 +380,18 @@ function getResponseFormat<zO, zI>(output?: z.ZodType<zO, zI>) {
 }
 
 function getToolUseContent(tool: ToolMap | undefined, rawArguments: string) {
-  if (!rawArguments) {
-    return tool?.isVoid ? undefined : rawArguments;
-  }
+  try {
+    if (!rawArguments) {
+      return tool?.isVoid ? undefined : rawArguments;
+    }
 
-  const parsed = JSON.parse(rawArguments);
-  return tool?.isVoid
-    ? undefined
-    : (tool?.wrapperObject ? JSON.stringify(parsed.content) : rawArguments);
+    const parsed = JSON.parse(rawArguments);
+    return tool?.isVoid
+      ? undefined
+      : (tool?.wrapperObject ? JSON.stringify(parsed.content) : rawArguments);
+  } catch {
+    return JSON.stringify(rawArguments);
+  }
 }
 
 type PendingToolUse = {
@@ -532,19 +536,15 @@ export function openAiCompletionsAdapter<Models extends string>(
         tool.original.name === toolUse.kind
       );
 
-      try {
-        yield {
-          type: "tool_use",
-          index: streamIndex,
-          tool_use_id: toolUse.tool_use_id,
-          kind: toolUse.kind,
-          content: tool?.isVoid
-            ? undefined
-            : getToolUseContent(tool, toolUse.content ?? ""),
-        };
-      } catch {
-        // The function call was not fully formed by the provider.
-      }
+      yield {
+        type: "tool_use",
+        index: streamIndex,
+        tool_use_id: toolUse.tool_use_id,
+        kind: toolUse.kind,
+        content: tool?.isVoid
+          ? undefined
+          : getToolUseContent(tool, toolUse.content ?? ""),
+      };
     }
   }
 

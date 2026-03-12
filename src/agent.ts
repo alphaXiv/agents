@@ -295,7 +295,7 @@ export class Agent<
           tools: this.#tools,
           reasoningEffort: this.#reasoningEffort,
           systemPrompt: this.#instructions,
-          history: [...initialHistory, ...history],
+          history: [...initialHistory, ...history].filter(Boolean),
           signal,
         });
 
@@ -441,9 +441,10 @@ export class Agent<
       }
 
       return {
-        history,
+        history: history.filter(Boolean),
         output,
         outputText: history
+          .filter(Boolean)
           .filter((history) => history.type === "output_text")
           .map((history) => history.content).join("\n"),
       };
