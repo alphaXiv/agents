@@ -31,6 +31,45 @@ Deno.test("Basic streaming test", async () => {
   }]);
 });
 
+Deno.test("tool_use_start is emitted before tool_use for each tool call", async () => {
+  const myTool = new Tool({
+    name: "my_tool",
+    description: "A simple tool",
+    parameters: z.string(),
+    execute: () => Promise.resolve("result"),
+  });
+
+  const agent = new Agent({
+    adapter: testingAdapter,
+    model: "deterministic",
+    instructions: "Parallel tool test",
+    tools: [myTool],
+  });
+
+  const streamItems: StreamItem[] = [];
+  for await (const part of agent.stream("go")) {
+    streamItems.push(part);
+  }
+
+  const toolStartItems = streamItems.filter((s) => s.type === "tool_use_start");
+  const toolUseItems = streamItems.filter((s) => s.type === "tool_use");
+
+  // Every tool_use must be preceded by a matching tool_use_start
+  assertEquals(toolStartItems.length, toolUseItems.length);
+  for (const toolUse of toolUseItems) {
+    const startPos = streamItems.findIndex(
+      (s) =>
+        s.type === "tool_use_start" && s.tool_use_id === toolUse.tool_use_id,
+    );
+    const usePos = streamItems.indexOf(toolUse);
+    assertEquals(
+      startPos < usePos,
+      true,
+      `tool_use_start for ${toolUse.tool_use_id} must come before tool_use`,
+    );
+  }
+});
+
 Deno.test("Parallel tool calls are streamed one by one in settlement order", async () => {
   const fastTool = new Tool({
     name: "fast_tool",
