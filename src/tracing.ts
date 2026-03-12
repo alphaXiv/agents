@@ -1,7 +1,7 @@
-import type { ChatItem } from "@alphaxiv/agents";
 import { generate } from "@std/uuid/v7";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { errMessage } from "./util.ts";
+import { ChatItem } from "./types.ts";
 
 export interface Tracer {
   /**
