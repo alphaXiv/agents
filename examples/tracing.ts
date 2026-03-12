@@ -13,13 +13,18 @@ import {
   Tool,
   type TraceEvent,
 } from "@alphaxiv/agents";
+import { lmStudioAdapter } from "@alphaxiv/agents/lmstudio";
 import * as log from "jsr:@clo/lib@3.0.0/log.ts";
 import * as async from "jsr:@clo/lib@3.0.0/async.ts";
 import type { PartialTraceEvent } from "../src/tracing.ts";
 import process from "node:process";
 
-const adapter: Adapter | undefined = undefined;
-const model: ModelString = "anthropic:claude-haiku-4-5";
+const adapter: Adapter | undefined = lmStudioAdapter({
+  name: "lmstudio",
+  url: "http://sandwich:1234/v1",
+  apiKey: null,
+});
+const model: ModelString = "qwen/qwen3.5-35b-a3b";
 
 const snackMenu = [
   { name: "miso ramen cup", calories: 420, prepMinutes: 6, price: 8 },
@@ -35,7 +40,7 @@ async function main() {
   //
   // In this example, the traces are stored in an array, but also integrating
   // start events with `@clo/lib/log.ts` for an interactive visual.
-  let traces: PartialTraceEvent[] = [];
+  let traces: TraceRenderEvent[] = [];
   let rerender: (() => void) | null = null;
   const unregister = registerGlobalTracer({
     event: (event) => {
@@ -65,7 +70,7 @@ async function main() {
       rerender = cb;
       return () => rerender = null;
     },
-    fps: 15,
+    fps: 30,
   });
 
   const subagent = new Agent({
@@ -152,6 +157,12 @@ const PALETTE = {
   log: [32, 149, 136],
   error: [185, 28, 47],
 } as const satisfies Record<TraceEvent["type"] | "error", Color>;
+const MESSAGE_PALETTE = {
+  text: [38, 112, 176],
+  reasoning: [37, 99, 235],
+  tool: [59, 130, 246],
+  file: [96, 165, 250],
+} as const satisfies Record<MessageSpanKind, Color>;
 
 const loadMenu = new Tool({
   name: "load_menu",
@@ -218,18 +229,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type PartialEventWithEnd = PartialTraceEvent & { end: number };
+type TraceRenderEvent = PartialTraceEvent | TraceEvent;
+type AgentTraceContent = Extract<TraceEvent, { type: "agent" }>["content"];
+type ModelTraceContent = Extract<TraceEvent, { type: "model" }>["content"];
+type ToolTraceContent = Extract<TraceEvent, { type: "tool" }>["content"];
+type MessageTraceContent = Extract<TraceEvent, { type: "message" }>["content"];
+type MessageSpanKind = "text" | "reasoning" | "tool" | "file";
+type PartialEventWithEnd = TraceRenderEvent & {
+  end: number;
+  errorMessage: string | null;
+};
 
 export function renderTraceFlamegraph(
-  partialEvents: PartialTraceEvent[],
+  partialEvents: TraceRenderEvent[],
   options: RenderTraceFlamegraphOptions = {},
 ): string {
   if (partialEvents.length === 0) return "";
 
   const now = Date.now();
-  const events = partialEvents.map((x) => ({
+  const events: PartialEventWithEnd[] = partialEvents.map((x) => ({
     ...x,
-    end: x.end || now,
+    end: "end" in x ? x.end : now,
+    errorMessage: "errorMessage" in x ? x.errorMessage : null,
   }));
 
   const spans = [...events].sort((a, b) =>
@@ -365,20 +386,22 @@ function placeLabels(width: number, total: number): string {
   return line.join("");
 }
 
-function spanLabel(event: PartialTraceEvent): string {
+function spanLabel(event: PartialEventWithEnd): string {
   const suffix = event.errorMessage == null ? "" : " !";
   if (!event.content) {
     return `${event.type}`;
   }
   switch (event.type) {
     case "agent":
-      return `agent ${event.content.model}${suffix}`;
+      return `agent ${(event.content as AgentTraceContent).model}${suffix}`;
     case "model":
-      return `model ${event.content.reason}${suffix}`;
+      return `model ${(event.content as ModelTraceContent).reason}${suffix}`;
     case "tool":
-      return `tool ${event.content.name}${suffix}`;
+      return `tool ${(event.content as ToolTraceContent).name}${suffix}`;
     case "message":
-      return `message ${event.content.type}${suffix}`;
+      return `${
+        messageSpanLabel((event.content as MessageTraceContent).type)
+      }${suffix}`;
     case "log":
       return typeof event.content === "string"
         ? `log ${event.content}${suffix}`
@@ -386,8 +409,35 @@ function spanLabel(event: PartialTraceEvent): string {
   }
 }
 
-function spanColor(event: PartialTraceEvent, depth: number): Color {
-  const base = event.errorMessage == null ? PALETTE[event.type] : PALETTE.error;
+type MessageSpanType = Extract<
+  TraceEvent,
+  { type: "message" }
+>["content"]["type"];
+
+function messageSpanLabel(type: MessageSpanType): MessageSpanKind {
+  switch (type) {
+    case "input_text":
+    case "output_text":
+    case "tool_result_text":
+      return "text";
+    case "output_reasoning":
+      return "reasoning";
+    case "tool_use":
+      return "tool";
+    case "input_file":
+    case "tool_result_file":
+      return "file";
+  }
+}
+
+function spanColor(event: PartialEventWithEnd, depth: number): Color {
+  const base = event.errorMessage == null
+    ? event.type === "message"
+      ? MESSAGE_PALETTE[
+        messageSpanLabel((event.content as MessageTraceContent).type)
+      ]
+      : PALETTE[event.type]
+    : PALETTE.error;
   const lift = ((depth * 19 + Math.floor(event.start / 83)) % 18) - 6;
   return [
     clampChannel(base[0] + lift),
