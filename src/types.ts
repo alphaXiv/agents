@@ -140,7 +140,3 @@ export interface ProviderStreamMetadata {
   /** Count of output tokens. If the provider is unable to classify, then all tokens are "output" tokens. */
   outputTokens: number | null;
 }
-
-export interface AdapterStreamSingleResult extends ProviderStreamMetadata {
-  items: ChatItem[];
-}
