@@ -35,6 +35,7 @@ import type { Tool } from "../tool.ts";
 import type {
   AdapterStreamIterator,
   ChatItem,
+  ChatItemToolUse,
   ReasoningEffort,
 } from "../types.ts";
 import { hashString, removeDollarSchema } from "../util.ts";
@@ -173,15 +174,16 @@ async function getGoogleHistory(
       const toolCall = history.find((item) =>
         item.type === "tool_use" &&
         item.tool_use_id === historyItem.tool_use_id
-      );
-      assert(toolCall?.type === "tool_use");
-      const tool = toolMap.find((tool) => tool.original.name === toolCall.kind);
+      ) as ChatItemToolUse | undefined;
+      assert(toolCall);
+      const definition = toolMap.find((x) => x.original.name === toolCall.kind);
+      assert(definition);
       googleHistory.push({
         role: "user",
         parts: [{
           functionResponse: {
             id: historyItem.tool_use_id,
-            name: tool?.google.name ?? toolCall.kind,
+            name: definition.google.name,
             response: { content: historyItem.content },
           },
         }],
