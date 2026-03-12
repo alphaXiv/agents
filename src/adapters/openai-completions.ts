@@ -57,7 +57,7 @@ const DEFAULT_SUPPORTED_MIME_TYPES = [
   "image/gif",
   "image/webp",
   "application/pdf",
-  ...TEXTLIKE_MIME_TYPES
+  ...TEXTLIKE_MIME_TYPES,
 ];
 
 type ToolMap = {
