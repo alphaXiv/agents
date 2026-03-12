@@ -11,6 +11,7 @@ import type { Tool } from "../tool.ts";
 import type {
   AsyncStreamItemGenerator,
   ChatItem,
+  ChatItemToolUse,
   ReasoningEffort,
 } from "../types.ts";
 import { crossPlatformEnv, hashString, removeDollarSchema } from "../util.ts";
@@ -144,14 +145,16 @@ export async function getGoogleHistory(
       const toolCall = history.find((item) =>
         item.type === "tool_use" &&
         item.tool_use_id === historyItem.tool_use_id
-      );
+      ) as ChatItemToolUse | undefined;
       assert(toolCall);
+      const definition = toolMap.find((x) => x.original.name === toolCall.kind);
+      assert(definition);
       googleHistory.push({
         role: "user",
         parts: [{
           functionResponse: {
             id: historyItem.tool_use_id,
-            name: toolCall.type === "tool_use" ? toolCall.kind : undefined, // TODO: figure out why type narrowing is trolling me here
+            name: definition.google.name,
             response: { content: historyItem.content },
           },
         }],
