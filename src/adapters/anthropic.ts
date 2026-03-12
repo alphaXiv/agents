@@ -314,12 +314,21 @@ export function anthropicAdapter<Models extends string>(
         }
       } else if (part.type === "content_block_start") {
         if (part.content_block.type === "tool_use") {
-          yield { type: "unstable_tracing_tool_use_start" };
+          const block = part.content_block;
+          const tool = normalizedTools.find((tool) =>
+            tool.anthropic.name === block.name
+          );
           parts[part.index] = {
             type: "tool_use",
-            kind: part.content_block.name,
-            tool_use_id: part.content_block.id,
+            kind: block.name,
+            tool_use_id: block.id,
             content: "",
+          };
+          yield {
+            type: "tool_use_start",
+            index: part.index,
+            kind: tool?.original.name ?? block.name,
+            tool_use_id: block.id,
           };
         }
       } else if (part.type === "content_block_stop") {

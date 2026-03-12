@@ -391,7 +391,12 @@ Deno.test("unstable tool-use hints create message spans without changing tool tr
       if (!last || last.type === "input_text") {
         const tool = tools[0];
         assertExists(tool);
-        yield { type: "unstable_tracing_tool_use_start" };
+        yield {
+          type: "tool_use_start",
+          index: 0,
+          tool_use_id: "tool-1",
+          kind: tool.name,
+        };
         yield {
           type: "tool_use",
           index: 0,

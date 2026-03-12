@@ -97,6 +97,10 @@ type StreamItemType = {
   type: "delta_output_reasoning";
   delta: string;
 } | {
+  type: "tool_use_start";
+  tool_use_id: string;
+  kind: string;
+} | {
   type: "tool_use";
   tool_use_id: string;
   kind: string;
@@ -116,14 +120,8 @@ export type ReasoningEffort = "minimal" | "normal"; // TODO: investigate adding 
 
 export type StreamItem = BaseStreamItem & StreamItemType;
 
-/**
- * Hints an adapter can send to the agents SDK, used currently for tracing purposes only.
- * These are not forwarded
- */
-type UnstableStreamHints = { type: "unstable_tracing_tool_use_start" };
-
 export type AdapterStreamIterator = AsyncGenerator<
-  StreamItem | UnstableStreamHints,
+  StreamItem,
   ProviderStreamMetadata,
   unknown
 >;

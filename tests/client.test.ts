@@ -17,6 +17,30 @@ Deno.test("Basic addStreamItem", () => {
   assertEquals(output, [{ type: "output_text", content: "5723611894" }]);
 });
 
+Deno.test("addStreamItem tool_use_start creates placeholder, tool_use fills it", () => {
+  const items: StreamItem[] = [
+    { type: "tool_use_start", index: 0, tool_use_id: "t1", kind: "my_tool" },
+    {
+      type: "tool_use",
+      index: 0,
+      tool_use_id: "t1",
+      kind: "my_tool",
+      content: '{"x":1}',
+    },
+  ];
+
+  const output: ChatItem[] = [];
+  for (const part of items) {
+    addStreamItem(output, part);
+  }
+  assertEquals(output, [{
+    type: "tool_use",
+    tool_use_id: "t1",
+    kind: "my_tool",
+    content: '{"x":1}',
+  }]);
+});
+
 Deno.test("Basic addStreamItem out of order", () => {
   const basic: StreamItem[] = [
     { type: "delta_output_reasoning", index: 0, delta: "Hello" },

@@ -406,21 +406,6 @@ export class Agent<
               );
             }
 
-            // since Agents SDK doesn't yet support streaming tool calls, an
-            // unstable hint is used for the time being.
-            if (part.type === "unstable_tracing_tool_use_start") {
-              if (tracingCurrentMessage !== "pending-tool") {
-                endMessageTraceIfStarted();
-                tMessage = newTrace({
-                  type: "message",
-                  parent: tModel,
-                  content: { type: "tool_use" },
-                });
-                tracingCurrentMessage = "pending-tool";
-              }
-              continue;
-            }
-
             // automatically extract message start and end traces
             if (
               part.type === "delta_output_text" ||
@@ -441,6 +426,17 @@ export class Agent<
                 tracingCurrentMessage = part.index;
               }
               trace = tMessage.id;
+            } else if (part.type === "tool_use_start") {
+              if (tracingCurrentMessage !== "pending-tool") {
+                endMessageTraceIfStarted();
+                tMessage = newTrace({
+                  type: "message",
+                  parent: tModel,
+                  content: { type: "tool_use" },
+                });
+                tracingCurrentMessage = "pending-tool";
+              }
+              trace = generate();
             } else {
               // other message types always force stopping the current trace
               endMessageTraceIfStarted();
