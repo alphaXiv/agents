@@ -34,12 +34,7 @@ import type {
 } from "../types.ts";
 import type { ReasoningEffort } from "../types.ts";
 
-const DEFAULT_SUPPORTED_MIME_TYPES = [
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/gif",
-  "image/webp",
+const TEXTLIKE_MIME_TYPES = [
   "text/*",
   "application/json",
   "application/*+json",
@@ -53,7 +48,16 @@ const DEFAULT_SUPPORTED_MIME_TYPES = [
   "application/ecmascript",
   "application/typescript",
   "application/x-typescript",
+];
+
+const DEFAULT_SUPPORTED_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
   "application/pdf",
+  ...TEXTLIKE_MIME_TYPES
 ];
 
 type ToolMap = {
@@ -153,21 +157,7 @@ function supportsMimeType(mimeType: string, supportedMimeTypes: string[]) {
 }
 
 function isTextLikeMimeType(mimeType: string) {
-  return supportsMimeType(mimeType, [
-    "text/*",
-    "application/json",
-    "application/*+json",
-    "application/xml",
-    "application/*+xml",
-    "application/yaml",
-    "application/*+yaml",
-    "application/x-yaml",
-    "application/toml",
-    "application/javascript",
-    "application/ecmascript",
-    "application/typescript",
-    "application/x-typescript",
-  ]);
+  return supportsMimeType(mimeType, TEXTLIKE_MIME_TYPES);
 }
 
 function getPdfSupport<Model extends string>(
