@@ -391,6 +391,13 @@ export function googleAdapter<Models extends string>(
             signatureMap.set(funcId, part.thoughtSignature);
           }
 
+          // TODO: investigate if we can get this earlier
+          yield {
+            type: "tool_use_start",
+            index: lastIndex,
+            kind: tool?.original.name ?? func.name,
+            tool_use_id: funcId,
+          };
           yield {
             type: "tool_use",
             tool_use_id: funcId,

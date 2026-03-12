@@ -16,12 +16,11 @@ export function addStreamItem(
         type: "output_reasoning",
         content: "",
       };
-    } else if (streamItem.type === "tool_use") {
+    } else if (streamItem.type === "tool_use_start") {
       currentChatItems[streamItem.index] = {
         type: "tool_use",
         tool_use_id: streamItem.tool_use_id,
         kind: streamItem.kind,
-        content: streamItem.content,
       };
     } else if (streamItem.type === "tool_result_text") {
       currentChatItems[streamItem.index] = {
@@ -37,6 +36,15 @@ export function addStreamItem(
         content: streamItem.content,
       };
     }
+  }
+
+  if (streamItem.type === "tool_use") {
+    currentChatItems[streamItem.index] = {
+      type: "tool_use",
+      tool_use_id: streamItem.tool_use_id,
+      kind: streamItem.kind,
+      content: streamItem.content,
+    };
   }
 
   if (

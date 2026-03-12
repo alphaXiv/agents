@@ -20,6 +20,12 @@ async function* streamToolUse(
   content?: string,
 ): AdapterStreamIterator {
   yield {
+    type: "tool_use_start",
+    index,
+    tool_use_id,
+    kind,
+  };
+  yield {
     type: "tool_use",
     index,
     tool_use_id,
@@ -40,6 +46,12 @@ export const testingAdapter: Adapter<"deterministic"> = {
     if (systemPrompt === "Model output stream test") {
       const lastMessage = history.slice().pop();
       if (!lastMessage || lastMessage.type === "input_text") {
+        yield {
+          type: "tool_use_start",
+          index: 0,
+          tool_use_id: "output-tool-stream-id",
+          kind: "output_tool",
+        };
         yield {
           type: "tool_use",
           index: 0,
@@ -80,11 +92,23 @@ export const testingAdapter: Adapter<"deterministic"> = {
       // First turn: yield two tool_use items to be run in parallel
       if (!lastMessage || lastMessage.type === "input_text") {
         yield {
+          type: "tool_use_start",
+          index: 0,
+          tool_use_id: "id-slow",
+          kind: "slow_tool",
+        };
+        yield {
           type: "tool_use",
           index: 0,
           tool_use_id: "id-slow",
           kind: "slow_tool",
           content: '"query"',
+        };
+        yield {
+          type: "tool_use_start",
+          index: 1,
+          tool_use_id: "id-fast",
+          kind: "fast_tool",
         };
         yield {
           type: "tool_use",

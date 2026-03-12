@@ -165,11 +165,18 @@ export function openAiResponsesAdapter<Models extends string>(
         } else if (partItem.type === "function_call") {
           const tool = normalizedTools
             .find((tool) => tool.openai.name === partItem.name);
+          const kind = tool?.original.name ?? partItem.name;
           toolIndex[part.output_index] = {
             type: "tool_use",
             tool_use_id: partItem.call_id,
-            kind: tool?.original.name ?? partItem.name,
+            kind,
             content: partItem.arguments,
+          };
+          yield {
+            type: "tool_use_start",
+            index: part.output_index,
+            kind,
+            tool_use_id: partItem.call_id,
           };
         }
       } else if (part.type === "response.output_text.delta") {

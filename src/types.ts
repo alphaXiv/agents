@@ -83,6 +83,10 @@ type StreamItemType = {
   type: "delta_output_reasoning";
   delta: string;
 } | {
+  type: "tool_use_start";
+  tool_use_id: string;
+  kind: string;
+} | {
   type: "tool_use";
   tool_use_id: string;
   kind: string;

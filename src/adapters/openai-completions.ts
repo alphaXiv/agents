@@ -507,18 +507,25 @@ export function openAiCompletionsAdapter<Models extends string>(
           const tool = normalizedTools.find((tool) =>
             tool.openai.function.name === call.function?.name
           );
+          const kind = tool?.original.name ?? call.function.name;
           lastType = "tool_use";
           lastIndex++;
           pending = {
             streamIndex: lastIndex,
             toolUse: {
               type: "tool_use",
-              kind: tool?.original.name ?? call.function.name,
+              kind,
               tool_use_id: call.id,
               content: call.function.arguments ?? "",
             },
           };
           pendingToolUses.set(callIndex, pending);
+          yield {
+            type: "tool_use_start",
+            index: lastIndex,
+            kind,
+            tool_use_id: call.id,
+          };
         } else if (call.function?.arguments) {
           pending.toolUse.content = (pending.toolUse.content ?? "") +
             call.function.arguments;
