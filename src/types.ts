@@ -1,4 +1,4 @@
-import type { AgentRunResult } from "@alphaxiv/agents";
+import type { AgentRunResult } from "./agent.ts";
 
 export type ChatItemToolUse = {
   type: "tool_use";
