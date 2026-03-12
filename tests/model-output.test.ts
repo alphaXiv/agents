@@ -163,7 +163,7 @@ Deno.test("Structured output retry streams apology text and rebuilds history", a
   let run:
     | {
       output: { name: string };
-      history: ({ trace: string } & ChatItem)[];
+      history: WithTraceId<ChatItem>[];
       outputText: string;
     }
     | undefined;
