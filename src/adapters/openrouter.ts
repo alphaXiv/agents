@@ -71,6 +71,7 @@ export function getOpenRouterAdapter() {
 
     pdfSupport: (model) => ({
       mode: nativePdfSupport.includes(model) ? "native" : "text",
+      // Openrouter seems to have an undocumented 5MB size limit on pdfs :) - 4 to be safe here
       maxSize: 4 * 1024 * 1024,
     }),
     extraRequestBody: ({ model, reasoningEffort }) => ({

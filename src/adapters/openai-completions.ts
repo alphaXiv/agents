@@ -18,6 +18,7 @@ import OpenAI from "openai";
 import type {
   ChatCompletionFunctionTool,
   ChatCompletionMessageParam,
+  ChatCompletionStreamParams,
 } from "openai/resources/chat/completions/completions";
 import z from "zod";
 import type {
@@ -295,7 +296,7 @@ async function getOpenAiCompletionsHistory<Models extends string>(
   signal: AbortSignal,
 ) {
   const messages: ChatCompletionMessageParam[] = [{
-    role: "system",
+    role: "system", // TODO: select right role for each model
     content: systemPrompt,
   }];
 
@@ -442,7 +443,7 @@ export function openAiCompletionsAdapter<Models extends string>(
       reasoningEffort,
     }) ?? {};
 
-    const request = {
+    const request: ChatCompletionStreamParams = {
       model,
       messages,
       tools: normalizedTools.map(({ openai }) => openai),
@@ -451,7 +452,7 @@ export function openAiCompletionsAdapter<Models extends string>(
     };
 
     const response = openai.chat.completions.stream(
-      request as never,
+      request,
       { signal },
     );
 
@@ -464,8 +465,8 @@ export function openAiCompletionsAdapter<Models extends string>(
       if (!choice) continue;
       const { delta } = choice;
 
-      // TODO: there is no universe this works. this got slopped up
-      const reasoningDelta = (delta as { reasoning?: string }).reasoning;
+      // @ts-expect-error Handle reasoning content, this is a openrouter-specific extension
+      const reasoningDelta = delta.reasoning as string | undefined;
       if (reasoningDelta) {
         if (lastType !== "reasoning") {
           lastType = "reasoning";

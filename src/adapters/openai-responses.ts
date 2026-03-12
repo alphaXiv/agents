@@ -149,23 +149,19 @@ export function openAiResponsesAdapter<Models extends string>(
       if (part.type === "response.output_item.added") {
         const partItem = part.item;
         if (partItem.type === "message") {
-          const text = getMessageText(partItem.content);
-          if (text) {
-            yield {
-              type: "delta_output_text",
-              delta: text,
-              index: part.output_index,
-            };
-          }
+          yield {
+            type: "delta_output_text",
+            delta: partItem.content.map((d) =>
+              d.type === "refusal" ? d.refusal : d.text
+            ).join("\n"),
+            index: part.output_index,
+          };
         } else if (partItem.type === "reasoning") {
-          const reasoningText = getReasoningText(partItem);
-          if (reasoningText) {
-            yield {
-              type: "delta_output_reasoning",
-              delta: reasoningText,
-              index: part.output_index,
-            };
-          }
+          yield {
+            type: "delta_output_reasoning",
+            delta: partItem.summary.join("\n"),
+            index: part.output_index,
+          };
         } else if (partItem.type === "function_call") {
           const tool = normalizedTools
             .find((tool) => tool.openai.name === partItem.name);
@@ -399,26 +395,3 @@ type OpenAIToolMap = {
   /** OpenAI doesn't allow non-objects at the top level but we want to. We therefore wrap the tool input with a wrapper object which need to unwrap at the output */
   wrapperObject: boolean;
 };
-
-function getMessageText(
-  content: Array<{ type: string; text?: string; refusal?: string }>,
-) {
-  return content.map((part) =>
-    part.type === "refusal" ? (part.refusal ?? "") : (part.text ?? "")
-  ).join("\n");
-}
-
-function getReasoningText(
-  part: {
-    content?: Array<{ text?: string }>;
-    summary?: Array<{ text?: string }>;
-  },
-) {
-  if (part.content?.length) {
-    return part.content.map((content) => content.text ?? "").join("\n\n");
-  }
-  if (part.summary?.length) {
-    return part.summary.map((content) => content.text ?? "").join("\n\n");
-  }
-  return "";
-}
