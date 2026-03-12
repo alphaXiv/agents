@@ -8,7 +8,6 @@ import { addStreamItem } from "./client.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
 import { ModelOutput, type Tool } from "./tool.ts";
 import {
-  type ActiveTrace,
   MessageTracer,
   newTrace,
   type Tracer,
