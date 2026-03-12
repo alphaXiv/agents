@@ -24,18 +24,25 @@ export type TraceEvent =
   | ModelTraceEvent
   | ToolTraceEvent
   | MessageTraceEvent
-  | LogTraceEvent;
-export type PartialTraceEvent = Pick<
-  TraceEvent,
-  "id" | "type" | "parent" | "start" | "content"
->;
+  | LogTraceEvent
+  | CustomTraceEvent;
+
+type PartialTraceKeys = "id" | "type" | "parent" | "start" | "content";
+export type PartialTraceEvent =
+  | (Pick<AgentTraceEvent, PartialTraceKeys> & Partial<AgentTraceEvent>)
+  | (Pick<ModelTraceEvent, PartialTraceKeys> & Partial<ModelTraceEvent>)
+  | (Pick<ToolTraceEvent, PartialTraceKeys> & Partial<ToolTraceEvent>)
+  | (Pick<MessageTraceEvent, PartialTraceKeys> & Partial<MessageTraceEvent>)
+  | (Pick<LogTraceEvent, PartialTraceKeys> & Partial<LogTraceEvent>)
+  | (Pick<CustomTraceEvent, PartialTraceKeys> & Partial<CustomTraceEvent>);
 
 export type TraceType =
   | "agent"
   | "model"
   | "message"
   | "tool"
-  | "log";
+  | "log"
+  | "custom";
 
 /**
  * JSON serializable. Metadata depends on the type of trace. Allows you to extract
@@ -72,8 +79,7 @@ export interface BaseTraceEvent {
 export interface AgentTraceEvent extends BaseTraceEvent {
   type: "agent";
   content: {
-    provider: string;
-    model: string;
+    name?: string;
   };
 }
 
@@ -106,14 +112,13 @@ export interface ModelTraceEvent extends BaseTraceEvent {
 export interface MessageTraceEvent extends BaseTraceEvent {
   type: "message";
   content: {
-    /** The name of the tool */
     type: ChatItem["type"];
     // (get the rest of your data by joining on your ChatItem table)
   };
 }
 
 /** An invocation of a tool. */
-interface ToolTraceEvent extends BaseTraceEvent {
+export interface ToolTraceEvent extends BaseTraceEvent {
   type: "tool";
   content: {
     /** The name of the tool */
@@ -127,9 +132,23 @@ interface ToolTraceEvent extends BaseTraceEvent {
  * model was retried when `reason` isn't enough, or when certain provider
  * workarounds happened.
  */
-interface LogTraceEvent extends BaseTraceEvent {
+export interface LogTraceEvent extends BaseTraceEvent {
   type: "log";
   content: string;
+}
+
+/**
+ * An custom span from the user. This can be used by an application to group
+ * larger orchestrations into a shared trace. For example, you could wrap two
+ * agent executions in a row.
+ */
+export interface CustomTraceEvent extends BaseTraceEvent {
+  type: "custom";
+  /**
+   * If using object form, the convention is to at least include a `label`
+   * property to label this entry in flamegraphs.
+   */
+  content: string | Record<string, unknown>;
 }
 
 const globalTracers = new Set<Tracer>();
@@ -163,13 +182,19 @@ interface TraceInit<T extends TraceType> {
 
 export interface ActiveTrace<T extends Exclude<TraceType, "log">>
   extends TraceRef {
-  resolved: boolean;
   error(err: unknown, content?: Partial<TraceContent<T>>): void;
   success(content?: Partial<TraceContent<T>>): void;
   log(message: string, error?: unknown): void;
+  [Symbol.dispose](): void;
 }
 
-/** Use `try` / `finally` to call either `success` or `error` */
+/**
+ * @internal Create any trace type without requiring a function callback. There
+ * are probably places where the callback approach is better, but for things
+ * like `MessageTracer` this primitive is required.
+
+ * Use a `catch` block to call `error`, `content` can also be edited upon calling success.
+ */
 export function newTrace<T extends Exclude<TraceType, "log">>(
   init: TraceInit<T>,
 ): ActiveTrace<T> {
@@ -179,47 +204,30 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
   const parent = ref?.id ?? null;
   const id = init.id ?? generate(start);
 
-  const tracers = [
-    ...new Set([
+  // discover any new global tracers alongside parent attached tracers.
+  const tracers = Array.from(
+    new Set([
       ...ref?.parentTracers ?? [],
       ...init.tracers ?? [],
       ...globalTracers,
     ]),
-  ];
+  );
 
-  // no-op tracer implementation
-  let resolved: boolean;
-  if (tracers.length === 0) {
-    return {
-      id,
-      parentTracers: [],
-      get resolved() {
-        return resolved;
-      },
-      error() {
-        resolved = true;
-      },
-      success() {
-        resolved = true;
-      },
-      log() {},
-    };
-  }
-
-  // actually trace
+  let resolved: boolean = false;
   tracers.forEach((t) =>
     t.start?.({ id, type, parent, start, content } as PartialTraceEvent)
   );
   return {
     id,
     parentTracers: tracers,
-    get resolved() {
-      return resolved;
-    },
     error(err, finalContent) {
+      if (resolved) return;
       if (finalContent != null) {
         if (typeof finalContent === "string") content = finalContent;
-        content = { ...content, ...finalContent } as TraceContent<T>;
+        else {content = {
+            ...content as object,
+            ...finalContent,
+          } as TraceContent<T>;}
       }
       resolved = true;
       const event = {
@@ -235,9 +243,13 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
       tracers.forEach((t) => t.event(event));
     },
     success(finalContent) {
+      if (resolved) return;
       if (finalContent != null) {
         if (typeof finalContent === "string") content = finalContent;
-        content = { ...content, ...finalContent } as TraceContent<T>;
+        else {content = {
+            ...content as object,
+            ...finalContent,
+          } as TraceContent<T>;}
       }
       resolved = true;
       const event = {
@@ -251,6 +263,9 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
         content,
       } satisfies BaseTraceEvent as TraceEvent;
       tracers.forEach((t) => t.event(event));
+    },
+    [Symbol.dispose]() {
+      this.success();
     },
     log(content, error) {
       const time = Date.now();
@@ -267,4 +282,26 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
       tracers.forEach((t) => t.event(event));
     },
   };
+}
+
+export type ActiveCustomTrace = Pick<ActiveTrace<"custom">, "id" | "log">;
+
+/**
+ * Create a custom span. This can be used by your application to group larger
+ * orchestrations into a shared trace. For example, you could wrap two agent
+ * executions in a row. Additionally, this gives you access to emit log events
+ * within your callback. Custom traces automatically propagate using the Async
+ * Context API.
+ */
+export async function withTrace<T>(
+  content: TraceContent<"custom">,
+  callback: (ref: ActiveCustomTrace) => Promise<T>,
+): Promise<T> {
+  using trace = newTrace({ type: "custom", content });
+  try {
+    return await tracerAsyncLocalStorage.run(trace, () => callback(trace));
+  } catch (err) {
+    trace.error(err);
+    throw err;
+  }
 }

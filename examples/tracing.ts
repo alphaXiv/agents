@@ -8,23 +8,20 @@ import z from "zod";
 import {
   type Adapter,
   Agent,
+  type ChatItem,
   type ModelString,
+  type PartialTraceEvent,
   registerGlobalTracer,
   Tool,
   type TraceEvent,
+  withTrace,
 } from "@alphaxiv/agents";
-import { lmStudioAdapter } from "@alphaxiv/agents/lmstudio";
 import * as log from "jsr:@clo/lib@3.0.0/log.ts";
 import * as async from "jsr:@clo/lib@3.0.0/async.ts";
-import type { PartialTraceEvent } from "../src/tracing.ts";
 import process from "node:process";
 
-const adapter: Adapter | undefined = lmStudioAdapter({
-  name: "lmstudio",
-  url: "http://sandwich:1234/v1",
-  apiKey: null,
-});
-const model: ModelString = "qwen/qwen3.5-35b-a3b";
+const adapter: Adapter | undefined = undefined;
+const model: ModelString = "anthropic:claude-haiku-4-5";
 
 const snackMenu = [
   { name: "miso ramen cup", calories: 420, prepMinutes: 6, price: 8 },
@@ -40,7 +37,7 @@ async function main() {
   //
   // In this example, the traces are stored in an array, but also integrating
   // start events with `@clo/lib/log.ts` for an interactive visual.
-  let traces: TraceRenderEvent[] = [];
+  let traces: PartialTraceEvent[] = [];
   let rerender: (() => void) | null = null;
   const unregister = registerGlobalTracer({
     event: (event) => {
@@ -74,6 +71,7 @@ async function main() {
   });
 
   const subagent = new Agent({
+    name: "Snack Specialist",
     adapter,
     model,
     instructions: [
@@ -92,13 +90,18 @@ async function main() {
       request: z.string().describe("The snack brief to hand off."),
     }),
     async execute({ param }) {
-      await sleep(250 + 150 * Math.random());
-      const run = await subagent.run(param.request);
-      return run.outputText;
+      await withTrace("sleep", async () => {
+        await sleep(250 + 150 * Math.random());
+      });
+      return withTrace("cool sub-agent", async () => {
+        const run = await subagent.run(param.request);
+        return run.outputText;
+      });
     },
   });
 
   const agent = new Agent({
+    name: "Main Agent",
     adapter,
     model,
     instructions: [
@@ -155,6 +158,7 @@ const PALETTE = {
   tool: [217, 153, 27],
   message: [38, 112, 176],
   log: [32, 149, 136],
+  custom: [32, 149, 136],
   error: [185, 28, 47],
 } as const satisfies Record<TraceEvent["type"] | "error", Color>;
 const MESSAGE_PALETTE = {
@@ -229,19 +233,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type TraceRenderEvent = PartialTraceEvent | TraceEvent;
-type AgentTraceContent = Extract<TraceEvent, { type: "agent" }>["content"];
-type ModelTraceContent = Extract<TraceEvent, { type: "model" }>["content"];
-type ToolTraceContent = Extract<TraceEvent, { type: "tool" }>["content"];
-type MessageTraceContent = Extract<TraceEvent, { type: "message" }>["content"];
 type MessageSpanKind = "text" | "reasoning" | "tool" | "file";
-type PartialEventWithEnd = TraceRenderEvent & {
-  end: number;
-  errorMessage: string | null;
-};
+type PartialEventWithEnd = PartialTraceEvent & { end: number };
 
 export function renderTraceFlamegraph(
-  partialEvents: TraceRenderEvent[],
+  partialEvents: PartialTraceEvent[],
   options: RenderTraceFlamegraphOptions = {},
 ): string {
   if (partialEvents.length === 0) return "";
@@ -249,8 +245,7 @@ export function renderTraceFlamegraph(
   const now = Date.now();
   const events: PartialEventWithEnd[] = partialEvents.map((x) => ({
     ...x,
-    end: "end" in x ? x.end : now,
-    errorMessage: "errorMessage" in x ? x.errorMessage : null,
+    end: x.end ?? now,
   }));
 
   const spans = [...events].sort((a, b) =>
@@ -393,28 +388,25 @@ function spanLabel(event: PartialEventWithEnd): string {
   }
   switch (event.type) {
     case "agent":
-      return `agent ${(event.content as AgentTraceContent).model}${suffix}`;
+      return `${event.content?.name ?? "agent"}${suffix}`;
     case "model":
-      return `model ${(event.content as ModelTraceContent).reason}${suffix}`;
+      return `model ${event.content.reason}${suffix}`;
     case "tool":
-      return `tool ${(event.content as ToolTraceContent).name}${suffix}`;
+      return `tool ${event.content.name}${suffix}`;
     case "message":
+      return `${messageSpanLabel(event.content.type)}${suffix}`;
+    case "custom":
       return `${
-        messageSpanLabel((event.content as MessageTraceContent).type)
+        typeof event.content === "string"
+          ? event.content
+          : JSON.stringify(event.content)
       }${suffix}`;
     case "log":
-      return typeof event.content === "string"
-        ? `log ${event.content}${suffix}`
-        : `log${suffix}`;
+      return `log ${event.content}${suffix}`;
   }
 }
 
-type MessageSpanType = Extract<
-  TraceEvent,
-  { type: "message" }
->["content"]["type"];
-
-function messageSpanLabel(type: MessageSpanType): MessageSpanKind {
+function messageSpanLabel(type: ChatItem["type"]): MessageSpanKind {
   switch (type) {
     case "input_text":
     case "output_text":
@@ -433,9 +425,7 @@ function messageSpanLabel(type: MessageSpanType): MessageSpanKind {
 function spanColor(event: PartialEventWithEnd, depth: number): Color {
   const base = event.errorMessage == null
     ? event.type === "message"
-      ? MESSAGE_PALETTE[
-        messageSpanLabel((event.content as MessageTraceContent).type)
-      ]
+      ? MESSAGE_PALETTE[messageSpanLabel(event.content.type)]
       : PALETTE[event.type]
     : PALETTE.error;
   const lift = ((depth * 19 + Math.floor(event.start / 83)) % 18) - 6;
@@ -504,7 +494,7 @@ function fitLabel(label: string, width: number): string {
   if (width <= 0) return "";
   if (label.length <= width) return label;
   if (width <= 3) return label.slice(0, width);
-  return `${label.slice(0, width - 3)}...`;
+  return `${label.slice(0, width - 1)}…`;
 }
 
 function ms(n: number): string {

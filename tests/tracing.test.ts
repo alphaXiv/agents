@@ -119,10 +119,7 @@ Deno.test("global tracer captures tool turns, message spans, and token counts", 
     assertExists(messageTrace);
     assertEquals(modelTraces.length, 2);
 
-    assertEquals(agentTrace.content, {
-      provider: "trace-test",
-      model: "tool-model",
-    });
+    assertEquals(agentTrace.content, {});
     assertEquals(toolTrace.parent, agentTrace.id);
     assertEquals(toolTrace.content, { name: "search" });
     assertEquals(messageTrace.parent, modelTraces[1].id);
@@ -209,6 +206,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
   };
 
   const subagent = new Agent({
+    name: "inner-model",
     adapter: subAdapter,
     model: "inner-model",
     instructions: "Answer plainly.",
@@ -229,10 +227,11 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     model: "outer-model",
     instructions: "Use the delegate tool.",
     tools: [useSubagent],
-    tracers: [tracer],
   });
 
-  const run = await agent.run("go");
+  const run = await agent.run("go", {
+    tracers: [tracer],
+  });
   assertEquals(run.outputText, "subagent result");
   assertEquals(run.inputTokens, 6);
   assertEquals(run.outputTokens, 8);
@@ -274,8 +273,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
       parent: 4,
       error: null,
       content: {
-        provider: "inner",
-        model: "inner-model",
+        name: "inner-model",
       },
     },
     {
@@ -306,16 +304,13 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
       type: "agent",
       parent: null,
       error: null,
-      content: {
-        provider: "outer",
-        model: "outer-model",
-      },
+      content: {},
     },
   ]);
 
   const toolTrace = filterTrace(events, "tool")[0];
   const innerAgentTrace = filterTrace(events, "agent").find((trace) =>
-    trace.content.model === "inner-model"
+    trace.content.name === "inner-model"
   );
   const outerOutputMessage = filterTrace(events, "message").find((trace) =>
     trace.parent ===
@@ -423,10 +418,11 @@ Deno.test("unstable tool-use hints create message spans without changing tool tr
     model: "hint-model",
     instructions: "Use the tool.",
     tools: [ping],
-    tracers: [tracer],
   });
 
-  const run = await agent.run("go");
+  const run = await agent.run("go", {
+    tracers: [tracer],
+  });
   assertEquals(run.outputText, "pong");
   assertStartsMatchEvents(starts, events);
 
@@ -492,10 +488,11 @@ Deno.test("tool failures are traced as errors while the agent run still complete
     model: "tool-failure-model",
     instructions: "Use the tool.",
     tools: [failingTool],
-    tracers: [tracer],
   });
 
-  const run = await agent.run("go");
+  const run = await agent.run("go", {
+    tracers: [tracer],
+  });
   assertEquals(run.outputText, "Error: tool blew up");
   assertStartsMatchEvents(starts, events);
 
@@ -543,10 +540,11 @@ Deno.test("provider retries after partial output keep failed message spans", asy
     adapter,
     model: "retry-model",
     instructions: "Answer plainly.",
-    tracers: [tracer],
   });
 
-  const run = await agent.run("hello");
+  const run = await agent.run("hello", {
+    tracers: [tracer],
+  });
   assertEquals(run.outputText, "partial\n\nworked");
   assertStartsMatchEvents(starts, events);
 
@@ -593,10 +591,11 @@ Deno.test("malformed structured output emits a log span and retries cleanly", as
     output: z.object({
       name: z.string(),
     }),
-    tracers: [tracer],
   });
 
-  const run = await agent.run("name a cat");
+  const run = await agent.run("name a cat", {
+    tracers: [tracer],
+  });
   assertEquals(run.output, { name: "bingus" });
 
   const messageTraces = filterTrace(events, "message");

@@ -21,12 +21,22 @@ export {
   SidTextSearchTool,
 } from "./src/tools/sid.ts";
 export {
+  type ActiveCustomTrace,
   type AgentTraceEvent,
   type BaseTraceEvent,
   type ModelTraceEvent,
   registerGlobalTracer,
+  type ToolTraceEvent,
   type TraceEvent,
   type Tracer,
+  withTrace,
+} from "./src/tracing.ts";
+export type {
+  LogTraceEvent,
+  MessageTraceEvent,
+  PartialTraceEvent,
+  TraceContent,
+  TraceType,
 } from "./src/tracing.ts";
 export type {
   Adapter,

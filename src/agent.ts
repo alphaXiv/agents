@@ -105,6 +105,8 @@ export type AgentOptions<
   Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
   A extends Adapter<M> = Adapter<M>,
 > = {
+  /** Optionally name this agent for tracing and debugging purposes */
+  name?: string;
   /**
    * By default, the adapter is derived from the model string, and you don't
    * need to worry about setting one yourself. But if you need to hit a custom
@@ -130,8 +132,6 @@ export type AgentOptions<
   reasoningEffort?: ReasoningEffort;
   /** APIs which are not finalized and are subject to change. */
   unstable?: UnstableAgentOptions;
-  /** Listen to traces for this agent, tool calls, and all sub-agents */
-  tracers?: Tracer[];
 };
 
 export interface UnstableAgentOptions {
@@ -163,6 +163,7 @@ export class Agent<
   const Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
   A extends Adapter<M> = Adapter<M>,
 > {
+  #name: string | null;
   #adapter: A | Promise<A>;
   #model: M;
   #instructions: string;
@@ -170,11 +171,11 @@ export class Agent<
   // deno-lint-ignore no-explicit-any
   #tools: Tool<any, any, any>[];
   #reasoningEffort: ReasoningEffort;
-  #tracers: Tracer[];
 
   #noRetries = false;
 
   constructor(options: AgentOptions<zO, zI, M, Tools, A>) {
+    this.#name = options.name ?? null;
     if (options.adapter) {
       this.#adapter = options.adapter;
       this.#model = options.model;
@@ -195,7 +196,6 @@ export class Agent<
     this.#output = options.output;
     this.#tools = options.tools?.slice() ?? [];
     this.#reasoningEffort = options.reasoningEffort ?? "normal";
-    this.#tracers = options.tracers?.slice() ?? [];
 
     if (options.unstable) {
       const { retries = true, ...unknown } = options.unstable;
@@ -217,7 +217,7 @@ export class Agent<
     traceId: string,
     parent: TraceRef,
   ): Promise<RunToolResult> {
-    const t = newTrace({
+    using t = newTrace({
       id: traceId,
       type: "tool",
       parent,
@@ -256,7 +256,6 @@ export class Agent<
         signal,
       );
 
-      t.success();
       if (result instanceof ModelOutput) throw result;
 
       return {
@@ -286,7 +285,7 @@ export class Agent<
    */
   async run(
     chatLike: ChatLike,
-    options?: { signal: AbortSignal },
+    options?: { signal?: AbortSignal; tracers?: Tracer[] },
   ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
     const result = this.stream(chatLike, options);
     while (true) {
@@ -296,26 +295,19 @@ export class Agent<
   }
 
   /** Run the agent, streaming the response and tool calls. */
-  async *stream(chatLike: ChatLike, options?: {
-    signal: AbortSignal;
-  }): AgentStreamIterator<ResolveAgentOutput<zO, Tools>> {
-    options?.signal.throwIfAborted();
+  async *stream(
+    chatLike: ChatLike,
+    options?: { signal?: AbortSignal; tracers?: Tracer[] },
+  ): AgentStreamIterator<ResolveAgentOutput<zO, Tools>> {
+    options?.signal?.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
     const adapter = await this.#adapter;
 
-    const tAgent = newTrace({
+    using tAgent = newTrace({
       type: "agent",
-      tracers: this.#tracers,
-      content: {
-        // TODO: when Agents SDK supports automatic fallbacks, communicate the
-        // entire configuration within this trace to allow observing config from
-        // within the trace.
-        // TODO: lino during review maybe this is actually a bad idea. though i
-        // feel bad about making the agent trace an empty object. maybe that's fine.
-        provider: adapter.name,
-        model: this.#model,
-      },
+      content: this.#name ? { name: this.#name } : {},
+      tracers: options?.tracers,
     });
 
     let totalInputTokens = 0;
@@ -343,19 +335,7 @@ export class Agent<
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         const newHistory: WithTraceId<ChatItem>[] = [];
 
-        // TODO: probably refactor this to remove the lint
-        let tMessage: ActiveTrace<"message"> | null = null;
-        let tracingCurrentMessage: number | "pending-tool" | null = null;
-        // deno-lint-ignore no-inner-declarations
-        function endMessageTraceIfStarted() {
-          if (tMessage) {
-            tMessage.success();
-            tMessage = null;
-            tracingCurrentMessage = null;
-          }
-        }
-
-        const tModel = newTrace({
+        using tModel = newTrace({
           type: "model",
           parent: tAgent,
           content: {
@@ -366,6 +346,8 @@ export class Agent<
             outputTokens: null,
           },
         });
+        using messageTracer = new MessageTracer(tModel);
+
         let failed = false;
         let err: unknown;
         try {
@@ -382,7 +364,7 @@ export class Agent<
           while (true) {
             const { value: part, done } = await stream.next();
             if (done) {
-              endMessageTraceIfStarted();
+              messageTracer.endMessageTraceIfStarted();
               if (part.inputTokens) totalInputTokens += part.inputTokens;
               if (part.outputTokens) totalOutputTokens += part.outputTokens;
               tModel.success({
@@ -393,7 +375,7 @@ export class Agent<
             }
 
             // execute tools immediately
-            let trace: string;
+            let trace: string | null = null;
             if (part.type === "tool_use") {
               assert(
                 !pendingTools.has(part.tool_use_id),
@@ -406,40 +388,23 @@ export class Agent<
               );
             }
 
+            // add the item to the stream first
+            addStreamItem(newHistory, part);
+            const chatItemType = newHistory[part.index].type;
+
             // automatically extract message start and end traces
             if (
               part.type === "delta_output_text" ||
-              part.type === "delta_output_reasoning"
+              part.type === "delta_output_reasoning" ||
+              part.type === "tool_use_start"
             ) {
-              // if the index is different than the one we're locked in on tracing, replace it
-              if (part.index !== tracingCurrentMessage || !tMessage) {
-                endMessageTraceIfStarted();
-                tMessage = newTrace({
-                  type: "message",
-                  parent: tModel,
-                  content: {
-                    type: part.type === "delta_output_text"
-                      ? "output_text"
-                      : "output_reasoning",
-                  },
-                });
-                tracingCurrentMessage = part.index;
-              }
-              trace = tMessage.id;
-            } else if (part.type === "tool_use_start") {
-              if (tracingCurrentMessage !== "pending-tool") {
-                endMessageTraceIfStarted();
-                tMessage = newTrace({
-                  type: "message",
-                  parent: tModel,
-                  content: { type: "tool_use" },
-                });
-                tracingCurrentMessage = "pending-tool";
-              }
-              trace = generate();
+              trace ??= messageTracer.startOrContinue({
+                index: part.index,
+                type: chatItemType,
+              });
             } else {
               // other message types always force stopping the current trace
-              endMessageTraceIfStarted();
+              messageTracer.endMessageTraceIfStarted();
               trace ??= tModel.id;
             }
 
@@ -448,18 +413,12 @@ export class Agent<
               index: part.index + history.length,
               trace,
             };
-            addStreamItem(newHistory, part);
             newHistory[part.index].trace ??= trace;
             yield reIndexedPart;
           }
         } catch (error) {
-          if (tMessage) {
-            tMessage?.error(new Error("Cancelled by provider error"));
-          }
-          tModel.error(error, {
-            inputTokens: null,
-            outputTokens: null,
-          });
+          messageTracer.cancel();
+          tModel.error(error);
           err = error;
           failed = true;
 
@@ -520,7 +479,7 @@ export class Agent<
                 "Tool calls cancelled due to one returning ModelOutput",
               ),
             );
-            return finishAgentRun(tAgent, {
+            return createRunResult({
               history: [...history, ...newHistory],
               output,
               totalInputTokens,
@@ -593,7 +552,7 @@ export class Agent<
           output = undefined as ResolveAgentOutput<zO, Tools>;
         }
 
-        return finishAgentRun(tAgent, {
+        return createRunResult({
           history: history.filter(Boolean),
           totalInputTokens,
           totalOutputTokens,
@@ -605,8 +564,6 @@ export class Agent<
     } catch (err) {
       tAgent.error(err);
       throw err;
-    } finally {
-      assert(tAgent.resolved);
     }
   }
 
@@ -675,13 +632,60 @@ export class Agent<
   }
 }
 
-function finishAgentRun<T>(t: ActiveTrace<"agent">, completion: {
+/**
+ * Stateful tracking of message trace objects.
+ *
+ * This use-case is why the lower
+ * level `newTrace` function does not enforce callback wrapping.
+ */
+class MessageTracer {
+  current: {
+    trace: ActiveTrace<"message">;
+    index: number;
+  } | null = null;
+  modelTrace: TraceRef;
+
+  constructor(modelTrace: TraceRef) {
+    this.modelTrace = modelTrace;
+  }
+
+  startOrContinue({ index, type }: { index: number; type: ChatItem["type"] }) {
+    // if the index is different than the one we're locked in on tracing, replace it
+    if (!this.current || this.current.index !== index) {
+      this.endMessageTraceIfStarted();
+      const trace = newTrace({
+        type: "message",
+        parent: this.modelTrace,
+        content: { type },
+      });
+      this.current = { trace, index };
+    }
+    return this.current.trace.id;
+  }
+
+  endMessageTraceIfStarted() {
+    if (this.current) this.current.trace.success();
+    this.current = null;
+  }
+
+  cancel() {
+    if (this.current) {
+      this.current.trace.error(new Error("Cancelled by provider error"));
+    }
+    this.current = null;
+  }
+
+  [Symbol.dispose]() {
+    this.endMessageTraceIfStarted();
+  }
+}
+
+function createRunResult<T>(completion: {
   history: WithTraceId<ChatItem>[];
   totalInputTokens: number;
   totalOutputTokens: number;
   output: T;
 }): AgentRunResult<T> {
-  t.success();
   const { output, history } = completion;
   return {
     history,
