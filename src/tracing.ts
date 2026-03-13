@@ -1,7 +1,7 @@
 import { generate } from "@std/uuid/v7";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { errMessage } from "./util.ts";
-import { ChatItem } from "./types.ts";
+import type { ChatItem } from "./types.ts";
 
 export interface Tracer {
   /**
@@ -72,7 +72,7 @@ export interface BaseTraceEvent {
    * JSON serializable. Metadata depends on the type of trace. Allows you to extract
    * some piece of data in a type safe way (token counts from model runs, tool names).
    */
-  content: string | Record<string, unknown>;
+  content: Record<string, unknown>;
 }
 
 /** An invocation to `agent.run` or `agent.stream`. This is the root node for traces. */
@@ -134,7 +134,7 @@ export interface ToolTraceEvent extends BaseTraceEvent {
  */
 export interface LogTraceEvent extends BaseTraceEvent {
   type: "log";
-  content: string;
+  content: { message: string };
 }
 
 /**
@@ -148,7 +148,10 @@ export interface CustomTraceEvent extends BaseTraceEvent {
    * If using object form, the convention is to at least include a `label`
    * property to label this entry in flamegraphs.
    */
-  content: string | Record<string, unknown>;
+  content: {
+    label?: string;
+    [extra: string]: unknown;
+  };
 }
 
 const globalTracers = new Set<Tracer>();
@@ -267,7 +270,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
     [Symbol.dispose]() {
       this.success();
     },
-    log(content, error) {
+    log(message, error) {
       const time = Date.now();
       const event: TraceEvent = {
         id: generate(time),
@@ -277,7 +280,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
         end: time,
         errorMessage: error != null ? errMessage(error) : null,
         errorObject: error ?? null,
-        content,
+        content: { message },
       };
       tracers.forEach((t) => t.event(event));
     },
@@ -294,10 +297,13 @@ export type ActiveCustomTrace = Pick<ActiveTrace<"custom">, "id" | "log">;
  * Context API.
  */
 export async function withTrace<T>(
-  content: TraceContent<"custom">,
+  content: string | TraceContent<"custom">,
   callback: (ref: ActiveCustomTrace) => Promise<T>,
 ): Promise<T> {
-  using trace = newTrace({ type: "custom", content });
+  using trace = newTrace({
+    type: "custom",
+    content: typeof content === "string" ? { label: content } : content,
+  });
   try {
     return await tracerAsyncLocalStorage.run(trace, () => callback(trace));
   } catch (err) {

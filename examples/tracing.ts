@@ -396,11 +396,7 @@ function spanLabel(event: PartialEventWithEnd): string {
     case "message":
       return `${messageSpanLabel(event.content.type)}${suffix}`;
     case "custom":
-      return `${
-        typeof event.content === "string"
-          ? event.content
-          : JSON.stringify(event.content)
-      }${suffix}`;
+      return `${event.content.label ?? JSON.stringify(event.content)}${suffix}`;
     case "log":
       return `log ${event.content}${suffix}`;
   }

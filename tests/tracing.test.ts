@@ -612,7 +612,7 @@ Deno.test("malformed structured output emits a log span and retries cleanly", as
   assertEquals(modelTraces[1].content.reason, "retry-malformed-output");
   assertEquals(logTrace.parent, agentTrace.id);
   assert(
-    logTrace.content.includes(
+    logTrace.content.message.includes(
       'Retrying due to failed structured output parse from "{\\"name\\":123}"',
     ),
   );
