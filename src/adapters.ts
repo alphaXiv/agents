@@ -68,7 +68,7 @@ export const ADAPTERS: Record<string, () => Promise<Adapter>> = {
         })
       ),
   "anthropic": () =>
-    import("./adapters/anthropic.ts")
+    import("./adapters/anthropic/anthropic.ts")
       .then(({ anthropicAdapter }) =>
         anthropicAdapter({
           name: "anthropic",
