@@ -8,7 +8,7 @@
 
     "./openai-responses": "./src/adapters/openai-responses.ts",
     "./openai-completions": "./src/adapters/openai-completions.ts",
-    "./anthropic": "./src/adapters/anthropic.ts",
+    "./anthropic": "./src/adapters/anthropic/anthropic.ts",
     "./google": "./src/adapters/google.ts",
     "./lmstudio": "./src/adapters/lmstudio.ts"
   },
