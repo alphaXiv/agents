@@ -392,10 +392,6 @@ export class Agent<
               );
             }
 
-            // add the item to the stream first
-            addStreamItem(newHistory, part);
-            const chatItemType = newHistory[part.index].type;
-
             // automatically extract message start and end traces
             if (
               part.type === "delta_output_text" ||
@@ -404,7 +400,11 @@ export class Agent<
             ) {
               trace ??= messageTracer.startOrContinue({
                 index: part.index,
-                type: chatItemType,
+                type: ({
+                  delta_output_text: "output_text",
+                  delta_output_reasoning: "output_reasoning",
+                  tool_use_start: "tool_use",
+                } as const)[part.type],
               });
             } else {
               // other message types always force stopping the current trace
@@ -417,7 +417,7 @@ export class Agent<
               index: part.index + history.length,
               trace,
             };
-            newHistory[part.index].trace ??= trace;
+            addStreamItem(newHistory, { ...part, trace });
             yield reIndexedPart;
           }
         } catch (error) {
