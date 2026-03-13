@@ -553,6 +553,12 @@ export function openAiCompletionsAdapter<Models extends string>(
           : getToolUseContent(tool, toolUse.content ?? ""),
       };
     }
+
+    const final = await response.totalUsage();
+    return {
+      inputTokens: final.prompt_tokens,
+      outputTokens: final.completion_tokens,
+    };
   }
 
   return { name: options.name, stream };

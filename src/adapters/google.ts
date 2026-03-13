@@ -22,6 +22,7 @@ import {
   type Content,
   type DeleteFileResponse,
   type FunctionDeclaration,
+  type GenerateContentResponseUsageMetadata,
   GoogleGenAI,
 } from "@google/genai";
 import z from "zod";
@@ -350,7 +351,9 @@ export function googleAdapter<Models extends string>(
 
     let lastType = "";
     let lastIndex = -1;
+    let final: GenerateContentResponseUsageMetadata | undefined = undefined;
     for await (const item of response) {
+      final = item.usageMetadata;
       const parts = item?.candidates?.[0]?.content?.parts;
       if (!parts) continue;
       for (const part of parts) {
@@ -410,6 +413,14 @@ export function googleAdapter<Models extends string>(
         }
       }
     }
+
+    return {
+      inputTokens: final?.promptTokenCount ?? null,
+      outputTokens: final?.totalTokenCount != null &&
+          final?.promptTokenCount != null
+        ? final.totalTokenCount - final.promptTokenCount
+        : null,
+    };
   }
 
   return { name: "google", stream };

@@ -1,10 +1,22 @@
-import type { AdapterStreamIterator, ChatItem, StreamItem } from "./types.ts";
+import type {
+  AdapterStreamIterator,
+  ChatItem,
+  StreamItem,
+  WithTraceId,
+} from "./types.ts";
 
-/** Mutates current chat items to add the new streamItem to it.  */
-export function addStreamItem(
-  currentChatItems: ChatItem[],
-  streamItem: StreamItem,
-) {
+/**
+ * Mutates current chat items to add the new streamItem to it. This function is
+ * generic so that it can properly catch errors if you attempt to call it with
+ * an array of `WithTraceId<ChatItem>` and you do not actually provide it traced
+ * stream items.
+ */
+export function addStreamItem<T extends ChatItem>(
+  chatItems: T[],
+  streamItem: T extends { trace: string } ? WithTraceId<StreamItem>
+    : StreamItem,
+): void {
+  const currentChatItems = chatItems as Array<ChatItem & { trace?: string }>;
   if (!currentChatItems[streamItem.index]) {
     if (streamItem.type === "delta_output_text") {
       currentChatItems[streamItem.index] = {
@@ -53,21 +65,23 @@ export function addStreamItem(
   ) {
     currentChatItems[streamItem.index].content += streamItem.delta;
   }
+
+  if ("trace" in streamItem) {
+    currentChatItems[streamItem.index].trace = streamItem.trace as string;
+  }
 }
 
 /**
  * Convert a non-streaming chat result into a chat stream. This is useful to
- * create testing adapters that do not do any streaming, but need to fufill the
+ * create testing adapters that do not do any streaming, but need to fulfill the
  * streaming interface.
  */
-export async function* convertChatItemsToStream(
-  input: {
-    items: ChatItem[];
-    // inputTokens: number
-    // outputTokens: number
-  },
-): AdapterStreamIterator {
-  const { /* inputTokens, outputTokens,*/ items } = input;
+export async function* convertChatItemsToStream(input: {
+  items: ChatItem[];
+  inputTokens: number;
+  outputTokens: number;
+}): AdapterStreamIterator {
+  const { inputTokens, outputTokens, items } = input;
   let index = 0;
   for (const item of items) {
     if (item.type === "output_text") {
@@ -116,5 +130,5 @@ export async function* convertChatItemsToStream(
       );
     }
   }
-  // return { inputTokens, outputTokens };
+  return { inputTokens, outputTokens };
 }

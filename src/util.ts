@@ -5,6 +5,7 @@ import type {
   ChatItemToolResult,
   ChatLike,
   ToolResultLike,
+  WithTraceId,
 } from "./types.ts";
 import { encodeHex } from "@std/encoding/hex";
 
@@ -28,12 +29,14 @@ export function convertChatLikeToChatItem(
 export function convertToolResultLikeToChatItem(
   toolResultLike: ToolResultLike,
   toolUseId: string,
-): ChatItemToolResult[] {
+  trace: string,
+): WithTraceId<ChatItemToolResult>[] {
   if (typeof toolResultLike === "string") {
     return [{
       type: "tool_result_text",
       tool_use_id: toolUseId,
       content: toolResultLike,
+      trace,
     }];
   }
 
@@ -42,11 +45,13 @@ export function convertToolResultLikeToChatItem(
       return {
         ...toolResult,
         tool_use_id: toolUseId,
+        trace,
       };
     } else {
       return {
         ...toolResult,
         tool_use_id: toolUseId,
+        trace,
       };
     }
   });
@@ -155,7 +160,8 @@ export function errMessage(error: unknown): string {
   const message = (error as null | { message: unknown })?.message ?? error;
   try {
     return typeof message === "string"
-      ? message
+      // NOTE: Deno AssertionError trolls you with an empty message
+      ? message || String((error as null | { name: unknown })?.name)
       // NOTE: typescript standard library lies here (https://github.com/mattpocock/ts-reset/pull/190)
       : String(JSON.stringify(message) as string | undefined);
   } catch {

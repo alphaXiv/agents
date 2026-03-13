@@ -1,11 +1,10 @@
 import z from "zod";
 import { Agent, ModelOutput, Tool } from "../mod.ts";
 import { assert, assertEquals } from "@std/assert";
+import { addStreamItem } from "../src/client.ts";
 import { testingAdapter } from "./utils/testing-adapter.ts";
-import { enableDebugMode } from "../src/constants.ts";
-import type { StreamItem } from "../src/types.ts";
-
-enableDebugMode();
+import type { ChatItem, StreamItem, WithTraceId } from "../src/types.ts";
+import { assertObjectMatch } from "@std/assert/object-match";
 
 Deno.test("ModelOutput from a tool terminates agent run and returns the value", async () => {
   const outputTool = new Tool({
@@ -148,6 +147,66 @@ Deno.test("ModelOutput terminates streaming", async () => {
 
   const textItems = items.filter((s) => s.type === "delta_output_text");
   assertEquals(textItems.length, 0);
+});
+
+Deno.test("Structured output retry streams apology text and rebuilds history", async () => {
+  const agent = new Agent({
+    adapter: testingAdapter,
+    model: "deterministic",
+    instructions: "Structured output retry stream test",
+    output: z.object({ name: z.string() }),
+  });
+
+  const stream = agent.stream("name a cat");
+  const rebuiltHistory: WithTraceId<ChatItem>[] = [];
+
+  let run:
+    | {
+      output: { name: string };
+      history: WithTraceId<ChatItem>[];
+      outputText: string;
+    }
+    | undefined;
+
+  while (true) {
+    const next = await stream.next();
+    if (next.done) {
+      run = next.value;
+      break;
+    }
+    addStreamItem(rebuiltHistory, next.value);
+    rebuiltHistory[next.value.index].trace = next.value.trace;
+  }
+
+  if (!run) throw new Error("stream did not return a final run result");
+
+  assertEquals(run.output, { name: "Bingus" });
+  assertEquals(run.outputText, JSON.stringify({ name: "Bingus" }));
+  assertEquals(rebuiltHistory.length, 3);
+  assertObjectMatch(rebuiltHistory[0], {
+    type: "output_text",
+    content: JSON.stringify({ name: 123 }),
+  });
+  assertObjectMatch(rebuiltHistory[2], {
+    type: "output_text",
+    content: JSON.stringify({ name: "Bingus" }),
+  });
+
+  const retryMessage = rebuiltHistory[1];
+  assertEquals(retryMessage?.type, "output_text");
+  if (!retryMessage || retryMessage.type !== "output_text") {
+    throw new Error("expected retry message to be an output_text item");
+  }
+  assert(
+    retryMessage.content.includes(
+      "I will try again to produce a JSON response.",
+    ),
+  );
+
+  assertEquals(
+    run.history,
+    rebuiltHistory,
+  );
 });
 
 Deno.test("ModelOutput output type is a union across multiple output tools", async () => {

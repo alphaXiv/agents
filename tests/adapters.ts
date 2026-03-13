@@ -5,9 +5,6 @@ import { assert } from "@std/assert/assert";
 import type { ChatItem } from "../src/types.ts";
 import { addStreamItem } from "../src/client.ts";
 import { assertEquals } from "@std/assert";
-import { enableDebugMode } from "../src/constants.ts";
-
-enableDebugMode();
 
 const workingModels: ModelString[] = [
   "anthropic:claude-haiku-4-5",

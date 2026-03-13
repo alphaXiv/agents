@@ -364,6 +364,12 @@ export function anthropicAdapter<Models extends string>(
         };
       }
     }
+
+    const final = await response.finalMessage();
+    return {
+      outputTokens: final.usage.output_tokens,
+      inputTokens: final.usage.input_tokens,
+    };
   }
 
   return { name: "anthropic", stream };

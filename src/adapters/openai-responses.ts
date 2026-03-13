@@ -214,6 +214,12 @@ export function openAiResponsesAdapter<Models extends string>(
         };
       }
     }
+
+    const final = await response.finalResponse();
+    return {
+      inputTokens: final.usage?.input_tokens ?? null,
+      outputTokens: final.usage?.output_tokens ?? null,
+    };
   }
 
   return { name: options.name, stream };

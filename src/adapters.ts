@@ -57,7 +57,7 @@ export const ADAPTERS: Record<string, () => Promise<Adapter>> = {
         })
       ),
   "google": () =>
-    // google's sdk reads random env vars which makes permission prompts in deno anoying
+    // google's sdk reads random env vars which makes permission prompts in deno annoying
     import("./adapters/google.ts")
       .then(({ googleAdapter }) =>
         googleAdapter({

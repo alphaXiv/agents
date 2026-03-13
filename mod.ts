@@ -1,4 +1,9 @@
-export { Agent, type AgentOptions, type AgentRunResult } from "./src/agent.ts";
+export {
+  Agent,
+  type AgentOptions,
+  type AgentRunResult,
+  type ModelString,
+} from "./src/agent.ts";
 export {
   type ExecuteFunc,
   type ExecuteFuncInput,
@@ -13,9 +18,31 @@ export type {
   ChatLike,
   ReasoningEffort,
   StreamItem,
+  WithTraceId,
 } from "./src/types.ts";
 export {
   SidEmbeddingSearchTool,
   SidReportHelpfulIdsTool,
   SidTextSearchTool,
 } from "./src/tools/sid.ts";
+export {
+  type ActiveCustomTrace,
+  type AgentTraceEvent,
+  type BaseTraceEvent,
+  type LogTraceEvent,
+  type MessageTraceEvent,
+  type ModelTraceEvent,
+  type PartialTraceEvent,
+  registerGlobalTracer,
+  type ToolTraceEvent,
+  type TraceContent,
+  type TraceEvent,
+  type Tracer,
+  type TraceType,
+  withTrace,
+} from "./src/tracing.ts";
+export type {
+  Adapter,
+  AdapterStreamOptions,
+  AdapterTypeOptions,
+} from "./src/adapters.ts";
