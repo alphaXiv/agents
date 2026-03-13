@@ -39,7 +39,7 @@ async function main() {
   // start events with `@clo/lib/log.ts` for an interactive visual.
   let traces: PartialTraceEvent[] = [];
   let rerender: (() => void) | null = null;
-  const unregister = registerGlobalTracer({
+  using _ = registerGlobalTracer({
     event: (event) => {
       traces = traces.filter((x) => x.id !== event.id); // remove start event
       traces.push(event);
@@ -120,7 +120,6 @@ async function main() {
   } catch (err) {
     console.error(err);
   } finally {
-    unregister();
     widget();
     widgetHost.getDrawLock();
     console.log(

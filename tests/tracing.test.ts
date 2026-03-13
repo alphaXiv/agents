@@ -53,113 +53,109 @@ function assertStartsMatchEvents(
 
 Deno.test("global tracer captures tool turns, message spans, and token counts", async () => {
   const { starts, events, tracer } = createRecorder();
-  const unregister = registerGlobalTracer(tracer);
+  using _ = registerGlobalTracer(tracer);
 
-  try {
-    const search = new Tool({
-      name: "search",
-      description: "Searches for things",
-      parameters: z.string(),
-      execute: ({ param }) => `results for ${param}`,
-    });
+  const search = new Tool({
+    name: "search",
+    description: "Searches for things",
+    parameters: z.string(),
+    execute: ({ param }) => `results for ${param}`,
+  });
 
-    const adapter: Adapter<"tool-model"> = {
-      name: "trace-test",
-      async stream({ history, tools }) {
-        const last = history.at(-1);
-        if (!last || last.type === "input_text") {
-          const tool = tools[0];
-          assertExists(tool);
-          return convertChatItemsToStream({
-            items: [{
-              type: "tool_use",
-              tool_use_id: "tool-1",
-              kind: tool.name,
-              content: JSON.stringify("cats"),
-            }],
-            inputTokens: 3,
-            outputTokens: 5,
-          });
-        }
-
-        if (last.type !== "tool_result_text") {
-          throw new Error(`Unexpected history item: ${last.type}`);
-        }
+  const adapter: Adapter<"tool-model"> = {
+    name: "trace-test",
+    async stream({ history, tools }) {
+      const last = history.at(-1);
+      if (!last || last.type === "input_text") {
+        const tool = tools[0];
+        assertExists(tool);
         return convertChatItemsToStream({
           items: [{
-            type: "output_text",
-            content: `done: ${last.content}`,
+            type: "tool_use",
+            tool_use_id: "tool-1",
+            kind: tool.name,
+            content: JSON.stringify("cats"),
           }],
-          inputTokens: 7,
-          outputTokens: 11,
+          inputTokens: 3,
+          outputTokens: 5,
         });
-      },
-    };
+      }
 
-    const agent = new Agent({
-      adapter,
-      model: "tool-model",
-      instructions: "Use the search tool.",
-      tools: [search],
-    });
+      if (last.type !== "tool_result_text") {
+        throw new Error(`Unexpected history item: ${last.type}`);
+      }
+      return convertChatItemsToStream({
+        items: [{
+          type: "output_text",
+          content: `done: ${last.content}`,
+        }],
+        inputTokens: 7,
+        outputTokens: 11,
+      });
+    },
+  };
 
-    const run = await agent.run("find cats");
-    assertEquals(run.outputText, "done: results for cats");
-    assertEquals(run.inputTokens, 10);
-    assertEquals(run.outputTokens, 16);
-    assertStartsMatchEvents(starts, events);
+  const agent = new Agent({
+    adapter,
+    model: "tool-model",
+    instructions: "Use the search tool.",
+    tools: [search],
+  });
 
-    const agentTrace = filterTrace(events, "agent")[0];
-    const toolTrace = filterTrace(events, "tool")[0];
-    const messageTrace = filterTrace(events, "message")[0];
-    const modelTraces = filterTrace(events, "model");
+  const run = await agent.run("find cats");
+  assertEquals(run.outputText, "done: results for cats");
+  assertEquals(run.inputTokens, 10);
+  assertEquals(run.outputTokens, 16);
+  assertStartsMatchEvents(starts, events);
 
-    assertExists(agentTrace);
-    assertExists(toolTrace);
-    assertExists(messageTrace);
-    assertEquals(modelTraces.length, 2);
+  const agentTrace = filterTrace(events, "agent")[0];
+  const toolTrace = filterTrace(events, "tool")[0];
+  const messageTrace = filterTrace(events, "message")[0];
+  const modelTraces = filterTrace(events, "model");
 
-    assertEquals(agentTrace.content, {});
-    assertEquals(toolTrace.parent, agentTrace.id);
-    assertEquals(toolTrace.content, { name: "search" });
-    assertEquals(messageTrace.parent, modelTraces[1].id);
-    assertEquals(messageTrace.content, { type: "output_text" });
-    assert(modelTraces.every((trace) => trace.parent === agentTrace.id));
-    assertEquals(
-      modelTraces.map((trace) => trace.content.reason),
-      ["init", "tool"],
-    );
-    assertEquals(
-      modelTraces.map((trace) => [
-        trace.content.inputTokens,
-        trace.content.outputTokens,
-      ]),
-      [[3, 5], [7, 11]],
-    );
+  assertExists(agentTrace);
+  assertExists(toolTrace);
+  assertExists(messageTrace);
+  assertEquals(modelTraces.length, 2);
 
-    assertEquals(run.history, [
-      {
-        type: "tool_use",
-        tool_use_id: "tool-1",
-        kind: "search",
-        content: JSON.stringify("cats"),
-        trace: toolTrace.id,
-      },
-      {
-        type: "tool_result_text",
-        tool_use_id: "tool-1",
-        content: "results for cats",
-        trace: toolTrace.id,
-      },
-      {
-        type: "output_text",
-        content: "done: results for cats",
-        trace: messageTrace.id,
-      },
-    ]);
-  } finally {
-    unregister();
-  }
+  assertEquals(agentTrace.content, {});
+  assertEquals(toolTrace.parent, agentTrace.id);
+  assertEquals(toolTrace.content, { name: "search" });
+  assertEquals(messageTrace.parent, modelTraces[1].id);
+  assertEquals(messageTrace.content, { type: "output_text" });
+  assert(modelTraces.every((trace) => trace.parent === agentTrace.id));
+  assertEquals(
+    modelTraces.map((trace) => trace.content.reason),
+    ["init", "tool"],
+  );
+  assertEquals(
+    modelTraces.map((trace) => [
+      trace.content.inputTokens,
+      trace.content.outputTokens,
+    ]),
+    [[3, 5], [7, 11]],
+  );
+
+  assertEquals(run.history, [
+    {
+      type: "tool_use",
+      tool_use_id: "tool-1",
+      kind: "search",
+      content: JSON.stringify("cats"),
+      trace: toolTrace.id,
+    },
+    {
+      type: "tool_result_text",
+      tool_use_id: "tool-1",
+      content: "results for cats",
+      trace: toolTrace.id,
+    },
+    {
+      type: "output_text",
+      content: "done: results for cats",
+      trace: messageTrace.id,
+    },
+  ]);
 });
 
 Deno.test("local tracer captures sub-agent spans and tags history items with the correct traces", async () => {

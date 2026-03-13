@@ -161,9 +161,13 @@ const globalTracers = new Set<Tracer>();
  * by calling the cleanup callback. After de-registration, you'll still get more
  * trace events until the end of the model invocation.
  */
-export function registerGlobalTracer(x: Tracer): () => void {
+export function registerGlobalTracer(x: Tracer): Disposable {
   globalTracers.add(x);
-  return () => globalTracers.delete(x);
+  return {
+    [Symbol.dispose]() {
+      globalTracers.delete(x);
+    },
+  };
 }
 
 /** Allows tracing sub-agents without manual instrumentation. */
