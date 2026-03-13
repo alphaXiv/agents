@@ -45,7 +45,7 @@ export interface Adapter<Model extends string = string> {
   ): Awaitable<AdapterStreamIterator>;
 }
 
-export const ADAPTERS: Record<string, () => Adapter | Promise<Adapter>> = {
+export const ADAPTERS: Record<string, () => Promise<Adapter>> = {
   "openai": () =>
     import("./adapters/openai-responses.ts")
       .then(({ openAiResponsesAdapter }) =>
