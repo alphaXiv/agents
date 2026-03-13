@@ -302,7 +302,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
         id: generate(time),
         type: "log",
         parent: id,
-        rootParent,
+        rootParent: rootParent ?? id,
         start: time,
         end: time,
         errorMessage: error != null ? errMessage(error) : null,
