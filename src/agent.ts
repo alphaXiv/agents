@@ -342,6 +342,7 @@ export class Agent<
       const history: WithTraceId<ChatItem>[] = [];
       let modelCallReason: string = "init";
       for (let turn = 0; turn < MAX_TURNS; turn++) {
+        signal.throwIfAborted();
         const newHistory: WithTraceId<ChatItem>[] = [];
 
         using modelTrace = newTrace({

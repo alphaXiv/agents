@@ -1,4 +1,4 @@
-import { extractTimestamp, generate, validate } from "@std/uuid/v7";
+import { extractTimestamp, generate } from "@std/uuid/v7";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { errMessage } from "./util.ts";
 import type { ChatItem } from "./types.ts";
