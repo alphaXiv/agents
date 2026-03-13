@@ -35,6 +35,9 @@ function traceSnapshot(events: TraceEvent[]) {
   return events.map((event) => ({
     type: event.type,
     parent: event.parent == null ? null : indexById.get(event.parent),
+    rootParent: event.rootParent == null
+      ? null
+      : indexById.get(event.rootParent),
     error: event.errorMessage,
     content: event.content,
   }));
@@ -237,6 +240,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     {
       type: "model",
       parent: 7,
+      rootParent: 7,
       error: null,
       content: {
         reason: "init",
@@ -249,12 +253,14 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     {
       type: "message",
       parent: 2,
+      rootParent: 7,
       error: null,
       content: { type: "output_text" },
     },
     {
       type: "model",
       parent: 3,
+      rootParent: 7,
       error: null,
       content: {
         reason: "init",
@@ -267,6 +273,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     {
       type: "agent",
       parent: 4,
+      rootParent: 7,
       error: null,
       content: {
         name: "inner-model",
@@ -275,18 +282,21 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     {
       type: "tool",
       parent: 7,
+      rootParent: 7,
       error: null,
       content: { name: "delegate" },
     },
     {
       type: "message",
       parent: 6,
+      rootParent: 7,
       error: null,
       content: { type: "output_text" },
     },
     {
       type: "model",
       parent: 7,
+      rootParent: 7,
       error: null,
       content: {
         reason: "tool",
@@ -299,6 +309,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     {
       type: "agent",
       parent: null,
+      rootParent: null,
       error: null,
       content: {},
     },

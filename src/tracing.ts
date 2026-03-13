@@ -59,6 +59,8 @@ export interface BaseTraceEvent {
   type: TraceType;
   /** Connects this to a parent trace event. */
   parent: string | null;
+  /** Connects this to the top level parent. This is provided for database convenience. */
+  rootParent: string | null;
   /** The millisecond timestamp this span started. This time is also encoded in the `id` */
   start: number;
   /** The millisecond timestamp this span ended. */
@@ -175,6 +177,7 @@ export const tracerAsyncLocalStorage = new AsyncLocalStorage<TraceRef>();
 
 export interface TraceRef {
   id: string;
+  rootId: string;
   parentTracers?: Tracer[];
 }
 
@@ -209,6 +212,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
   let { content, type } = init;
   const ref = init.parent ?? tracerAsyncLocalStorage.getStore();
   const parent = ref?.id ?? null;
+  const rootParent = ref?.rootId ?? parent;
   const id = init.id ?? generate(start);
 
   // discover any new global tracers alongside parent attached tracers.
@@ -226,6 +230,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
   );
   return {
     id,
+    rootId: rootParent ?? id,
     parentTracers: tracers,
     error(err, finalContent) {
       if (resolved) return;
@@ -241,6 +246,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
         id,
         type,
         parent,
+        rootParent,
         start,
         end: Date.now(),
         errorMessage: errMessage(err),
@@ -263,6 +269,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
         id,
         type,
         parent,
+        rootParent,
         start,
         end: Date.now(),
         errorMessage: null,
@@ -280,6 +287,7 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
         id: generate(time),
         type: "log",
         parent: id,
+        rootParent,
         start: time,
         end: time,
         errorMessage: error != null ? errMessage(error) : null,
