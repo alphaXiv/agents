@@ -169,7 +169,12 @@ export class Agent<
           "Could not resolve provider " + JSON.stringify(provider),
         );
       }
-      this.#adapter = factory() as A | Promise<A>;
+      this.#adapter = factory() satisfies Promise<Adapter> as Promise<A>;
+      this.#adapter.catch(() => {
+        // prevent unhandled exception, let environment variable issues wait
+        // until calling `.run()`. maybe in the future, this can throw in the
+        // constructor, but it would have to do so synchronously.
+      });
       this.#model = modelParts.join(":") as M;
     }
 
