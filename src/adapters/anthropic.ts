@@ -57,13 +57,26 @@ async function getAnthropicHistory(
   signal: AbortSignal,
 ) {
   const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
+  let anthropicToolFileBuffer: Anthropic.Messages.MessageParam[] = [];
+
+  // Put all of the history in place
   for (const historyItem of history) {
     if (historyItem.type === "input_text") {
+      // first, flush tool buffer
+      anthropicHistory.push(...anthropicToolFileBuffer);
+      anthropicToolFileBuffer = [];
+
+      // next, append message
       anthropicHistory.push({
         role: "user",
         content: [{ type: "text", text: historyItem.content }],
       });
     } else if (historyItem.type === "output_text") {
+      // first, flush tool buffer
+      anthropicHistory.push(...anthropicToolFileBuffer);
+      anthropicToolFileBuffer = [];
+
+      // next, append message
       anthropicHistory.push({
         role: "assistant",
         content: [{ type: "text", text: historyItem.content }],
@@ -95,6 +108,11 @@ async function getAnthropicHistory(
         }],
       });
     } else if (historyItem.type === "output_reasoning") {
+      // first, flush tool buffer
+      anthropicHistory.push(...anthropicToolFileBuffer);
+      anthropicToolFileBuffer = [];
+
+      // next append reasoning
       const signature = signatureMap.get(historyItem.content);
       if (signature) {
         anthropicHistory.push({
@@ -112,8 +130,9 @@ async function getAnthropicHistory(
       historyItem.type === "input_file" ||
       historyItem.type === "tool_result_file"
     ) {
+      const pushBuffer =  historyItem.type === "input_file" ? anthropicHistory : anthropicToolFileBuffer;
       if (supportedImageMimeTypes.includes(historyItem.kind)) {
-        anthropicHistory.push({
+        pushBuffer.push({
           role: "user",
           content: [{
             type: "image",
@@ -124,7 +143,7 @@ async function getAnthropicHistory(
           }],
         });
       } else if (historyItem.kind === "application/pdf") {
-        anthropicHistory.push({
+        pushBuffer.push({
           role: "user",
           content: [
             {
@@ -140,7 +159,7 @@ async function getAnthropicHistory(
         const req = await fetch(historyItem.content, { signal });
         const text = await req.text();
 
-        anthropicHistory.push({
+        pushBuffer.push({
           role: "user",
           content: [
             {
@@ -159,6 +178,11 @@ async function getAnthropicHistory(
       historyItem satisfies never;
     }
   }
+
+  // Flush remaining toolFileBuffer
+  anthropicHistory.push(...anthropicToolFileBuffer);
+  anthropicToolFileBuffer = [];
+
   return anthropicHistory;
 }
 
