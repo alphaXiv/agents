@@ -33,7 +33,7 @@ function filterTrace<T extends TraceEvent["type"]>(
 function traceSnapshot(events: TraceEvent[]) {
   const indexById = new Map(events.map((event, index) => [event.id, index]));
   return events.map((event) => ({
-    type: event.type as string,
+    type: event.type,
     parent: event.parent == null ? null : indexById.get(event.parent),
     error: event.errorMessage,
     content: event.content,
@@ -365,7 +365,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
   );
 });
 
-Deno.test("unstable tool-use hints create message spans without changing tool trace history tags", async () => {
+Deno.test("tool_use_start hints create message spans without changing tool trace history tags", async () => {
   const { starts, events, tracer } = createRecorder();
 
   const ping = new Tool({
