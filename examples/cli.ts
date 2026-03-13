@@ -91,7 +91,7 @@ const getMysteryImage = new Tool({
 });
 
 const agent = new Agent({
-  model: "tributary:openai:gpt-5.3-codex-spark",
+  model: "anthropic:claude-haiku-4-5",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch, getMysteryImage],
   reasoningEffort: "minimal",
