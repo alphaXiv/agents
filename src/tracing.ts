@@ -27,7 +27,13 @@ export type TraceEvent =
   | LogTraceEvent
   | CustomTraceEvent;
 
-type PartialTraceKeys = "id" | "type" | "parent" | "start" | "content";
+type PartialTraceKeys =
+  | "id"
+  | "type"
+  | "parent"
+  | "rootParent"
+  | "start"
+  | "content";
 export type PartialTraceEvent =
   | (Pick<AgentTraceEvent, PartialTraceKeys> & Partial<AgentTraceEvent>)
   | (Pick<ModelTraceEvent, PartialTraceKeys> & Partial<ModelTraceEvent>)
@@ -226,7 +232,16 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
 
   let resolved: boolean = false;
   tracers.forEach((t) =>
-    t.start?.({ id, type, parent, start, content } as PartialTraceEvent)
+    t.start?.(
+      {
+        id,
+        type,
+        parent,
+        rootParent,
+        start,
+        content,
+      } satisfies Record<PartialTraceKeys, unknown> as PartialTraceEvent,
+    )
   );
   return {
     id,
