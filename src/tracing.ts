@@ -1,4 +1,4 @@
-import { generate } from "@std/uuid/v7";
+import { extractTimestamp, generate, validate } from "@std/uuid/v7";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { errMessage } from "./util.ts";
 import type { ChatItem } from "./types.ts";
@@ -214,7 +214,8 @@ export interface ActiveTrace<T extends Exclude<TraceType, "log">>
 export function newTrace<T extends Exclude<TraceType, "log">>(
   init: TraceInit<T>,
 ): ActiveTrace<T> {
-  const start = init.start ?? Date.now();
+  const start = init.start ??
+    (init.id ? extractTimestamp(init.id) : Date.now());
   let { content, type } = init;
   const ref = init.parent ?? tracerAsyncLocalStorage.getStore();
   const parent = ref?.id ?? null;

@@ -1,10 +1,12 @@
 // deno-lint-ignore-file require-await
+import { generate } from "@std/uuid/v7";
 import z from "zod";
 import { assert, assertEquals, assertExists } from "@std/assert";
 import { Agent, Tool } from "../mod.ts";
 import type { Adapter } from "../src/adapters.ts";
 import { convertChatItemsToStream } from "../src/client.ts";
 import {
+  newTrace,
   type PartialTraceEvent,
   registerGlobalTracer,
   type TraceEvent,
@@ -629,4 +631,26 @@ Deno.test("malformed structured output emits a log span and retries cleanly", as
   assertEquals(run.history[0]?.trace, messageTraces[0].id);
   assertEquals(run.history[1]?.trace, agentTrace.id);
   assertEquals(run.history[2]?.trace, messageTraces[1].id);
+});
+
+Deno.test("newTrace uses the UUIDv7 timestamp when given a pre-generated id", () => {
+  const { starts, events, tracer } = createRecorder();
+  using _ = registerGlobalTracer(tracer);
+
+  const start = Date.now() - 5_000;
+  const id = generate(start);
+
+  using trace = newTrace({
+    id,
+    type: "tool",
+    content: { name: "manual-tool" },
+  });
+  trace.success();
+
+  assertStartsMatchEvents(starts, events);
+
+  const toolTrace = filterTrace(events, "tool")[0];
+  assertExists(toolTrace);
+  assertEquals(toolTrace.id, id);
+  assertEquals(toolTrace.start, start);
 });
