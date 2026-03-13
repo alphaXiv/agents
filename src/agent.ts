@@ -437,6 +437,7 @@ export class Agent<
         // process tool outputs before re-looping
         if (pendingTools.size > 0) {
           try {
+            signal.throwIfAborted();
             for await (
               const result of iteratePromiseArray(pendingTools.values())
             ) {
@@ -504,6 +505,7 @@ export class Agent<
 
         // If streaming fails halfway through a message, retry
         if (failed) {
+          signal.throwIfAborted();
           if (this.#noRetries) throw err;
           providerErrors++;
           if (providerErrors < MAX_PROVIDER_ERRORS) {
