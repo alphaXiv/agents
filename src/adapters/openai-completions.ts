@@ -453,6 +453,10 @@ export function openAiCompletionsAdapter<Models extends string>(
       tools: normalizedTools.map(({ openai }) => openai),
       response_format: getResponseFormat(output),
       ...extraRequestBody,
+      stream_options: {
+        include_usage: true,
+        ...(extraRequestBody.stream_options ?? {}),
+      },
     };
 
     const response = openai.chat.completions.stream(
