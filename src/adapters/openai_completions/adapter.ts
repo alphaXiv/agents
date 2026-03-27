@@ -1,7 +1,11 @@
 import type OpenAI from "openai";
+import type {
+  ChatCompletionCreateParamsStreaming,
+  ChatCompletionMessageParam,
+} from "openai/resources/chat/completions";
 import type z from "zod";
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
-import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
+import type { AdapterStreamIterator, ChatItem, ChatItemInputFile, ChatItemToolResultFile } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
 import {
   DEFAULT_SUPPORTED_MIME_TYPES,
@@ -19,36 +23,10 @@ import {
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
 import { normalizeOpenAICompletionsTools, type OpenAICompletionsToolMap } from "./tools.ts";
 
-type FileHistoryItem = Extract<ChatItem, { type: "input_file" } | { type: "tool_result_file" }>;
-type OpenAIChatCompletionStreamRequest = Parameters<OpenAI["chat"]["completions"]["stream"]>[0];
+type FileHistoryItem = ChatItemInputFile | ChatItemToolResultFile;
 export type OpenAICompletionsClient = Pick<OpenAI, "chat">;
 
-export type OpenAIChatCompletionContentPart =
-  | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string; detail?: "auto" | "low" | "high" } }
-  | { type: "file"; file: { file_data: string; filename?: string } };
-
-export type OpenAIChatCompletionMessage =
-  | { role: "system" | "developer"; content: string }
-  | { role: "user"; content: string | OpenAIChatCompletionContentPart[] }
-  | {
-    role: "assistant";
-    content?: string | null;
-    tool_calls?: Array<{
-      id: string;
-      type: "function";
-      function: { name: string; arguments: string };
-    }>;
-  }
-  | { role: "tool"; tool_call_id: string; content: string };
-
-export type OpenAICompletionsPdfSupportConfig =
-  | false
-  | null
-  | {
-    mode: "native" | "text";
-    maxSize?: number;
-  };
+export type OpenAICompletionsPdfSupportConfig = false | null | { mode: "native" | "text"; maxSize?: number };
 
 export type OpenAICompletionsPdfSupport<TModel extends string> =
   | OpenAICompletionsPdfSupportConfig
@@ -96,7 +74,7 @@ async function getOpenAICompletionsFileMessage<TModel extends string>(
   supportedMimeTypes: string[],
   pdfSupport: OpenAICompletionsPdfSupport<TModel> | undefined,
   signal: AbortSignal,
-): Promise<OpenAIChatCompletionMessage> {
+): Promise<ChatCompletionMessageParam> {
   if (!supportsMimeType(item.kind, supportedMimeTypes)) {
     throw unsupportedMediaTypeError(model, item.kind);
   }
@@ -186,8 +164,8 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
     instructions: string,
     normalizedTools: OpenAICompletionsToolMap[],
     signal: AbortSignal,
-  ): Promise<OpenAIChatCompletionMessage[]> {
-    const messages: OpenAIChatCompletionMessage[] = [{
+  ): Promise<ChatCompletionMessageParam[]> {
+    const messages: ChatCompletionMessageParam[] = [{
       role: "system",
       content: instructions,
     }];
@@ -272,7 +250,7 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
       normalizedTools,
     });
 
-    const request: OpenAIChatCompletionStreamRequest = {
+    const request: ChatCompletionCreateParamsStreaming = {
       model: this.model,
       messages,
       parallel_tool_calls: normalizedTools.length > 0 ? this.#parallelToolCalls : undefined,

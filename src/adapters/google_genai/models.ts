@@ -118,7 +118,4 @@ export function getGenAiThinkingLevel(thinkingLevel: SupportedThinkingLevel<Goog
       );
       return GenAiThinkingLevel.THINKING_LEVEL_UNSPECIFIED;
   }
-
-  thinkingLevel satisfies never;
-  return GenAiThinkingLevel.THINKING_LEVEL_UNSPECIFIED;
 }
