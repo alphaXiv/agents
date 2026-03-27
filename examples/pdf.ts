@@ -1,7 +1,7 @@
-import { Agent } from "../mod.ts";
+import { Agent, OpenRouterModel } from "../mod.ts";
 
 const agent = new Agent({
-  model: "openrouter:meta-llama/llama-4-maverick",
+  model: new OpenRouterModel({ model: "openrouter:meta-llama/llama-4-maverick" }),
   instructions: "You are a friendly assistant",
 });
 

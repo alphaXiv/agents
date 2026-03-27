@@ -1,9 +1,75 @@
-import type {
-  AdapterStreamIterator,
-  ChatItem,
-  StreamItem,
-  WithTraceId,
-} from "./types.ts";
+import type { AdapterStreamIterator, ChatItem, StreamItem, WithTraceId } from "./types.ts";
+
+type MutableChatItem = ChatItem & { trace?: string };
+type PersistedStreamItem = Exclude<StreamItem, { type: "delta_output_preview" }>;
+
+const streamIndicesByChatItems = new WeakMap<MutableChatItem[], number[]>();
+
+function ensureDenseIndex(
+  chatItems: MutableChatItem[],
+  streamIndex: number,
+): { denseIndex: number; isNew: boolean } {
+  let streamIndices = streamIndicesByChatItems.get(chatItems);
+  if (!streamIndices || streamIndices.length !== chatItems.length) {
+    streamIndices = chatItems.map((_, index) => index);
+    streamIndicesByChatItems.set(chatItems, streamIndices);
+  }
+
+  for (let denseIndex = 0; denseIndex < streamIndices.length; denseIndex += 1) {
+    const currentIndex = streamIndices[denseIndex];
+    if (currentIndex === streamIndex) {
+      return { denseIndex, isNew: false };
+    }
+    if (currentIndex > streamIndex) {
+      streamIndices.splice(denseIndex, 0, streamIndex);
+      return { denseIndex, isNew: true };
+    }
+  }
+
+  streamIndices.push(streamIndex);
+  return { denseIndex: streamIndices.length - 1, isNew: true };
+}
+
+function createChatItemFromStreamItem(streamItem: PersistedStreamItem): ChatItem {
+  switch (streamItem.type) {
+    case "delta_output_text":
+      return {
+        type: "output_text",
+        content: "",
+      };
+    case "delta_output_reasoning":
+      return {
+        type: "output_reasoning",
+        content: "",
+      };
+    case "tool_use_start":
+      return {
+        type: "tool_use",
+        tool_use_id: streamItem.tool_use_id,
+        kind: streamItem.kind,
+      };
+    case "tool_use":
+      return {
+        type: "tool_use",
+        tool_use_id: streamItem.tool_use_id,
+        kind: streamItem.kind,
+        content: streamItem.content,
+      };
+    case "tool_result_text":
+      return {
+        type: "tool_result_text",
+        tool_use_id: streamItem.tool_use_id,
+        content: streamItem.content,
+      };
+    case "tool_result_file":
+      return {
+        type: "tool_result_file",
+        tool_use_id: streamItem.tool_use_id,
+        kind: streamItem.kind,
+        content: streamItem.content,
+      };
+  }
+}
 
 /**
  * Mutates current chat items to add the new streamItem to it. This function is
@@ -13,61 +79,39 @@ import type {
  */
 export function addStreamItem<T extends ChatItem>(
   chatItems: T[],
-  streamItem: T extends { trace: string } ? WithTraceId<StreamItem>
-    : StreamItem,
+  streamItem: T extends { trace: string } ? WithTraceId<StreamItem> : StreamItem,
 ): void {
-  const currentChatItems = chatItems as Array<ChatItem & { trace?: string }>;
-  if (!currentChatItems[streamItem.index]) {
-    if (streamItem.type === "delta_output_text") {
-      currentChatItems[streamItem.index] = {
-        type: "output_text",
-        content: "",
-      };
-    } else if (streamItem.type === "delta_output_reasoning") {
-      currentChatItems[streamItem.index] = {
-        type: "output_reasoning",
-        content: "",
-      };
-    } else if (streamItem.type === "tool_use_start") {
-      currentChatItems[streamItem.index] = {
+  const currentChatItems = chatItems as MutableChatItem[];
+  if (streamItem.type === "delta_output_preview") {
+    return;
+  }
+
+  const { denseIndex, isNew } = ensureDenseIndex(
+    currentChatItems,
+    streamItem.index,
+  );
+
+  if (isNew) {
+    currentChatItems.splice(denseIndex, 0, createChatItemFromStreamItem(streamItem));
+  }
+
+  switch (streamItem.type) {
+    case "tool_use":
+      currentChatItems[denseIndex] = {
         type: "tool_use",
         tool_use_id: streamItem.tool_use_id,
         kind: streamItem.kind,
-      };
-    } else if (streamItem.type === "tool_result_text") {
-      currentChatItems[streamItem.index] = {
-        type: "tool_result_text",
-        tool_use_id: streamItem.tool_use_id,
         content: streamItem.content,
       };
-    } else if (streamItem.type === "tool_result_file") {
-      currentChatItems[streamItem.index] = {
-        type: "tool_result_file",
-        tool_use_id: streamItem.tool_use_id,
-        kind: streamItem.kind,
-        content: streamItem.content,
-      };
-    }
-  }
-
-  if (streamItem.type === "tool_use") {
-    currentChatItems[streamItem.index] = {
-      type: "tool_use",
-      tool_use_id: streamItem.tool_use_id,
-      kind: streamItem.kind,
-      content: streamItem.content,
-    };
-  }
-
-  if (
-    streamItem.type === "delta_output_text" ||
-    streamItem.type === "delta_output_reasoning"
-  ) {
-    currentChatItems[streamItem.index].content += streamItem.delta;
+      break;
+    case "delta_output_text":
+    case "delta_output_reasoning":
+      currentChatItems[denseIndex].content += streamItem.delta;
+      break;
   }
 
   if ("trace" in streamItem) {
-    currentChatItems[streamItem.index].trace = streamItem.trace as string;
+    currentChatItems[denseIndex].trace = streamItem.trace as string;
   }
 }
 

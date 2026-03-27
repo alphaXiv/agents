@@ -1,10 +1,6 @@
 import z from "zod";
-import { Agent } from "../mod.ts";
-import {
-  SidEmbeddingSearchTool,
-  SidReportHelpfulIdsTool,
-  SidTextSearchTool,
-} from "../src/tools/sid.ts";
+import { Agent, SidModel } from "../mod.ts";
+import { SidEmbeddingSearchTool, SidReportHelpfulIdsTool, SidTextSearchTool } from "../src/adapters/sid/tools.ts";
 
 const currentDate = new Date().toISOString().slice(0, 10);
 
@@ -71,8 +67,7 @@ const FAKE_PAPERS: FakePaper[] = [
   },
   {
     id: "2310.16809",
-    title:
-      "GOT: General OCR Theory — Towards OCR-2.0 via a Unified End-to-End Model",
+    title: "GOT: General OCR Theory — Towards OCR-2.0 via a Unified End-to-End Model",
     publicationDate: "2023-10-25",
     votes: 243,
     abstract:
@@ -89,8 +84,7 @@ const FAKE_PAPERS: FakePaper[] = [
   },
   {
     id: "2305.15393",
-    title:
-      "DocPedia: Unleashing the Power of Large Multimodal Model for Document Understanding",
+    title: "DocPedia: Unleashing the Power of Large Multimodal Model for Document Understanding",
     publicationDate: "2023-05-24",
     votes: 64,
     abstract:
@@ -105,8 +99,7 @@ const FAKE_PAPERS: FakePaper[] = [
   },
   {
     id: "2403.02460",
-    title:
-      "TextMonkey: An OCR-Free Large Multimodal Model for Understanding Document",
+    title: "TextMonkey: An OCR-Free Large Multimodal Model for Understanding Document",
     publicationDate: "2024-03-04",
     votes: 98,
     abstract:
@@ -115,8 +108,7 @@ const FAKE_PAPERS: FakePaper[] = [
   },
   {
     id: "2111.15664",
-    title:
-      "TrOCR: Transformer-based Optical Character Recognition with Pre-trained Models",
+    title: "TrOCR: Transformer-based Optical Character Recognition with Pre-trained Models",
     publicationDate: "2021-11-30",
     votes: 312,
     abstract:
@@ -131,8 +123,7 @@ const FAKE_PAPERS: FakePaper[] = [
   },
   {
     id: "2304.08485",
-    title:
-      "LLaVAR: Enhanced Visual Instruction Tuning for Text-Rich Image Understanding",
+    title: "LLaVAR: Enhanced Visual Instruction Tuning for Text-Rich Image Understanding",
     publicationDate: "2023-04-17",
     votes: 73,
     abstract:
@@ -141,8 +132,7 @@ const FAKE_PAPERS: FakePaper[] = [
   },
   {
     id: "2409.01704",
-    title:
-      "OmniParser: A Unified Framework for Text Spotting, Key Information Extraction and Table Recognition",
+    title: "OmniParser: A Unified Framework for Text Spotting, Key Information Extraction and Table Recognition",
     publicationDate: "2024-09-03",
     votes: 55,
     abstract:
@@ -178,9 +168,7 @@ function searchPapers(
       if (minDate && p.publicationDate < minDate.slice(0, 10)) return false;
       return p.keywords.some((k) => q.includes(k)) ||
         p.title.toLowerCase().includes(q) ||
-        p.abstract.toLowerCase().split(" ").some((w) =>
-          q.includes(w) && w.length > 3
-        );
+        p.abstract.toLowerCase().split(" ").some((w) => q.includes(w) && w.length > 3);
     })
     .slice(0, limit);
 }
@@ -209,8 +197,7 @@ const embeddingSearch = new SidEmbeddingSearchTool({
       "The maximum number of papers to return. Default is 5.",
     ),
   }),
-  execute: ({ param }) =>
-    formatPaperXml(searchPapers(param.query, param.limit)),
+  execute: ({ query, limit }) => formatPaperXml(searchPapers(query, limit)),
 });
 
 const textSearch = new SidTextSearchTool({
@@ -227,20 +214,16 @@ const textSearch = new SidTextSearchTool({
       "Only return papers published after this date. ISO 8601 datetime format, e.g. '2025-01-01T00:00:00Z'.",
     ),
   }),
-  execute: ({ param }) =>
-    formatPaperXml(
-      searchPapers(param.query, param.limit, param.minPublicationDate),
-    ),
+  execute: ({ query, limit, minPublicationDate }) => formatPaperXml(searchPapers(query, limit, minPublicationDate)),
 });
 
 const reportHelpfulIds = new SidReportHelpfulIdsTool();
 
 // -------------------- The actual run --------------------
 const agent = new Agent({
-  model: "sid:sid-1",
+  model: new SidModel({ model: "sid-1" }),
   instructions: systemPrompt,
   tools: [embeddingSearch, textSearch, reportHelpfulIds],
-  reasoningEffort: "normal",
 });
 
 const { output } = await agent.run("Find me OCR papers");

@@ -179,7 +179,7 @@ export function registerGlobalTracer(x: Tracer): Disposable {
 }
 
 /** Allows tracing sub-agents without manual instrumentation. */
-export const tracerAsyncLocalStorage = new AsyncLocalStorage<TraceRef>();
+export const tracerAsyncLocalStorage: AsyncLocalStorage<TraceRef> = new AsyncLocalStorage<TraceRef>();
 
 export interface TraceRef {
   id: string;
@@ -196,8 +196,7 @@ interface TraceInit<T extends TraceType> {
   content: TraceContent<T>;
 }
 
-export interface ActiveTrace<T extends Exclude<TraceType, "log">>
-  extends TraceRef {
+export interface ActiveTrace<T extends Exclude<TraceType, "log">> extends TraceRef {
   error(err: unknown, content?: Partial<TraceContent<T>>): void;
   success(content?: Partial<TraceContent<T>>): void;
   log(message: string, error?: unknown): void;
@@ -361,7 +360,7 @@ export class MessageTracer {
     this.modelTrace = modelTrace;
   }
 
-  startOrContinue({ index, type }: { index: number; type: ChatItem["type"] }) {
+  startOrContinue({ index, type }: { index: number; type: ChatItem["type"] }): string {
     // if the index is different than the one we're locked in on tracing, replace it
     if (!this.current || this.current.index !== index) {
       this.endMessageTraceIfStarted();

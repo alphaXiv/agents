@@ -1,48 +1,93 @@
-export {
-  Agent,
-  type AgentOptions,
-  type AgentRunResult,
-  type ModelString,
-} from "./src/agent.ts";
-export {
-  type ExecuteFunc,
-  type ExecuteFuncInput,
-  type ExecuteResult,
-  ModelOutput,
-  Tool,
-} from "./src/tool.ts";
+export { Agent } from "./src/agent.ts";
+export type { AgentOptions, AgentRunOptions, AgentRunResult } from "./src/agent.ts";
+
+export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
+export { repl } from "./src/repl.ts";
+
+export { ModelOutput, Tool } from "./src/tool.ts";
+export type { AnyTool, ExecuteFunc, ExecuteFuncInput, ExecuteResult } from "./src/tool.ts";
+export type { ReplIo, ReplOptions } from "./src/repl.ts";
+
+export { Adapter } from "./src/adapters/adapter.ts";
+export type { AdapterOptions, AdapterStreamOptions } from "./src/adapters/adapter.ts";
+
+export { Model } from "./src/adapters/model.ts";
+export type { ModelOptions } from "./src/adapters/model.ts";
+
+export { AnthropicModel } from "./src/adapters/anthropic/model.ts";
+export type { AnthropicModelOptions } from "./src/adapters/anthropic/model.ts";
+export type {
+  AnthropicModels,
+  ContextWindowSupport,
+  EffortLevel,
+  SupportedEffortLevel as AnthropicSupportedEffortLevel,
+  SupportedThinkingLevel as AnthropicSupportedThinkingLevel,
+  SupportsExtendedContext,
+  SupportsInterleaved,
+  ThinkingLevel,
+} from "./src/adapters/anthropic/models.ts";
+
+export { GeminiModel } from "./src/adapters/gemini/model.ts";
+export type { GeminiModelOptions } from "./src/adapters/gemini/model.ts";
+
+export { OpenAIModel } from "./src/adapters/openai/model.ts";
+export type { OpenAIModelOptions } from "./src/adapters/openai/model.ts";
+export type {
+  OpenAIModelModality,
+  OpenAIModels,
+  OpenAIReasoningEffort,
+  SupportedReasoningEffort,
+} from "./src/adapters/openai/models.ts";
+
+export { OpenRouterModel } from "./src/adapters/openrouter/model.ts";
+export type { OpenRouterModelOptions } from "./src/adapters/openrouter/model.ts";
+export type { OpenRouterModels, OpenRouterReasoningEffort } from "./src/adapters/openrouter/models.ts";
+
+export { SidModel } from "./src/adapters/sid/model.ts";
+export type { SidModelOptions } from "./src/adapters/sid/model.ts";
+export type { SidModels } from "./src/adapters/sid/adapter.ts";
+
+export { TributaryModel } from "./src/adapters/tributary/model.ts";
+export type { TributaryModelOptions } from "./src/adapters/tributary/model.ts";
+export type { TributaryModels } from "./src/adapters/tributary/models.ts";
+
+export { VertexAiModel } from "./src/adapters/vertex_ai/model.ts";
+export type { VertexAiModelOptions, VertexAiModelPriority } from "./src/adapters/vertex_ai/model.ts";
+
+export { SidEmbeddingSearchTool, SidReportHelpfulIdsTool, SidTextSearchTool } from "./src/adapters/sid/tools.ts";
+
+export { MessageTracer, newTrace, registerGlobalTracer, tracerAsyncLocalStorage, withTrace } from "./src/tracing.ts";
+export type {
+  ActiveCustomTrace,
+  ActiveTrace,
+  AgentTraceEvent,
+  BaseTraceEvent,
+  CustomTraceEvent,
+  LogTraceEvent,
+  MessageTraceEvent,
+  ModelTraceEvent,
+  PartialTraceEvent,
+  ToolTraceEvent,
+  TraceContent,
+  TraceEvent,
+  Tracer,
+  TraceRef,
+  TraceType,
+} from "./src/tracing.ts";
+
 export type {
   AdapterStreamIterator,
   AgentStreamIterator,
+  Awaitable,
   ChatItem,
+  ChatItemInputFile,
+  ChatItemToolResult,
+  ChatItemToolResultFile,
+  ChatItemToolResultText,
+  ChatItemToolUse,
   ChatLike,
-  ReasoningEffort,
+  ProviderStreamMetadata,
   StreamItem,
+  ToolResultLike,
   WithTraceId,
 } from "./src/types.ts";
-export {
-  SidEmbeddingSearchTool,
-  SidReportHelpfulIdsTool,
-  SidTextSearchTool,
-} from "./src/tools/sid.ts";
-export {
-  type ActiveCustomTrace,
-  type AgentTraceEvent,
-  type BaseTraceEvent,
-  type LogTraceEvent,
-  type MessageTraceEvent,
-  type ModelTraceEvent,
-  type PartialTraceEvent,
-  registerGlobalTracer,
-  type ToolTraceEvent,
-  type TraceContent,
-  type TraceEvent,
-  type Tracer,
-  type TraceType,
-  withTrace,
-} from "./src/tracing.ts";
-export type {
-  Adapter,
-  AdapterStreamOptions,
-  AdapterTypeOptions,
-} from "./src/adapters.ts";

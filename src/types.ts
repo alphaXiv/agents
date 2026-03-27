@@ -94,6 +94,10 @@ type StreamItemType = {
   type: "delta_output_text";
   delta: string;
 } | {
+  /** Preview-only output delta that should not be persisted into chat history. */
+  type: "delta_output_preview";
+  delta: string;
+} | {
   type: "delta_output_reasoning";
   delta: string;
 } | {
@@ -115,8 +119,6 @@ type StreamItemType = {
   kind: string;
   content: string;
 };
-
-export type ReasoningEffort = "minimal" | "normal"; // TODO: investigate adding "low" and "high" here
 
 export type StreamItem = BaseStreamItem & StreamItemType;
 

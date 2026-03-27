@@ -1,11 +1,9 @@
-import { Agent } from "../mod.ts";
+import { Agent, GeminiModel } from "../mod.ts";
 
 const agent = new Agent({
-  model: "tributary:openai:gpt-5.3-codex",
+  model: new GeminiModel({ model: "gemini-3.1-pro-preview" }),
+  //new TributaryModel({ model: "openai:gpt-5.3-codex" }),
   instructions: "You are a friendly assistant",
-  unstable: {
-    retries: false,
-  },
 });
 
 const result = await agent.run([
