@@ -4,15 +4,18 @@ export type { AgentOptions, AgentRunOptions, AgentRunResult } from "./src/agent.
 export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
 export { repl } from "./src/repl.ts";
 
+export type { ReplIo, ReplOptions } from "./src/repl.ts";
 export { ModelOutput, Tool } from "./src/tool.ts";
 export type { AnyTool, ExecuteFunc, ExecuteFuncInput, ExecuteResult } from "./src/tool.ts";
-export type { ReplIo, ReplOptions } from "./src/repl.ts";
 
 export { Adapter } from "./src/adapters/adapter.ts";
 export type { AdapterOptions, AdapterStreamOptions } from "./src/adapters/adapter.ts";
 
 export { Model } from "./src/adapters/model.ts";
 export type { ModelOptions } from "./src/adapters/model.ts";
+
+export { resolveModel } from "./src/adapters/model_resolver.ts";
+export type { ModelLike, ModelString } from "./src/adapters/model_resolver.ts";
 
 export { AnthropicModel } from "./src/adapters/anthropic/model.ts";
 export type { AnthropicModelOptions } from "./src/adapters/anthropic/model.ts";
@@ -43,9 +46,9 @@ export { OpenRouterModel } from "./src/adapters/openrouter/model.ts";
 export type { OpenRouterModelOptions } from "./src/adapters/openrouter/model.ts";
 export type { OpenRouterModels, OpenRouterReasoningEffort } from "./src/adapters/openrouter/models.ts";
 
+export type { SidModels } from "./src/adapters/sid/adapter.ts";
 export { SidModel } from "./src/adapters/sid/model.ts";
 export type { SidModelOptions } from "./src/adapters/sid/model.ts";
-export type { SidModels } from "./src/adapters/sid/adapter.ts";
 
 export { TributaryModel } from "./src/adapters/tributary/model.ts";
 export type { TributaryModelOptions } from "./src/adapters/tributary/model.ts";

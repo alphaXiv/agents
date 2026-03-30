@@ -1,5 +1,5 @@
 import z from "zod";
-import { Agent, OpenAIModel, repl, Tool } from "../mod.ts";
+import { Agent, repl, Tool } from "../mod.ts";
 
 const calculator = new Tool({
   name: "Calculating...",
@@ -91,7 +91,7 @@ const getMysteryImage = new Tool({
 });
 
 const agent = new Agent({
-  model: new OpenAIModel({ model: "gpt-5.4-nano" }),
+  model: "openai:gpt-5.4-nano",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch, getMysteryImage],
 });

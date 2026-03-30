@@ -2,6 +2,7 @@ import { assert } from "@std/assert/assert";
 import { generate } from "@std/uuid/v7";
 import z from "zod";
 import type { Model } from "./adapters/model.ts";
+import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
@@ -62,7 +63,7 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
    * If multiple models are provided, the agent will use them in order, falling
    * back to the next model if the previous one fails or is unavailable.
    */
-  model: Model | [Model, ...Model[]];
+  model: ModelLike | [ModelLike, ...ModelLike[]];
   /** What this is agent intended to do. Equivalent to a "system prompt". */
   instructions: string;
   /** Enable tool calls, which are automatically executed */
@@ -95,7 +96,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = T
 
   constructor(options: AgentOptions<zO, zI, Tools>) {
     this.#name = options.name;
-    this.#models = Array.isArray(options.model) ? options.model : [options.model];
+    this.#models = (Array.isArray(options.model) ? options.model : [options.model]).map(resolveModel);
     this.#instructions = options.instructions;
     this.#tools = options.tools?.slice() ?? [];
     this.#output = options.output;

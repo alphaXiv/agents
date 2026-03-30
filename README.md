@@ -14,7 +14,7 @@ TypeScript agents for real applications.
 
 ## Quickstart
 
-Models and Adapters for these providers are shiped out of the box:
+Models and Adapters for these providers are shipped out of the box:
 
 - Anthropic
 - OpenAI
@@ -50,7 +50,7 @@ const calculator = new Tool({
 });
 
 const agent = new Agent({
-  model: new OpenAIModel({ model: "gpt-4.1-mini" }),
+  model: new OpenAIModel({ model: "gpt-4.1-mini" }), // Or via shorthand "openai:gpt-4.1-mini"
   instructions: "You are a helpful assistant. Use the calculator when math is needed.",
   tools: [calculator],
 });

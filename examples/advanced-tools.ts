@@ -1,5 +1,5 @@
 import z from "zod";
-import { Agent, AnthropicModel, Tool } from "../mod.ts";
+import { Agent, Tool } from "../mod.ts";
 
 const getImage = new Tool({
   name: "Get image...",
@@ -21,7 +21,7 @@ const getImage = new Tool({
 });
 
 const agent = new Agent({
-  model: new AnthropicModel({ model: "claude-haiku-4-5" }),
+  model: "anthropic:claude-haiku-4-5",
   instructions: "You are a friendly assistant",
   tools: [getImage],
 });

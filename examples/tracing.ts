@@ -71,10 +71,7 @@ async function main() {
     name: "Snack Specialist",
     model: [
       new OpenAIModel({ model: "gpt-5.4-nano" }),
-      new AnthropicModel({
-        model: "claude-sonnet-4-6",
-        thinkingLevel: "adaptive",
-      }),
+      new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
     ],
     instructions: [
       "You are the snack specialist.",
@@ -104,10 +101,7 @@ async function main() {
 
   const agent = new Agent({
     name: "Main Agent",
-    model: new AnthropicModel({
-      model: "claude-sonnet-4-6",
-      thinkingLevel: "adaptive",
-    }),
+    model: new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
     instructions: [
       "You coordinate requests for a snack specialist.",
       "Always call delegate_specialist exactly once before answering.",

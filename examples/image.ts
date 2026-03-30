@@ -1,8 +1,7 @@
-import { Agent, GeminiModel } from "../mod.ts";
+import { Agent } from "../mod.ts";
 
 const agent = new Agent({
-  model: new GeminiModel({ model: "gemini-3.1-pro-preview" }),
-  //new TributaryModel({ model: "openai:gpt-5.3-codex" }),
+  model: "gemini:gemini-3.1-pro-preview",
   instructions: "You are a friendly assistant",
 });
 

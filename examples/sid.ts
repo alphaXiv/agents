@@ -1,5 +1,5 @@
 import z from "zod";
-import { Agent, SidModel } from "../mod.ts";
+import { Agent } from "../mod.ts";
 import { SidEmbeddingSearchTool, SidReportHelpfulIdsTool, SidTextSearchTool } from "../src/adapters/sid/tools.ts";
 
 const currentDate = new Date().toISOString().slice(0, 10);
@@ -221,7 +221,7 @@ const reportHelpfulIds = new SidReportHelpfulIdsTool();
 
 // -------------------- The actual run --------------------
 const agent = new Agent({
-  model: new SidModel({ model: "sid-1" }),
+  model: "sid:sid-1",
   instructions: systemPrompt,
   tools: [embeddingSearch, textSearch, reportHelpfulIds],
 });
