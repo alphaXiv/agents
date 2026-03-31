@@ -288,8 +288,8 @@ export function getAnthropicMessagesStreamConfig(
         betas,
       };
     }
+    default:
+      support satisfies never;
+      throw new Error(`Unsupported Anthropic thinking support config: ${JSON.stringify(support)}`);
   }
-
-  support satisfies never;
-  throw new Error(`Unsupported Anthropic thinking support config: ${JSON.stringify(support)}`);
 }
