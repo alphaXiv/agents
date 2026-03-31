@@ -2,11 +2,11 @@ export { Agent } from "./src/agent.ts";
 export type { AgentOptions, AgentRunOptions, AgentRunResult } from "./src/agent.ts";
 
 export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
-export { repl } from "./src/repl.ts";
+export { cli } from "./src/repl.ts";
 
-export type { ReplIo, ReplOptions } from "./src/repl.ts";
+export type { CliIo, CliOptions } from "./src/repl.ts";
 export { ModelOutput, Tool } from "./src/tool.ts";
-export type { AnyTool, ExecuteFunc, ExecuteFuncInput, ExecuteResult } from "./src/tool.ts";
+export type { AnyTool, ExecuteContext, ExecuteFunc, ExecuteFuncInput, ExecuteResult } from "./src/tool.ts";
 
 export { Adapter } from "./src/adapters/adapter.ts";
 export type { AdapterOptions, AdapterStreamOptions } from "./src/adapters/adapter.ts";
@@ -21,11 +21,9 @@ export { AnthropicModel } from "./src/adapters/anthropic/model.ts";
 export type { AnthropicModelOptions } from "./src/adapters/anthropic/model.ts";
 export type {
   AnthropicModels,
-  ContextWindowSupport,
   EffortLevel,
   SupportedEffortLevel as AnthropicSupportedEffortLevel,
   SupportedThinkingLevel as AnthropicSupportedThinkingLevel,
-  SupportsExtendedContext,
   SupportsInterleaved,
   ThinkingLevel,
 } from "./src/adapters/anthropic/models.ts";

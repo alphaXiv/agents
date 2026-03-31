@@ -3,7 +3,6 @@ import { z } from "zod";
 import type {
   AdaptiveOrExtendedThinkingSupport,
   AdaptiveThinkingSupport,
-  AnthropicModelContextWindowMap,
   AnthropicModelThinkingSupportMap,
   ExtendedThinkingSupport,
   ExtendedWithEffortThinkingSupport,
@@ -164,40 +163,6 @@ export type SupportsInterleaved<TModel extends AnthropicModels> = ModelConfig<TM
   : true;
 
 /**
- * Context window capability per model.
- * `"200k"` – Fixed 200k, 1M not available.
- * `"200k-or-1m"` – defaults to 200k, opt in to 1M via the context-1m beta header.
- * `"1m"` – 1M allowed and enabled by default.
- */
-export type ContextWindowSupport = "200k" | "200k-or-1m" | "1m";
-
-const anthropicModelContextWindowDefinition = {
-  "claude-opus-4-6": "1m",
-  "claude-sonnet-4-6": "1m",
-
-  "claude-opus-4-5": "200k",
-  "claude-opus-4-5-20251101": "200k",
-  "claude-sonnet-4-5": "200k-or-1m",
-  "claude-sonnet-4-5-20250929": "200k-or-1m",
-  "claude-haiku-4-5": "200k",
-  "claude-haiku-4-5-20251001": "200k",
-
-  "claude-opus-4-1": "200k",
-  "claude-opus-4-1-20250805": "200k",
-
-  "claude-opus-4-0": "200k",
-  "claude-opus-4-20250514": "200k",
-  "claude-sonnet-4-0": "200k-or-1m",
-  "claude-sonnet-4-20250514": "200k-or-1m",
-} as const satisfies AnthropicModelContextWindowMap;
-
-export const anthropicModelContextWindow: AnthropicModelContextWindowMap = anthropicModelContextWindowDefinition;
-
-/** `true` for models that can opt in to the 1M context window. */
-export type SupportsExtendedContext<TModel extends AnthropicModels> =
-  (typeof anthropicModelContextWindow)[TModel] extends "200k-or-1m" ? true : false;
-
-/**
  * Model support for native structured ouput.
  */
 export const anthropicModelStructuredOutputSupport = {
@@ -254,21 +219,15 @@ export interface GetAnthropicMessagesStreamConfigOptions {
   thinkingLevel?: ThinkingLevel;
   effort?: EffortLevel;
   interleaved?: boolean;
-  extendedContext?: boolean;
 }
 
 export function getAnthropicMessagesStreamConfig(
-  { model, thinkingLevel, effort, interleaved, extendedContext }: GetAnthropicMessagesStreamConfigOptions,
+  { model, thinkingLevel, effort, interleaved }: GetAnthropicMessagesStreamConfigOptions,
 ): AnthropicMessagesStreamConfig {
   const support = anthropicModelThinkingSupport[model];
 
   // When betas is just an empty array, the SDK throws an error about unexpected value(s).
   let betas: string[] | undefined;
-
-  const contextWindow = anthropicModelContextWindow[model];
-  if (contextWindow === "200k-or-1m" && extendedContext) {
-    (betas ??= []).push("context-1m-2025-08-07");
-  }
 
   const outputConfig: BetaOutputConfig | undefined = effort ? { effort } : undefined;
 

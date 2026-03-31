@@ -1,12 +1,12 @@
 import { assertEquals } from "@std/assert";
 import z from "zod";
-import { Agent, repl, type ReplIo, Tool } from "../../mod.ts";
+import { Agent, cli, type CliIo, Tool } from "../../mod.ts";
 import { Adapter, type AdapterStreamOptions } from "../../src/adapters/adapter.ts";
 import { Model } from "../../src/adapters/model.ts";
 import { convertChatItemsToStream } from "../../src/client.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../src/types.ts";
 
-class FakeIo implements ReplIo {
+class FakeIo implements CliIo {
   prompts: string[] = [];
   writes: string[] = [];
   #inputs: (string | null)[];
@@ -142,14 +142,14 @@ class StatusReplModel extends Model<"repl-status-test"> {
   }
 }
 
-Deno.test("repl streams agent responses and exits on command", async () => {
+Deno.test("cli streams agent responses and exits on command", async () => {
   const io = new FakeIo(["hello", "/exit"]);
   const agent = new Agent({
     model: new ReplTestModel(),
     instructions: "Reply deterministically.",
   });
 
-  await repl(agent, {
+  await cli(agent, {
     io,
     greeting: false,
   });
@@ -158,14 +158,14 @@ Deno.test("repl streams agent responses and exits on command", async () => {
   assertEquals(io.writes.join(""), "[responding]\nturn 1: hello\n");
 });
 
-Deno.test("repl reset clears conversation history", async () => {
+Deno.test("cli reset clears conversation history", async () => {
   const io = new FakeIo(["first", "second", "/reset", "third", "/exit"]);
   const agent = new Agent({
     model: new ReplTestModel(),
     instructions: "Reply deterministically.",
   });
 
-  await repl(agent, {
+  await cli(agent, {
     io,
     prompt: "agent> ",
     greeting: "ready",
@@ -178,7 +178,7 @@ Deno.test("repl reset clears conversation history", async () => {
   );
 });
 
-Deno.test("repl shows thinking, tool, and responding indicators", async () => {
+Deno.test("cli shows thinking, tool, and responding indicators", async () => {
   const io = new FakeIo(["hello", "/exit"]);
   const lookupTool = new Tool({
     name: "lookup",
@@ -192,7 +192,7 @@ Deno.test("repl shows thinking, tool, and responding indicators", async () => {
     tools: [lookupTool],
   });
 
-  await repl(agent, {
+  await cli(agent, {
     io,
     greeting: false,
   });
@@ -203,14 +203,14 @@ Deno.test("repl shows thinking, tool, and responding indicators", async () => {
   );
 });
 
-Deno.test("repl exits cleanly on ctrl+c while waiting for input", async () => {
+Deno.test("cli exits cleanly on ctrl+c while waiting for input", async () => {
   const io = new FakeIo([]);
   const agent = new Agent({
     model: new ReplTestModel(),
     instructions: "Reply deterministically.",
   });
 
-  const replPromise = repl(agent, {
+  const replPromise = cli(agent, {
     io,
     greeting: false,
   });

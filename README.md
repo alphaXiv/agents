@@ -7,7 +7,7 @@ TypeScript agents for real applications.
 - Flat, database-friendly chat history types
 - Zod-based structured output
 - First-class tool calling with retries and cancellation
-- Streaming, tracing, and interactive REPL support
+- Streaming, tracing, and interactive CLI support
 - Multimodal inputs and tool results
 - Multiple model providers behind one agent loop
 - Fallback models built into the agent constructor
@@ -101,7 +101,7 @@ Tools are plain class instances with:
 - `name`
 - `description`
 - `parameters`: a Zod schema
-- `execute(input, signal)`
+- `execute(input, { signal })`
 
 Tool names are normalized internally so provider-specific restrictions do not leak into your app.
 
@@ -217,13 +217,13 @@ while (true) {
 The helpers `addStreamItem(...)` and `convertChatItemsToStream(...)` are also exported for rebuilding or adapting
 streamed histories.
 
-## REPL
+## CLI
 
-Built-in way to convert agents into a CLI REPL app.
+Built-in way to convert agents into a CLI app.
 
 ```ts
 import z from "npm:zod";
-import { Agent, OpenAIModel, repl, Tool } from "jsr:@alphaxiv/agents";
+import { Agent, cli, OpenAIModel, Tool } from "jsr:@alphaxiv/agents";
 
 const echo = new Tool({
   name: "echo",
@@ -238,10 +238,10 @@ const agent = new Agent({
   tools: [echo],
 });
 
-await repl(agent);
+await cli(agent);
 ```
 
-The built-in REPL supports:
+The built-in CLI supports:
 
 - Streaming output
 - Tool activity announcements

@@ -1,5 +1,5 @@
 import z from "zod";
-import { Agent, repl, Tool } from "../mod.ts";
+import { Agent, cli, Tool } from "../mod.ts";
 
 const calculator = new Tool({
   name: "Calculating...",
@@ -96,4 +96,4 @@ const agent = new Agent({
   tools: [search, calculator, pingSupport, complexSearch, getMysteryImage],
 });
 
-await repl(agent);
+await cli(agent);

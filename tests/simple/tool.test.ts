@@ -68,7 +68,7 @@ Deno.test("tool-specific abort signals cancel the tool without aborting the agen
     description: "Waits for either completion or cancellation",
     parameters: z.void(),
     signal: AbortSignal.timeout(10),
-    execute: (_, signal) => {
+    execute: (_, { signal }) => {
       return new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => resolve("late success"), 200);
         const onAbort = () => {
@@ -107,7 +107,7 @@ Deno.test("agent abort propagates into a running tool", async () => {
     name: "slow_tool",
     description: "Waits for cancellation",
     parameters: z.void(),
-    execute: (_, signal) => {
+    execute: (_, { signal }) => {
       return new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => resolve("late success"), 200);
         const onAbort = () => {

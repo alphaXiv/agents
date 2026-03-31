@@ -9,7 +9,6 @@ import {
   getAnthropicMessagesStreamConfig,
   type SupportedEffortLevel,
   type SupportedThinkingLevel,
-  type SupportsExtendedContext,
   type SupportsInterleaved,
   type ThinkingLevel,
 } from "./models.ts";
@@ -28,23 +27,11 @@ type InterleavedOption<TModel extends AnthropicModels> = SupportsInterleaved<TMo
   ? { interleaved?: boolean }
   : Record<never, never>;
 
-// Only include extendedContext for models that can opt into the 1M context window.
-type ExtendedContextOption<TModel extends AnthropicModels> = SupportsExtendedContext<TModel> extends true ? {
-    /**
-     * Opt in to the 1M-token context window via the `context-1m-2025-08-07` beta header.
-     * Only available for models that support it (Sonnet 4.5, Sonnet 4). Long context pricing applies above 200k tokens.
-     * @default false
-     */
-    extendedContext?: boolean;
-  }
-  : Record<never, never>;
-
 export type AnthropicModelOptions<TModel extends AnthropicModels> =
   & Omit<AnthropicAdapterOptions<TModel>, "client" | "streamConfig">
   & ThinkingLevelOption<TModel>
   & EffortOption<TModel>
   & InterleavedOption<TModel>
-  & ExtendedContextOption<TModel>
   & { baseUrl?: string; apiKey?: string };
 
 export class AnthropicModel<TModel extends AnthropicModels = AnthropicModels> extends Model<TModel> {
@@ -52,18 +39,16 @@ export class AnthropicModel<TModel extends AnthropicModels = AnthropicModels> ex
   readonly thinkingLevel: SupportedThinkingLevel<TModel> | undefined;
   readonly effort: SupportedEffortLevel<TModel> | undefined;
   readonly interleaved: boolean | undefined;
-  readonly extendedContext: boolean | undefined;
 
   constructor(options: AnthropicModelOptions<TModel>) {
     super(options);
 
     const modelConfig = anthropicModelThinkingSupport[options.model];
     // Cast to access fields that are conditionally typed per model
-    const { thinkingLevel, effort, interleaved, extendedContext } = options as {
+    const { thinkingLevel, effort, interleaved } = options as {
       thinkingLevel?: ThinkingLevel;
       effort?: EffortLevel;
       interleaved?: boolean;
-      extendedContext?: boolean;
     };
 
     this.thinkingLevel =
@@ -76,14 +61,12 @@ export class AnthropicModel<TModel extends AnthropicModels = AnthropicModels> ex
       | undefined;
 
     this.interleaved = interleaved;
-    this.extendedContext = extendedContext;
 
     const thinkingConfig = getAnthropicMessagesStreamConfig({
       model: options.model,
       thinkingLevel: this.thinkingLevel as ThinkingLevel | undefined,
       effort: this.effort as EffortLevel | undefined,
       interleaved: this.interleaved,
-      extendedContext: this.extendedContext,
     });
 
     this.adapter = new AnthropicAdapter<TModel>({

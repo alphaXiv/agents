@@ -15,7 +15,11 @@ export type ExecuteResult<MO = never> =
 
 export type ExecuteFuncInput<O> = O;
 
-export type ExecuteFunc<O, MO = never> = (input: ExecuteFuncInput<O>, signal: AbortSignal) => ExecuteResult<MO>;
+export interface ExecuteContext {
+  signal: AbortSignal;
+}
+
+export type ExecuteFunc<O, MO = never> = (input: ExecuteFuncInput<O>, context: ExecuteContext) => ExecuteResult<MO>;
 
 function createAbortableDelay(ms: number, signal: AbortSignal): Promise<void> {
   if (ms <= 0) {
@@ -115,14 +119,17 @@ export class Tool<zO = unknown, zI = unknown, TModelOutput = unknown> {
     return this.#parameters;
   }
 
-  async execute(input: ExecuteFuncInput<zO>, signal: AbortSignal): Promise<ToolResultLike | ModelOutput<TModelOutput>> {
-    const combinedSignal = this.#signal ? AbortSignal.any([signal, this.#signal]) : signal;
+  async execute(
+    input: ExecuteFuncInput<zO>,
+    context: ExecuteContext,
+  ): Promise<ToolResultLike | ModelOutput<TModelOutput>> {
+    const combinedSignal = this.#signal ? AbortSignal.any([context.signal, this.#signal]) : context.signal;
 
     let lastError: unknown;
     for (let i = 0; i < this.#retries + 1; i++) {
       combinedSignal.throwIfAborted();
       try {
-        return await this.#execute(input, combinedSignal);
+        return await this.#execute(input, { signal: combinedSignal });
       } catch (err) {
         lastError = err;
         if (combinedSignal.aborted || i === this.#retries) {

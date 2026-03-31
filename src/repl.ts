@@ -7,25 +7,25 @@ import { errMessage } from "./util.ts";
 
 const DEFAULT_PROMPT = "> ";
 const DEFAULT_GREETING = [
-  "Interactive agent REPL.",
+  "Interactive agent CLI.",
   "Commands: /reset clears history, /exit quits.",
 ].join(" ");
 
-export interface ReplIo {
+export interface CliIo {
   readLine(prompt: string): Promise<string | null>;
   write(text: string): void;
   onInterrupt?(handler: () => void): (() => void) | void;
   close?(): void;
 }
 
-export interface ReplOptions {
+export interface CliOptions {
   prompt?: string;
   greeting?: string | false;
   runOptions?: AgentRunOptions;
-  io?: ReplIo;
+  io?: CliIo;
 }
 
-function createNodeReplIo(): ReplIo {
+function createNodeCliIo(): CliIo {
   const readline: Interface = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -78,11 +78,11 @@ function humanizeToolName(name: string): string {
   return name.replaceAll("_", " ");
 }
 
-export async function repl<zO, zI, const Tools extends AnyTool[]>(
+export async function cli<zO, zI, const Tools extends AnyTool[]>(
   agent: Agent<zO, zI, Tools>,
-  options?: ReplOptions,
+  options?: CliOptions,
 ): Promise<void> {
-  const io = options?.io ?? createNodeReplIo();
+  const io = options?.io ?? createNodeCliIo();
   const managesIoLifecycle = options?.io == null;
   const prompt = options?.prompt ?? DEFAULT_PROMPT;
   const greeting = options?.greeting === undefined ? DEFAULT_GREETING : options.greeting;

@@ -72,6 +72,7 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
   output?: z.ZodType<zO, zI>;
   /**
    * Maximum number of agentic turns (model call -> tool execution cycles).
+   * @experimental - might be removed or have its behaviour modified without any notice
    * @default 100
    */
   maxTurns?: number;
@@ -79,6 +80,7 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
    * Maximum number of consecutive retries per model before moving to the next
    * model in the fallback list. After exhausting all models, the last error is
    * thrown. Models are tried in round-robin when retries are available.
+   * @experimental - might be removed or have its behaviour modified without any notice
    * @default 3
    */
   maxRetries?: number;
@@ -467,7 +469,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = T
 
       const result = await signalAsyncLocalStorage.run(
         toolSignal,
-        () => tracerAsyncLocalStorage.run(trace, () => tool.execute(param, toolSignal)),
+        () => tracerAsyncLocalStorage.run(trace, () => tool.execute(param, { signal: toolSignal })),
       );
 
       if (result instanceof ModelOutput) {

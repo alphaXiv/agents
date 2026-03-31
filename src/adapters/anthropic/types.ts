@@ -56,20 +56,3 @@ export interface AnthropicModelThinkingSupportMap {
   "claude-sonnet-4-0": ExtendedThinkingSupport<"minimal" | "low" | "medium" | "high">;
   "claude-sonnet-4-20250514": ExtendedThinkingSupport<"minimal" | "low" | "medium" | "high">;
 }
-
-export interface AnthropicModelContextWindowMap {
-  "claude-opus-4-6": "1m";
-  "claude-sonnet-4-6": "1m";
-  "claude-opus-4-5": "200k";
-  "claude-opus-4-5-20251101": "200k";
-  "claude-sonnet-4-5": "200k-or-1m";
-  "claude-sonnet-4-5-20250929": "200k-or-1m";
-  "claude-haiku-4-5": "200k";
-  "claude-haiku-4-5-20251001": "200k";
-  "claude-opus-4-1": "200k";
-  "claude-opus-4-1-20250805": "200k";
-  "claude-opus-4-0": "200k";
-  "claude-opus-4-20250514": "200k";
-  "claude-sonnet-4-0": "200k-or-1m";
-  "claude-sonnet-4-20250514": "200k-or-1m";
-}
