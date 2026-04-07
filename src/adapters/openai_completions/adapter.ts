@@ -267,6 +267,10 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
         : { type: "text" },
       stream: true,
       ...extraRequestBody,
+      stream_options: {
+        ...(extraRequestBody.stream_options ?? {}),
+        include_usage: true,
+      },
     };
 
     const response = this.#client.chat.completions.stream(request, { signal });
