@@ -3,16 +3,16 @@
   "specifiers": {
     "jsr:@clo/lib@3.0.0": "3.0.0",
     "jsr:@lino/pdf-parse@~0.3.1": "0.3.1",
-    "jsr:@std/assert@^1.0.15": "1.0.19",
-    "jsr:@std/async@^1.0.15": "1.2.0",
+    "jsr:@std/assert@^1.0.19": "1.0.19",
+    "jsr:@std/async@^1.2.0": "1.2.0",
     "jsr:@std/bytes@^1.0.6": "1.0.6",
     "jsr:@std/crypto@^1.0.5": "1.0.5",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/uuid@^1.1.0": "1.1.0",
-    "npm:@anthropic-ai/sdk@0.80": "0.80.0_zod@4.3.6",
-    "npm:@google/genai@^1.46.0": "1.46.0",
-    "npm:openai@^6.32.0": "6.32.0_zod@4.3.6",
+    "npm:@anthropic-ai/sdk@0.85": "0.85.0_zod@4.3.6",
+    "npm:@google/genai@^1.48.0": "1.48.0",
+    "npm:openai@^6.33.0": "6.33.0_zod@4.3.6",
     "npm:pdfjs-dist@^5.4.394": "5.5.207",
     "npm:zod@4.3.6": "4.3.6",
     "npm:zod@^4.3.6": "4.3.6"
@@ -57,8 +57,8 @@
     }
   },
   "npm": {
-    "@anthropic-ai/sdk@0.80.0_zod@4.3.6": {
-      "integrity": "sha512-WeXLn7zNVk3yjeshn+xZHvld6AoFUOR3Sep6pSoHho5YbSi6HwcirqgPA5ccFuW8QTVJAAU7N8uQQC6Wa9TG+g==",
+    "@anthropic-ai/sdk@0.85.0_zod@4.3.6": {
+      "integrity": "sha512-nmwwB1zYSOwDSKtw+HXUzx+SKfBekTknt92R63tGZAZkppwyHw+cMHugjCvWZ9G92I965tz0062VKeUnzVJZlA==",
       "dependencies": [
         "json-schema-to-ts",
         "zod"
@@ -71,8 +71,8 @@
     "@babel/runtime@7.29.2": {
       "integrity": "sha512-JiDShH45zKHWyGe4ZNVRrCjBz8Nh9TMmZG1kh4QTK8hCBTWBi8Da+i7s1fJw7/lYpM4ccepSNfqzZ/QvABBi5g=="
     },
-    "@google/genai@1.46.0": {
-      "integrity": "sha512-ewPMN5JkKfgU5/kdco9ZhXBHDPhVqZpMQqIFQhwsHLf8kyZfx1cNpw1pHo1eV6PGEW7EhIBFi3aYZraFndAXqg==",
+    "@google/genai@1.48.0": {
+      "integrity": "sha512-plonYK4ML2PrxsRD9SeqmFt76eREWkQdPCglOA6aYDzL1AAbE+7PUnT54SvpWGfws13L0AZEqGSpL7+1IPnTxQ==",
       "dependencies": [
         "google-auth-library",
         "p-retry",
@@ -185,8 +185,8 @@
     "@protobufjs/utf8@1.1.0": {
       "integrity": "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="
     },
-    "@types/node@25.5.0": {
-      "integrity": "sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw==",
+    "@types/node@25.5.2": {
+      "integrity": "sha512-tO4ZIRKNC+MDWV4qKVZe3Ql/woTnmHDr5JD8UI5hn2pwBrHEwOEMZK7WlNb5RKB6EoJ02gwmQS9OrjuFnZYdpg==",
       "dependencies": [
         "undici-types"
       ]
@@ -323,8 +323,8 @@
     "node-readable-to-web-readable-stream@0.4.2": {
       "integrity": "sha512-/cMZNI34v//jUTrI+UIo4ieHAB5EZRY/+7OmXZgBxaWBMcW2tGdceIw06RFxWxrKZ5Jp3sI2i5TsRo+CBhtVLQ=="
     },
-    "openai@6.32.0_zod@4.3.6": {
-      "integrity": "sha512-j3k+BjydAf8yQlcOI7WUQMQTbbF5GEIMAE2iZYCOzwwB3S2pCheaWYp+XZRNAch4jWVc52PMDGRRjutao3lLCg==",
+    "openai@6.33.0_zod@4.3.6": {
+      "integrity": "sha512-xAYN1W3YsDXJWA5F277135YfkEk6H7D3D6vWwRhJ3OEkzRgcyK8z/P5P9Gyi/wB4N8kK9kM5ZjprfvyHagKmpw==",
       "dependencies": [
         "zod"
       ],
@@ -390,13 +390,13 @@
   "workspace": {
     "dependencies": [
       "jsr:@lino/pdf-parse@~0.3.1",
-      "jsr:@std/assert@^1.0.15",
-      "jsr:@std/async@^1.0.15",
+      "jsr:@std/assert@^1.0.19",
+      "jsr:@std/async@^1.2.0",
       "jsr:@std/encoding@^1.0.10",
       "jsr:@std/uuid@^1.1.0",
-      "npm:@anthropic-ai/sdk@0.80",
-      "npm:@google/genai@^1.46.0",
-      "npm:openai@^6.32.0",
+      "npm:@anthropic-ai/sdk@0.85",
+      "npm:@google/genai@^1.48.0",
+      "npm:openai@^6.33.0",
       "npm:zod@^4.3.6"
     ]
   }
