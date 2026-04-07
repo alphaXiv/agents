@@ -15,7 +15,7 @@
   "tasks": {
     "dev": "deno run --watch --env-file main.ts",
     "check": "deno fmt --check && deno lint && deno task test && deno publish --dry-run --allow-dirty",
-    "test": "deno test --allow-env"
+    "test": "deno test --allow-env --allow-net=127.0.0.1"
   },
   "imports": {
     "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@^0.67.0",

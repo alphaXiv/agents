@@ -6,6 +6,7 @@ import { delay } from "@std/async/delay";
 import type { ChatItem, StreamItem } from "../src/types.ts";
 import { addStreamItem } from "../src/client.ts";
 import { testingAdapter } from "./utils/testing-adapter.ts";
+import { openAiCompletionsAdapter } from "@alphaxiv/agents/openai-completions";
 
 Deno.test("Basic streaming test", async () => {
   const agent = new Agent({
@@ -137,4 +138,69 @@ Deno.test("Parallel tool calls are streamed one by one in settlement order", asy
   // The final assembled history must contain both tool results
   const toolResults = output.filter((c) => c.type === "tool_result_text");
   assertEquals(toolResults.length, 2);
+});
+
+Deno.test("include_usage is set in stream_options on openai completions adapter", async () => {
+  const server = Deno.serve(
+    { port: 0, hostname: "127.0.0.1" },
+    async (req: Request) => {
+      assertObjectMatch(await req.json(), {
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+      return new Response(
+        [
+          JSON.stringify({
+            id: "123",
+            object: "chat.completion.chunk",
+            created: 1775591028,
+            model: "alphaxiv-agi",
+            choices: [{
+              index: 0,
+              delta: { role: "assistant", content: "bingus is awesome" },
+            }],
+          }),
+          JSON.stringify({
+            id: "123",
+            object: "chat.completion.chunk",
+            created: 1775591028,
+            model: "alphaxiv-agi",
+            choices: [{
+              index: 0,
+              finish_reason: "stop",
+              delta: {},
+            }],
+            usage: {
+              prompt_tokens: 123,
+              completion_tokens: 456,
+              total_tokens: 579,
+            },
+          }),
+          "[DONE]",
+        ].map((s) => "data: " + s + "\n\n").join(""),
+        { headers: { "Content-Type": "text/event-stream" } },
+      );
+    },
+  );
+  await using _dispose = { [Symbol.asyncDispose]: () => server.shutdown() };
+
+  const agent = new Agent({
+    adapter: openAiCompletionsAdapter({
+      name: "tributary",
+      url: `http://${server.addr.hostname}:${server.addr.port}`,
+      apiKey: "123",
+    }),
+    model: "alphaxiv-agi",
+    instructions: "You are a friendly assistant",
+  });
+  const result = await agent.run("bingus bingus bingus");
+  assertObjectMatch(result, {
+    history: [{
+      type: "output_text",
+      content: "bingus is awesome",
+    }],
+    outputText: "bingus is awesome",
+    inputTokens: 123,
+    outputTokens: 456,
+  });
 });
