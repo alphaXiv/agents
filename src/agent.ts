@@ -513,6 +513,8 @@ function createRunResult<T>(completion: {
     output,
     inputTokens: completion.totalInputTokens,
     outputTokens: completion.totalOutputTokens,
+    // using a getter so that if you console.log this object, you
+    // don't see all the data twice.
     get outputText() {
       return output != null
         ? (typeof output === "string" ? output : JSON.stringify(output))
