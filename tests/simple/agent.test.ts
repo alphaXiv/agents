@@ -44,6 +44,7 @@ Deno.test("Structured output works", async () => {
     type: "input_text",
     content: "Can you give me a temperature estimate?",
   }]);
+  run.output satisfies number;
   assert(typeof run.output === "number");
 });
 
@@ -59,7 +60,7 @@ Deno.test("Structured output 2 works", async () => {
     type: "input_text",
     content: "Can you give me a cat name?",
   }]);
-  assertEquals((run.output as { name: string }).name, "Bingus");
+  assertEquals(run.output.name, "Bingus");
 });
 
 Deno.test("Tool calls can work", async () => {

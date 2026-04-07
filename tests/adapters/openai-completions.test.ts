@@ -297,6 +297,7 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
     },
     stream: true,
     reasoning: { enabled: true },
+    stream_options: { include_usage: true },
   });
 });
 

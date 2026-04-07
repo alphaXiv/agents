@@ -29,7 +29,9 @@ import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage,
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RETRIES = 3;
 
-type ExtractModelOutput<Tools extends Tool[]> = Tools[number] extends Tool<infer _, infer _, infer MO> ? MO : never;
+type ExtractModelOutput<Tools extends Tool[]> = [Tools[number]] extends [never] ? never
+  : Tools[number] extends Tool<infer _, infer _, infer MO> ? MO
+  : never;
 
 type ResolveAgentOutput<zO, Tools extends Tool[]> = unknown extends zO
   ? ([ExtractModelOutput<Tools>] extends [never] ? undefined : ExtractModelOutput<Tools> | undefined)
@@ -86,7 +88,7 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
   maxRetries?: number;
 }
 
-export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = Tool[]> {
+export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = []> {
   #name?: string;
   #models: Model[];
   #instructions: string;

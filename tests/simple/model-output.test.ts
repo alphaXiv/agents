@@ -153,12 +153,18 @@ Deno.test("Structured output retry streams apology text and rebuilds history", a
   const stream = agent.stream("name a cat");
   const rebuiltHistory: WithTraceId<ChatItem>[] = [];
 
-  let run: { output: { name: string }; history: WithTraceId<ChatItem>[]; outputText: string } | undefined;
+  let run:
+    | {
+      output: { name: string };
+      history: WithTraceId<ChatItem>[];
+      outputText: string;
+    }
+    | undefined;
 
   while (true) {
     const next = await stream.next();
     if (next.done) {
-      run = next.value as { output: { name: string }; history: WithTraceId<ChatItem>[]; outputText: string };
+      run = next.value;
       break;
     }
     addStreamItem(rebuiltHistory, next.value);
@@ -246,6 +252,7 @@ Deno.test("Structured output ORs with ModelOutput types", async () => {
   });
 
   const run = await agent.run("Call output tool");
+  run.output satisfies { temperature: number } | string[];
   assertEquals(run.output, ["id1", "id2"]);
 });
 
