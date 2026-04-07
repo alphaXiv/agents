@@ -32,15 +32,25 @@ function createNodeCliIo(): CliIo {
     terminal: true,
   });
 
+  // readline.close() alone does not reliably unblock an in-flight readline.question()
+  // promise (observed under Deno), so we drive cancellation through an AbortSignal.
+  let questionAbortController: AbortController | null = null;
+
   return {
     async readLine(prompt: string): Promise<string | null> {
+      questionAbortController = new AbortController();
       try {
-        return await readline.question(prompt);
+        return await readline.question(prompt, { signal: questionAbortController.signal });
       } catch (error) {
+        if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
+          return null;
+        }
         if (error && typeof error === "object" && "code" in error && error.code === "ERR_READLINE_CLOSE") {
           return null;
         }
         throw error;
+      } finally {
+        questionAbortController = null;
       }
     },
     write(text: string): void {
@@ -69,6 +79,7 @@ function createNodeCliIo(): CliIo {
       };
     },
     close(): void {
+      questionAbortController?.abort();
       readline.close();
     },
   };

@@ -7,7 +7,7 @@
   },
   "exports": {
     ".": "./mod.ts",
-    "./repl": "./src/repl.ts",
+    "./cli": "./src/cli.ts",
     "./client": "./src/client.ts",
 
     "./adapters/anthropic": "./src/adapters/anthropic/adapter.ts",

@@ -2,9 +2,9 @@ export { Agent } from "./src/agent.ts";
 export type { AgentOptions, AgentRunOptions, AgentRunResult } from "./src/agent.ts";
 
 export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
-export { cli } from "./src/repl.ts";
+export { cli } from "./src/cli.ts";
 
-export type { CliIo, CliOptions } from "./src/repl.ts";
+export type { CliIo, CliOptions } from "./src/cli.ts";
 export { ModelOutput, Tool } from "./src/tool.ts";
 export type { AnyTool, ExecuteContext, ExecuteFunc, ExecuteFuncInput, ExecuteResult } from "./src/tool.ts";
 
