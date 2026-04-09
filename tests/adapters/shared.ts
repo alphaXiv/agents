@@ -300,14 +300,12 @@ export async function runStructuredOutputStreamingTest(
     output: fixtures.output,
   });
 
-  let items: WithTraceId<StreamItem>[] = [];
   let result: AgentRunResult<unknown> | undefined;
 
   const collectedStructuredOutput = await t.step("collect structured output stream", async () => {
     const collected = await collectAgentStream(agent.stream(fixtures.prompt, {
       signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
     }));
-    items = collected.items;
     result = collected.result;
   });
 
