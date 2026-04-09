@@ -94,10 +94,6 @@ type StreamItemType = {
   type: "delta_output_text";
   delta: string;
 } | {
-  /** Preview-only output delta that should not be persisted into chat history. */
-  type: "delta_output_preview";
-  delta: string;
-} | {
   type: "delta_output_reasoning";
   delta: string;
 } | {

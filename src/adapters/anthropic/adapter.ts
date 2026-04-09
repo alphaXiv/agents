@@ -265,13 +265,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
             parts[part.index] = { type: "output_text", content: "" };
           }
           parts[part.index].content += delta.text;
-          if (structuredOutput) {
-            yield {
-              type: "delta_output_preview",
-              delta: delta.text,
-              index: part.index,
-            };
-          } else {
+          if (!structuredOutput) {
             yield {
               type: "delta_output_text",
               delta: delta.text,
@@ -298,7 +292,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           }
           parts[part.index].content += delta.partial_json;
           yield {
-            type: "delta_output_preview",
+            type: "delta_output_text",
             delta: delta.partial_json,
             index: part.index,
           };
@@ -341,15 +335,15 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
         } else if (endingPart.type === "output_text" && structuredOutput) {
           const rawJson = this.supportsNativeStructuredOutput ? endingPart.content : extractJson(endingPart.content);
 
-          const structuredContent = (() => {
-            try {
-              return JSON.stringify(
-                structuredOutput.fromAnthropic(JSON.parse(rawJson)),
-              );
-            } catch {
-              return rawJson;
-            }
-          })();
+          let structuredContent: string;
+          try {
+            structuredContent = JSON.stringify(
+              structuredOutput.fromAnthropic(JSON.parse(rawJson)),
+            );
+          } catch {
+            structuredContent = rawJson;
+          }
+
           endingPart.content = structuredContent;
           yield {
             type: "delta_output_text",

@@ -163,10 +163,8 @@ const agent = new Agent({
 
 ### Retries and cancellation
 
-- Tools support per-tool retries with `retries`
-- Tools can also receive an `AbortSignal`, which is helpful for things like timing out potentially long-running tasks
+- Tools support per-tool retries, timeouts and signal cancellation
 - Agent-level aborts propagate into running tools
-- Tool-specific signals can cancel just that tool
 
 ## Fallback models
 

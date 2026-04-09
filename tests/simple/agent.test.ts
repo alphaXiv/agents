@@ -186,6 +186,96 @@ Deno.test("Abort signal can work", async () => {
   await delay(250);
 });
 
+Deno.test("Tool timeout can work", async () => {
+  let sawSignal = false;
+
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    timeout: 100,
+    execute: async (param, { signal }) => {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(resolve, 250);
+        const onAbort = () => {
+          sawSignal = true;
+          clearTimeout(timeout);
+          reject(signal.reason);
+        };
+
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+
+      if (param === "cats") {
+        return JSON.stringify(["bingus.com", "bungus.com"]);
+      }
+      return "wtfrick.com";
+    },
+  });
+
+  const agent = new Agent({
+    model: new DeterministicTestModel(),
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+  });
+
+  const run = await agent.run("Can you tell me what cat websites there are?");
+  assert(sawSignal);
+  assert(
+    run.outputText.includes("Error:"),
+  );
+});
+
+Deno.test("Tool signal can work", async () => {
+  let sawSignal = false;
+
+  const search = new Tool({
+    name: "Searching the internet...",
+    description: "Use when you want to search the internet",
+    parameters: z.string().describe("Query parameter"),
+    signal: AbortSignal.timeout(100),
+    execute: async (param, { signal }) => {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(resolve, 250);
+        const onAbort = () => {
+          sawSignal = true;
+          clearTimeout(timeout);
+          reject(signal.reason);
+        };
+
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
+
+      if (param === "cats") {
+        return JSON.stringify(["bingus.com", "bungus.com"]);
+      }
+      return "wtfrick.com";
+    },
+  });
+
+  const agent = new Agent({
+    model: new DeterministicTestModel(),
+    instructions: "You are a friendly assistant.",
+    tools: [search],
+  });
+
+  const run = await agent.run("Can you tell me what cat websites there are?");
+  assert(sawSignal);
+  assert(
+    run.outputText.includes("Error:"),
+  );
+});
+
 Deno.test("Agent LLM retries 3 times by default", async () => {
   const search = new Tool({
     name: "Searching the internet...",

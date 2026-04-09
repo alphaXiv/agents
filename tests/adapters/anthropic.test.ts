@@ -135,7 +135,6 @@ Deno.test({
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
       model: new AnthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
-      expectPreview: true,
     });
   },
 });
@@ -148,7 +147,6 @@ Deno.test({
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
       model: new AnthropicModel({ model: "claude-opus-4-1", thinkingLevel: "low", interleaved: true }),
-      expectPreview: true,
     });
   },
 });
@@ -370,16 +368,6 @@ Deno.test("Anthropic structured output streamed as text is restored before emiss
   }
 
   assertEquals(items, [
-    {
-      type: "delta_output_preview",
-      index: 0,
-      delta: '{"memorySnapshot":{"longTermAssociations":[{"key":"a","value":"1"}]},',
-    },
-    {
-      type: "delta_output_preview",
-      index: 0,
-      delta: '"responseStrategy":{"tone":{"item0":"casual","item1":"warm"}}}',
-    },
     {
       type: "delta_output_text",
       index: 0,

@@ -307,7 +307,6 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
             // Message tracing
             if (
-              part.type === "delta_output_preview" ||
               part.type === "delta_output_text" ||
               part.type === "delta_output_reasoning" ||
               part.type === "tool_use_start"
@@ -315,7 +314,6 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               trace ??= messageTracer.startOrContinue({
                 index: part.index,
                 type: ({
-                  delta_output_preview: "output_text",
                   delta_output_text: "output_text",
                   delta_output_reasoning: "output_reasoning",
                   tool_use_start: "tool_use",

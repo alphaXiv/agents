@@ -1,7 +1,6 @@
 import type { AdapterStreamIterator, ChatItem, StreamItem, WithTraceId } from "./types.ts";
 
 type MutableChatItem = ChatItem & { trace?: string };
-type PersistedStreamItem = Exclude<StreamItem, { type: "delta_output_preview" }>;
 
 const streamIndicesByChatItems = new WeakMap<MutableChatItem[], number[]>();
 
@@ -30,7 +29,7 @@ function ensureDenseIndex(
   return { denseIndex: streamIndices.length - 1, isNew: true };
 }
 
-function createChatItemFromStreamItem(streamItem: PersistedStreamItem): ChatItem {
+function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
   switch (streamItem.type) {
     case "delta_output_text":
       return {
@@ -82,10 +81,6 @@ export function addStreamItem<T extends ChatItem>(
   streamItem: T extends { trace: string } ? WithTraceId<StreamItem> : StreamItem,
 ): void {
   const currentChatItems = chatItems as MutableChatItem[];
-  if (streamItem.type === "delta_output_preview") {
-    return;
-  }
-
   const { denseIndex, isNew } = ensureDenseIndex(
     currentChatItems,
     streamItem.index,

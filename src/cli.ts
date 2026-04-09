@@ -178,10 +178,7 @@ export async function cli<zO, zI, const Tools extends AnyTool[]>(
           ) {
             const toolName = activeTools.get(next.value.tool_use_id) ?? next.value.tool_use_id;
             io.write(`[tool finished: ${humanizeToolName(toolName)}]\n`);
-          } else if (
-            (next.value.type === "delta_output_text" || next.value.type === "delta_output_preview") &&
-            !announcedResponding
-          ) {
+          } else if (next.value.type === "delta_output_text" && !announcedResponding) {
             announcedResponding = true;
             io.write("[responding]\n");
           }

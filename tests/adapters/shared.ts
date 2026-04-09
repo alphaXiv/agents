@@ -134,7 +134,10 @@ export async function collectAgentStream(stream: AgentStreamIterator<unknown>) {
 }
 
 export function assertHasUsage(metadata: ProviderStreamMetadata) {
-  assert(metadata.inputTokens != null || metadata.outputTokens != null, "expected provider usage metadata");
+  assert(typeof metadata.inputTokens === "number", "expected inputTokens to exist");
+  assert(typeof metadata.outputTokens === "number", "expected outputTokens to exist");
+  assert(metadata.inputTokens > 0, "expected inputTokens to be > 0");
+  assert(metadata.outputTokens > 0, "expected outputTokens to be > 0");
 }
 
 function findToolUse<T extends StreamItem | WithTraceId<StreamItem>>(items: T[], toolName: string) {
@@ -288,7 +291,6 @@ export async function runStructuredOutputStreamingTest(
   t: Deno.TestContext,
   options: {
     model: Model;
-    expectPreview?: boolean;
   },
 ) {
   const fixtures = createStructuredOutputFixtures();
@@ -310,17 +312,6 @@ export async function runStructuredOutputStreamingTest(
   });
 
   if (!collectedStructuredOutput) return;
-
-  await t.step("assert structured output was streamed", () => {
-    const hasPreview = items.some((item) => item.type === "delta_output_preview");
-    const hasText = items.some((item) => item.type === "delta_output_text");
-
-    if (options.expectPreview) {
-      assert(hasPreview, "expected structured output preview chunks");
-    }
-
-    assert(hasPreview || hasText, "expected structured output stream items");
-  });
 
   await t.step("assert structured output parsed", () => {
     assert(result, "expected final structured output result");
