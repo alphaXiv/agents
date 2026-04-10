@@ -4,24 +4,21 @@
 // able to watch a live visualization of the agent and sub-agent process.
 //
 // deno-lint-ignore-file no-import-prefix
+import * as async from "jsr:@clo/lib@3.0.0/async.ts";
+import * as log from "jsr:@clo/lib@3.0.0/log.ts";
+import process from "node:process";
 import z from "zod";
 import {
-  type Adapter,
   Agent,
+  AnthropicModel,
   type ChatItem,
-  type ModelString,
+  OpenAIModel,
   type PartialTraceEvent,
   registerGlobalTracer,
   Tool,
   type TraceEvent,
   withTrace,
-} from "@alphaxiv/agents";
-import * as log from "jsr:@clo/lib@3.0.0/log.ts";
-import * as async from "jsr:@clo/lib@3.0.0/async.ts";
-import process from "node:process";
-
-const adapter: Adapter | undefined = undefined;
-const model: ModelString = "anthropic:claude-haiku-4-5";
+} from "../mod.ts";
 
 const snackMenu = [
   { name: "miso ramen cup", calories: 420, prepMinutes: 6, price: 8 },
@@ -72,8 +69,10 @@ async function main() {
 
   const subagent = new Agent({
     name: "Snack Specialist",
-    adapter,
-    model,
+    model: [
+      new OpenAIModel({ model: "gpt-5.4-nano" }),
+      new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
+    ],
     instructions: [
       "You are the snack specialist.",
       "Always call load_menu first.",
@@ -89,12 +88,12 @@ async function main() {
     parameters: z.object({
       request: z.string().describe("The snack brief to hand off."),
     }),
-    async execute({ param }) {
+    async execute({ request }) {
       await withTrace("sleep", async () => {
         await sleep(250 + 150 * Math.random());
       });
       return withTrace("cool sub-agent", async () => {
-        const run = await subagent.run(param.request);
+        const run = await subagent.run(request);
         return run.outputText;
       });
     },
@@ -102,8 +101,7 @@ async function main() {
 
   const agent = new Agent({
     name: "Main Agent",
-    adapter,
-    model,
+    model: new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
     instructions: [
       "You coordinate requests for a snack specialist.",
       "Always call delegate_specialist exactly once before answering.",
@@ -185,17 +183,17 @@ const scoreSnacks = new Tool({
     maxPrepMinutes: z.number(),
     mood: z.string().describe("What kind of snack experience the user wants."),
   }),
-  async execute({ param }) {
+  async execute({ calorieLimit, maxPrepMinutes, mood }) {
     await sleep(450 + 250 * Math.random());
 
     const ranked = snackMenu
       .filter((item) =>
-        item.calories <= param.calorieLimit &&
-        item.prepMinutes <= param.maxPrepMinutes
+        item.calories <= calorieLimit &&
+        item.prepMinutes <= maxPrepMinutes
       )
       .map((item) => ({
         ...item,
-        score: scoreSnack(item, param.mood),
+        score: scoreSnack(item, mood),
       }))
       .sort((a, b) =>
         b.score - a.score ||
@@ -204,7 +202,7 @@ const scoreSnacks = new Tool({
       );
 
     return JSON.stringify({
-      mood: param.mood,
+      mood,
       winner: ranked[0] ?? null,
       considered: ranked,
     });
@@ -247,9 +245,7 @@ export function renderTraceFlamegraph(
     end: x.end ?? now,
   }));
 
-  const spans = [...events].sort((a, b) =>
-    a.start - b.start || b.end - a.end || a.id.localeCompare(b.id)
-  );
+  const spans = [...events].sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
   const width = clamp(options.width ?? 72, 32, 140);
   const zero = spans[0].start;
   const total = Math.max(Math.max(...spans.map((span) => span.end)) - zero, 1);
@@ -257,18 +253,14 @@ export function renderTraceFlamegraph(
   const childrenByParent = new Map<string | null, PartialEventWithEnd[]>();
 
   for (const span of spans) {
-    const parent = span.parent != null && byId.has(span.parent)
-      ? span.parent
-      : null;
+    const parent = span.parent != null && byId.has(span.parent) ? span.parent : null;
     const siblings = childrenByParent.get(parent) ?? [];
     siblings.push(span);
     childrenByParent.set(parent, siblings);
   }
 
   for (const siblings of childrenByParent.values()) {
-    siblings.sort((a, b) =>
-      a.start - b.start || b.end - a.end || a.id.localeCompare(b.id)
-    );
+    siblings.sort((a, b) => a.start - b.start || b.end - a.end || a.id.localeCompare(b.id));
   }
 
   const depthById = new Map<string, number>();
@@ -286,9 +278,7 @@ export function renderTraceFlamegraph(
   const maxDepth = Math.max(...depthById.values());
   const tickColumns = [
     ...new Set(
-      [0, 0.25, 0.5, 0.75, 1].map((ratio) =>
-        Math.min(width - 1, Math.round(ratio * (width - 1)))
-      ),
+      [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.min(width - 1, Math.round(ratio * (width - 1)))),
     ),
   ];
 
@@ -419,9 +409,7 @@ function messageSpanLabel(type: ChatItem["type"]): MessageSpanKind {
 
 function spanColor(event: PartialEventWithEnd, depth: number): Color {
   const base = event.errorMessage == null
-    ? event.type === "message"
-      ? MESSAGE_PALETTE[messageSpanLabel(event.content.type)]
-      : PALETTE[event.type]
+    ? event.type === "message" ? MESSAGE_PALETTE[messageSpanLabel(event.content.type)] : PALETTE[event.type]
     : PALETTE.error;
   const lift = ((depth * 19 + Math.floor(event.start / 83)) % 18) - 6;
   return [

@@ -1,13 +1,14 @@
 import { assert } from "@std/assert/assert";
-import { abortable } from "@std/async/abortable";
 import { generate } from "@std/uuid/v7";
-import type z from "zod";
-import { ZodVoid } from "zod";
-import { type Adapter, ADAPTERS } from "./adapters.ts";
+import z from "zod";
+import type { Model } from "./adapters/model.ts";
+import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
+import { createStructuredOutputRetryFeedback } from "./constants.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
-import { ModelOutput, type Tool } from "./tool.ts";
+import { type AnyTool, ModelOutput, type Tool } from "./tool.ts";
 import {
+  type ActiveTrace,
   MessageTracer,
   newTrace,
   type Tracer,
@@ -20,134 +21,28 @@ import type {
   ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
-  ReasoningEffort,
+  StreamItem,
   WithTraceId,
 } from "./types.ts";
-import {
-  convertChatLikeToChatItem,
-  convertToolResultLikeToChatItem,
-  crossPlatformHandleSigInt,
-  crossPlatformLog,
-  crossPlatformRemoveHandleSigInt,
-  crossPlatformStdin,
-  errMessage,
-  iteratePromiseArray,
-} from "./util.ts";
-import { AssertionError } from "@std/assert";
+import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
 
-const MAX_TURNS = 100;
-const MAX_PROVIDER_ERRORS = 5;
+const DEFAULT_MAX_TURNS = 100;
+const DEFAULT_MAX_RETRIES = 3;
 
-export type ModelString =
-  | "openai:gpt-5.4"
-  | "openai:gpt-5.2"
-  | "openai:gpt-5.1"
-  | "openai:gpt-5-pro"
-  | "openai:gpt-5"
-  | "openai:gpt-5-mini"
-  | "openai:gpt-5-nano"
-  | "openai:gpt-4.1"
-  | "google:gemini-3-flash-preview"
-  | "google:gemini-3-pro-image-preview"
-  | "google:gemini-3-pro-preview"
-  | "google:gemini-2.5-pro"
-  | "google:gemini-2.5-flash"
-  | "google:gemini-2.5-flash-image"
-  | "google:gemini-2.5-flash-lite"
-  | "google:gemini-2.0-flash"
-  | "google:gemini-2.0-flash-lite"
-  | "anthropic:claude-3-7-sonnet-latest"
-  | "anthropic:claude-sonnet-4-0"
-  | "anthropic:claude-sonnet-4-5"
-  | "anthropic:claude-3-haiku-20240307"
-  | "anthropic:claude-haiku-4-5"
-  | "anthropic:claude-opus-4-0"
-  | "anthropic:claude-opus-4-1"
-  | "anthropic:claude-opus-4-5"
-  | "openrouter:openai/gpt-oss-20b"
-  | "openrouter:openai/gpt-oss-120b"
-  | "openrouter:qwen/qwen3-235b-a22b-thinking-2507"
-  | "openrouter:qwen/qwen3-235b-a22b-2507"
-  | "openrouter:qwen/qwen3-next-80b-a3b-instruct"
-  | "openrouter:qwen/qwen3-next-80b-a3b-thinking"
-  | "openrouter:x-ai/grok-4-fast"
-  | "openrouter:x-ai/grok-4"
-  | "openrouter:x-ai/grok-code-fast-1"
-  | "sid:sid-1"
-  // deno-lint-ignore ban-types
-  | (string & {});
+type ExtractModelOutput<Tools extends Tool[]> = [Tools[number]] extends [never] ? never
+  : Tools[number] extends Tool<infer _, infer _, infer MO> ? MO
+  : never;
 
-export type NoToolCallModels = "google:gemini-2.5-flash-image";
-
-// deno-fmt-ignore
-// deno-lint-ignore no-explicit-any
-type ExtractModelOutput<Tools extends readonly Tool<any, any, any>[]> = Tools[number] extends Tool<any, any, infer MO> ? MO : never;
-
-// deno-lint-ignore no-explicit-any
-type ResolveAgentOutput<zO, Tools extends readonly Tool<any, any, any>[]> =
-  // If the model has structured output
-  unknown extends zO ? (
-      // It doesn't, extract out the model output from tools and return that + undefined
-      [ExtractModelOutput<Tools>] extends [never] ? undefined
-        : ExtractModelOutput<Tools> | undefined
-    )
-    : (
-      // It does, extract out the model output from tools and return that + the structured output
-      [ExtractModelOutput<Tools>] extends [never] ? zO
-        : zO | ExtractModelOutput<Tools>
-    );
-
-export type AgentOptions<
-  zO,
-  zI,
-  M extends ModelString = ModelString,
-  // deno-lint-ignore no-explicit-any
-  Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
-  A extends Adapter<M> = Adapter<M>,
-> = {
-  /** Optionally name this agent for tracing and debugging purposes */
-  name?: string;
-  /**
-   * By default, the adapter is derived from the model string, and you don't
-   * need to worry about setting one yourself. But if you need to hit a custom
-   * API, that's what this is for. For example, you can call a custom
-   * OpenAI-compatible endpoint with `adapter: openAiAdapter({ url: '...' })`.
-   */
-  adapter?: A;
-  /**
-   * By default, the `ModelString` is parsed for an adapter prefix like
-   * `openai:` or `anthropic:`, which will call that adapter with the given
-   * model. Any string value is allowed, even if it isn't listed in the enum,
-   * but it is up to the provider to actually support it.
-   *
-   * When passing a custom adapter, this type depends on the adapter's type.
-   */
-  model: M;
-  /** What this is agent intended to do. Equivalent to a "system prompt". */
-  instructions: string;
-  /** Enable structured output */
-  output?: z.ZodType<zO, zI>;
-  /** Enable tool calls, which are automatically executed */
-  tools?: M extends NoToolCallModels ? never : [...Tools];
-  reasoningEffort?: ReasoningEffort;
-  /** APIs which are not finalized and are subject to change. */
-  unstable?: UnstableAgentOptions;
-};
-
-export interface UnstableAgentOptions {
-  /**
-   * Set to `false` to disable retrying.
-   * @default true
-   */
-  retries?: boolean;
-}
+type ResolveAgentOutput<zO, Tools extends Tool[]> = unknown extends zO
+  ? ([ExtractModelOutput<Tools>] extends [never] ? undefined : ExtractModelOutput<Tools> | undefined)
+  : ([ExtractModelOutput<Tools>] extends [never] ? zO : zO | ExtractModelOutput<Tools>);
 
 export interface AgentRunResult<zO> {
-  history: WithTraceId<ChatItem>[];
   output: zO;
-  get outputText(): string;
+  history: WithTraceId<ChatItem>[];
   inputTokens: number;
   outputTokens: number;
+  get outputText(): string;
 }
 
 interface RunToolResult {
@@ -155,195 +50,209 @@ interface RunToolResult {
   items: WithTraceId<ChatItemToolResult>[];
 }
 
-export class Agent<
-  zO,
-  zI,
-  M extends ModelString,
-  // deno-lint-ignore no-explicit-any
-  const Tools extends readonly Tool<any, any, any>[] = Tool<any, any, never>[],
-  A extends Adapter<M> = Adapter<M>,
-> {
-  #name: string | null;
-  #adapter: A | Promise<A>;
-  #model: M;
+export interface AgentRunOptions {
+  /** Additional tracers for this run */
+  tracers?: Tracer[];
+  /** Cancellation signal */
+  signal?: AbortSignal;
+}
+
+export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
+  /** Optionally name this agent for tracing and debugging purposes */
+  name?: string;
+  /**
+   * One or more models that this agent can use to think and generate responses.\
+   * If multiple models are provided, the agent will use them in order, falling
+   * back to the next model if the previous one fails or is unavailable.
+   */
+  model: ModelLike | [ModelLike, ...ModelLike[]];
+  /** What this is agent intended to do. Equivalent to a "system prompt". */
+  instructions: string;
+  /** Enable tool calls, which are automatically executed */
+  tools?: Tools;
+  /** Optionally specify a schema for the final output. If not provided, the agent will return the final model response as a string. */
+  output?: z.ZodType<zO, zI>;
+  /**
+   * Maximum number of agentic turns (model call -> tool execution cycles).
+   * @experimental - might be removed or have its behaviour modified without any notice
+   * @default 100
+   */
+  maxTurns?: number;
+  /**
+   * Maximum number of consecutive retries per model before moving to the next
+   * model in the fallback list. After exhausting all models, the last error is
+   * thrown. Models are tried in round-robin when retries are available.
+   * @experimental - might be removed or have its behaviour modified without any notice
+   * @default 3
+   */
+  maxRetries?: number;
+}
+
+export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = []> {
+  #name?: string;
+  #models: Model[];
   #instructions: string;
-  #output?: z.ZodType<zO, zI>;
   // deno-lint-ignore no-explicit-any
   #tools: Tool<any, any, any>[];
-  #reasoningEffort: ReasoningEffort;
+  #output?: z.ZodType<zO, zI>;
+  #maxTurns: number;
+  #maxRetries: number;
 
-  #noRetries = false;
-
-  constructor(options: AgentOptions<zO, zI, M, Tools, A>) {
-    this.#name = options.name ?? null;
-    if (options.adapter) {
-      this.#adapter = options.adapter;
-      this.#model = options.model;
-    } else {
-      const [provider, ...modelParts] = options.model.split(":");
-      const factory = ADAPTERS[provider];
-
-      if (!factory) {
-        throw new Error(
-          "Could not resolve provider " + JSON.stringify(provider),
-        );
-      }
-      this.#adapter = factory() satisfies Promise<Adapter> as Promise<A>;
-      this.#adapter.catch(() => {
-        // prevent unhandled exception, let environment variable issues wait
-        // until calling `.run()`. maybe in the future, this can throw in the
-        // constructor, but it would have to do so synchronously.
-      });
-      this.#model = modelParts.join(":") as M;
-    }
-
+  constructor(options: AgentOptions<zO, zI, Tools>) {
+    this.#name = options.name;
+    this.#models = (Array.isArray(options.model) ? options.model : [options.model]).map(resolveModel);
     this.#instructions = options.instructions;
-    this.#output = options.output;
     this.#tools = options.tools?.slice() ?? [];
-    this.#reasoningEffort = options.reasoningEffort ?? "normal";
-
-    if (options.unstable) {
-      const { retries = true, ...unknown } = options.unstable;
-      const unknownKeys = Object.keys(unknown);
-      if (unknownKeys.length > 0) {
-        throw new Error(
-          `Unknown unstable options passed: ${
-            unknownKeys.join(", ")
-          }. These options may have been removed in an update.`,
-        );
-      }
-      this.#noRetries = !retries;
-    }
-  }
-
-  async #runTool(
-    use: ChatItemToolUse,
-    signal: AbortSignal,
-    traceId: string,
-    parent: TraceRef,
-  ): Promise<RunToolResult> {
-    using trace = newTrace({
-      id: traceId,
-      type: "tool",
-      parent,
-      content: { name: use.kind },
-    });
-    try {
-      const tool = this.#tools.find((tool) => tool.name === use.kind);
-      if (!tool) {
-        throw new Error(`Tool does not exist: ${use.kind}`);
-      }
-
-      try {
-        if (!(tool.parameters instanceof ZodVoid)) {
-          assert(use.content);
-          tool.parameters.parse(JSON.parse(use.content));
-        }
-      } catch (err) {
-        throw new Error(
-          `Invalid parameters for tool: ${
-            err instanceof Error ? err.message : err
-          }`,
-        );
-      }
-
-      const result = await abortable(
-        signalAsyncLocalStorage.run(
-          signal,
-          () =>
-            tracerAsyncLocalStorage.run(trace, async () => {
-              return await tool.execute({
-                param: use.content ? JSON.parse(use.content) : undefined,
-                signal,
-              });
-            }),
-        ),
-        signal,
-      );
-
-      if (result instanceof ModelOutput) throw result;
-
-      return {
-        id: use.tool_use_id,
-        items: convertToolResultLikeToChatItem(
-          result,
-          use.tool_use_id,
-          trace.id,
-        ),
-      };
-    } catch (err) {
-      if (err instanceof ModelOutput) throw err;
-      trace.error(err);
-      if (signal.aborted) throw err;
-      return {
-        id: use.tool_use_id,
-        items: [{
-          type: "tool_result_text" as const,
-          tool_use_id: use.tool_use_id,
-          content: "Error: " +
-            (err instanceof Error ? err.message : (err as string).toString()),
-          trace: trace.id,
-        }],
-      };
-    }
+    this.#output = options.output;
+    this.#maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+    this.#maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   }
 
   /**
-   * Run the agent without streaming. Internally this just runs a stream and
-   * collects the output for you.
+   * Run the agent without streaming. Internally runs a stream and collects
+   * the output for you.
    */
   async run(
     chatLike: ChatLike,
-    options?: { signal?: AbortSignal; tracers?: Tracer[] },
+    options?: AgentRunOptions,
   ): Promise<AgentRunResult<ResolveAgentOutput<zO, Tools>>> {
-    const result = this.stream(chatLike, options);
+    const stream = this.stream(chatLike, options);
     while (true) {
-      const next = await result.next();
+      const next = await stream.next();
       if (next.done) return next.value;
     }
   }
 
-  /** Run the agent, streaming the response and tool calls. */
+  /**
+   * Run the agent, streaming the response and tool calls.
+   *
+   * The main loop has three phases per turn:
+   * 1. {@linkcode #invokeModel} — stream from a model (with round-robin retries)
+   * 2. {@linkcode #collectToolResults} — await eagerly-dispatched tool results
+   * 3. {@linkcode #tryParseOutput} — parse structured output (with retry feedback)
+   */
   async *stream(
     chatLike: ChatLike,
-    options?: { signal?: AbortSignal; tracers?: Tracer[] },
+    options?: AgentRunOptions,
   ): AgentStreamIterator<ResolveAgentOutput<zO, Tools>> {
-    options?.signal?.throwIfAborted();
     const signal = options?.signal ?? new AbortController().signal;
+    signal.throwIfAborted();
+
     const initialHistory = convertChatLikeToChatItem(chatLike, "input_text");
-    const adapter = await this.#adapter;
 
     using agentTrace = newTrace({
       type: "agent",
-      content: this.#name ? { name: this.#name } : {},
+      parent: tracerAsyncLocalStorage.getStore(),
       tracers: options?.tracers,
+      content: { name: this.#name },
     });
 
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
 
     try {
-      // prepare a separate signal for tools that can be cancelled if a provider
-      // fails too much. note that we do persist tool calls between assistant runs,
-      // but in the failure case we have to abort.
       const toolController = new AbortController();
-      signal.addEventListener(
-        "abort",
-        () => toolController.abort(signal.reason),
-      );
+      signal.addEventListener("abort", () => toolController.abort(signal.reason));
 
-      // tool use id -> result from tool
-      const pendingTools = new Map<
-        string,
-        Promise<{ id: string; items: WithTraceId<ChatItemToolResult>[] }>
-      >();
-
-      let providerErrors = 0;
+      const pendingTools = new Map<string, Promise<RunToolResult>>();
       const history: WithTraceId<ChatItem>[] = [];
-      let modelCallReason: string = "init";
-      for (let turn = 0; turn < MAX_TURNS; turn++) {
+      let modelCallReason = "init";
+
+      for (let turn = 0; turn < this.#maxTurns; turn++) {
         signal.throwIfAborted();
-        const newHistory: WithTraceId<ChatItem>[] = [];
+
+        // Phase 1: Stream from a model (dispatches tool calls eagerly)
+        const { newHistory, inputTokens, outputTokens } = yield* this.#invokeModel({
+          signal,
+          initialHistory,
+          history,
+          pendingTools,
+          toolSignal: toolController.signal,
+          agentTrace,
+          modelCallReason,
+        });
+        totalInputTokens += inputTokens;
+        totalOutputTokens += outputTokens;
+
+        // Phase 2: Collect tool results (if any were dispatched during streaming)
+        if (pendingTools.size > 0) {
+          const modelOutput = yield* this.#collectToolResults({
+            signal,
+            history,
+            newHistory,
+            pendingTools,
+            toolController,
+            agentTrace,
+          });
+          if (modelOutput) {
+            return createRunResult({
+              history: [...history, ...newHistory],
+              output: modelOutput.output as ResolveAgentOutput<zO, Tools>,
+              totalInputTokens,
+              totalOutputTokens,
+            });
+          }
+          history.push(...newHistory);
+          modelCallReason = "tool";
+          continue;
+        }
+
+        history.push(...newHistory);
+
+        // Phase 3: Parse final output (retries on structured output errors)
+        const result = this.#tryParseOutput(history, agentTrace);
+        if (!result.ok) {
+          if (result.feedback) {
+            history.push({ type: "output_text", content: result.feedback, trace: agentTrace.id });
+            yield {
+              type: "delta_output_text",
+              index: history.length - 1,
+              delta: result.feedback,
+              trace: agentTrace.id,
+            };
+          }
+          modelCallReason = result.reason;
+          continue;
+        }
+
+        return createRunResult({
+          history,
+          output: result.output,
+          totalInputTokens,
+          totalOutputTokens,
+        });
+      }
+
+      throw new Error("Exceeded maximum turns (" + this.#maxTurns + ")");
+    } catch (error) {
+      agentTrace.error(error);
+      throw error;
+    }
+  }
+
+  /**
+   * Try each model in round-robin, up to `maxRetries` full cycles.
+   * Yields traced stream items. Tools are dispatched eagerly into `pendingTools`.
+   */
+  async *#invokeModel(options: {
+    signal: AbortSignal;
+    initialHistory: ChatItem[];
+    history: WithTraceId<ChatItem>[];
+    pendingTools: Map<string, Promise<RunToolResult>>;
+    toolSignal: AbortSignal;
+    agentTrace: ActiveTrace<"agent">;
+    modelCallReason: string;
+  }): AsyncGenerator<
+    WithTraceId<StreamItem>,
+    { newHistory: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number }
+  > {
+    const { signal, initialHistory, history, pendingTools, toolSignal, agentTrace, modelCallReason } = options;
+    const newHistory: WithTraceId<ChatItem>[] = [];
+    let lastError: unknown;
+
+    for (let retry = 0; retry < this.#maxRetries; retry++) {
+      for (const model of this.#models) {
+        const adapter = model.adapter;
 
         using modelTrace = newTrace({
           type: "model",
@@ -351,40 +260,38 @@ export class Agent<
           content: {
             reason: modelCallReason,
             provider: adapter.name,
-            model: this.#model,
+            model: adapter.model,
             inputTokens: null,
             outputTokens: null,
           },
         });
         using messageTracer = new MessageTracer(modelTrace);
 
-        let failed = false;
-        let err: unknown;
         try {
-          const stream = await adapter.stream({
-            model: this.#model,
-            output: this.#output,
+          const adapterStream = adapter.stream({
+            instructions: this.#instructions,
             tools: this.#tools,
-            reasoningEffort: this.#reasoningEffort,
-            systemPrompt: this.#instructions,
+            output: this.#output,
             history: [...initialHistory, ...history],
             signal,
           });
 
           while (true) {
-            const { value: part, done } = await stream.next();
+            const { value: part, done } = await adapterStream.next();
             if (done) {
               messageTracer.endMessageTraceIfStarted();
-              if (part.inputTokens) totalInputTokens += part.inputTokens;
-              if (part.outputTokens) totalOutputTokens += part.outputTokens;
               modelTrace.success({
                 inputTokens: part.inputTokens,
                 outputTokens: part.outputTokens,
               });
-              break;
+              return {
+                newHistory,
+                inputTokens: part.inputTokens ?? 0,
+                outputTokens: part.outputTokens ?? 0,
+              };
             }
 
-            // execute tools immediately
+            // Eager tool dispatch: start tool execution while the model is still streaming
             let trace: string | null = null;
             if (part.type === "tool_use") {
               assert(
@@ -394,11 +301,11 @@ export class Agent<
               trace = generate();
               pendingTools.set(
                 part.tool_use_id,
-                this.#runTool(part, toolController.signal, trace, agentTrace),
+                this.#runTool(part, signal, toolSignal, trace, agentTrace),
               );
             }
 
-            // automatically extract message start and end traces
+            // Message tracing
             if (
               part.type === "delta_output_text" ||
               part.type === "delta_output_reasoning" ||
@@ -413,233 +320,181 @@ export class Agent<
                 } as const)[part.type],
               });
             } else {
-              // other message types always force stopping the current trace
               messageTracer.endMessageTraceIfStarted();
               trace ??= modelTrace.id;
             }
 
-            const reIndexedPart = {
-              ...part,
-              index: part.index + history.length,
-              trace,
-            };
             addStreamItem(newHistory, { ...part, trace });
-            yield reIndexedPart;
+            yield { ...part, index: part.index + history.length, trace };
           }
         } catch (error) {
           messageTracer.cancel();
           modelTrace.error(error);
-          err = error;
-          failed = true;
-
-          if (err instanceof AssertionError) throw err;
+          lastError = error;
+          agentTrace.log(`Model ${adapter.name} failed: ${errMessage(error)}`, error);
         }
+      }
+    }
 
-        // process tool outputs before re-looping
-        if (pendingTools.size > 0) {
-          try {
-            signal.throwIfAborted();
-            for await (
-              const result of iteratePromiseArray(pendingTools.values())
-            ) {
-              pendingTools.delete(result.id);
+    throw lastError;
+  }
 
-              for (const toolResult of result.items) {
-                if (toolResult.type === "tool_result_text") {
-                  yield {
-                    type: "tool_result_text",
-                    index: newHistory.length + history.length,
-                    tool_use_id: toolResult.tool_use_id,
-                    content: toolResult.content,
-                    trace: toolResult.trace,
-                  };
-                  newHistory.push(toolResult);
-                } else if (toolResult.type === "tool_result_file") {
-                  yield {
-                    type: "tool_result_file",
-                    index: newHistory.length + history.length,
-                    tool_use_id: toolResult.tool_use_id,
-                    kind: toolResult.kind,
-                    content: toolResult.content,
-                    trace: toolResult.trace,
-                  };
-                  newHistory.push(toolResult);
-                } else toolResult satisfies never;
-              }
+  /**
+   * Collect results from eagerly-dispatched tools. Yields tool result stream
+   * items as they complete. Returns a `ModelOutput` if a tool short-circuited,
+   * or `null` to continue the agent loop normally.
+   */
+  async *#collectToolResults(options: {
+    signal: AbortSignal;
+    history: WithTraceId<ChatItem>[];
+    newHistory: WithTraceId<ChatItem>[];
+    pendingTools: Map<string, Promise<RunToolResult>>;
+    toolController: AbortController;
+    agentTrace: ActiveTrace<"agent">;
+  }): AsyncGenerator<WithTraceId<StreamItem>, ModelOutput<unknown> | null> {
+    const { signal, history, newHistory, pendingTools, toolController, agentTrace } = options;
+
+    try {
+      signal.throwIfAborted();
+      for await (const result of iteratePromiseArray(pendingTools.values())) {
+        pendingTools.delete(result.id);
+        for (const toolResult of result.items) {
+          const streamItem: WithTraceId<StreamItem> = toolResult.type === "tool_result_text"
+            ? {
+              type: "tool_result_text",
+              index: newHistory.length + history.length,
+              tool_use_id: toolResult.tool_use_id,
+              content: toolResult.content,
+              trace: toolResult.trace,
             }
-          } catch (err) {
-            // catching here is only for returning ModelOutput OR abort signal, which should cancel all tools so that all tools have an output.
-            let index = newHistory.length + history.length;
-            for (const tool_use_id of pendingTools.keys()) {
-              yield {
-                type: "tool_result_text",
-                index,
-                tool_use_id,
-                content: "Error: Tool call was cancelled",
-                trace: agentTrace.id,
-              };
-              index += 1;
-            }
-
-            signal.throwIfAborted(); // throw if the abort signal fired
-            assert(err instanceof ModelOutput); // if it didn't, it better fricking be a ModelOutput otherwise there's an agents sdk bug
-
-            const { output } = err;
-            toolController.abort(
-              new Error(
-                "Tool calls cancelled due to one returning ModelOutput",
-              ),
-            );
-            return createRunResult({
-              history: [...history, ...newHistory],
-              output,
-              totalInputTokens,
-              totalOutputTokens,
-            });
-          }
-
-          // continue loop
-          history.push(...newHistory);
-          modelCallReason = "tool";
-          continue;
-        }
-
-        // If streaming fails halfway through a message, retry
-        if (failed) {
-          signal.throwIfAborted();
-          if (this.#noRetries) throw err;
-          providerErrors++;
-          if (providerErrors < MAX_PROVIDER_ERRORS) {
-            // continue loop
-            history.push(...newHistory);
-            modelCallReason = "retry-provider-error";
-            continue;
-          } else {
-            throw err;
-          }
-        }
-
-        history.push(...newHistory);
-
-        const finalItem = history.at(-1);
-        let output: ResolveAgentOutput<zO, Tools>;
-        if (this.#output) {
-          if (!finalItem || finalItem.type !== "output_text") {
-            agentTrace.log(
-              "Retrying to due provider missing a final output_text for structured output",
-            );
-            modelCallReason = "retry-missing-output";
-            // TODO: we should think hard about what this should really do
-            continue;
-          }
-
-          try {
-            output = this.#output.parse(
-              JSON.parse(finalItem.content),
-            ) as ResolveAgentOutput<zO, Tools>;
-          } catch (err) {
-            agentTrace.log(
-              "Retrying due to failed structured output parse from " +
-                JSON.stringify(finalItem.content),
-              err,
-            );
-            const content = "Sorry, my output has an error: " +
-              errMessage(err) +
-              "\nI will try again to produce a JSON response.";
-            history.push({
-              type: "output_text",
-              content,
-              trace: agentTrace.id,
-            });
-            yield {
-              type: "delta_output_text",
-              index: history.length - 1,
-              delta: content,
-              trace: agentTrace.id,
+            : {
+              type: "tool_result_file",
+              index: newHistory.length + history.length,
+              tool_use_id: toolResult.tool_use_id,
+              kind: toolResult.kind,
+              content: toolResult.content,
+              trace: toolResult.trace,
             };
-            modelCallReason = "retry-malformed-output";
-            continue;
-          }
-        } else {
-          output = undefined as ResolveAgentOutput<zO, Tools>;
+          yield streamItem;
+          newHistory.push(toolResult);
         }
-
-        return createRunResult({
-          history: history.filter(Boolean),
-          totalInputTokens,
-          totalOutputTokens,
-          output,
-        });
+      }
+      return null;
+    } catch (error) {
+      // Emit error results for any remaining pending tools
+      let index = newHistory.length + history.length;
+      for (const tool_use_id of pendingTools.keys()) {
+        yield {
+          type: "tool_result_text",
+          index,
+          tool_use_id,
+          content: "Error: Tool call was cancelled",
+          trace: agentTrace.id,
+        };
+        index += 1;
       }
 
-      throw new Error("Exceeded maximum turns (" + MAX_TURNS + ")");
-    } catch (err) {
-      agentTrace.error(err);
-      throw err;
+      signal.throwIfAborted();
+      assert(error instanceof ModelOutput);
+
+      toolController.abort(new Error("Tool calls cancelled due to one returning ModelOutput"));
+      return error;
     }
   }
 
-  async cli() {
-    const decoder = new TextDecoder();
-    const history: ChatItem[] = [];
-    const prompt = "> ";
-    crossPlatformLog(prompt);
-    for await (const chunk of crossPlatformStdin()) {
-      const content = decoder.decode(chunk).trim();
-      if (!content) break;
+  /**
+   * Try to parse the final model output. When structured output is configured,
+   * validates the last `output_text` against the schema. Returns retry info
+   * with feedback on parse failure so the model can self-correct.
+   */
+  #tryParseOutput(
+    history: WithTraceId<ChatItem>[],
+    agentTrace: ActiveTrace<"agent">,
+  ):
+    | { ok: true; output: ResolveAgentOutput<zO, Tools> }
+    | { ok: false; reason: string; feedback?: string } {
+    if (!this.#output) {
+      return { ok: true, output: undefined as ResolveAgentOutput<zO, Tools> };
+    }
 
-      history.push({ type: "input_text", content });
+    const finalItem = history.at(-1);
+    if (!finalItem || finalItem.type !== "output_text") {
+      agentTrace.log("Retrying due to provider missing a final output_text for structured output");
+      return { ok: false, reason: "retry-missing-output" };
+    }
 
-      const abortController = new AbortController();
-      const handler = () => {
-        abortController.abort();
+    try {
+      const output = this.#output.parse(
+        JSON.parse(finalItem.content),
+      ) as ResolveAgentOutput<zO, Tools>;
+      return { ok: true, output };
+    } catch (error) {
+      agentTrace.log("Retrying due to failed structured output parse from " + JSON.stringify(finalItem.content), error);
+      return {
+        ok: false,
+        reason: "retry-malformed-output",
+        feedback: createStructuredOutputRetryFeedback(errMessage(error)),
       };
-      crossPlatformHandleSigInt(handler);
+    }
+  }
 
-      const newHistory: ChatItem[] = [];
-      try {
-        const stream = this.stream(history, { signal: abortController.signal });
-        for await (const part of stream) {
-          if (part.index + 1 > newHistory.length) {
-            if (
-              newHistory.length > 0 &&
-              !(newHistory[newHistory.length - 1].type === "output_text" &&
-                part.type === "delta_output_text")
-            ) {
-              crossPlatformLog("\n");
-            }
-            if (part.type === "delta_output_text") {
-              crossPlatformLog("\x1b[0m");
-            } else if (part.type === "delta_output_reasoning") {
-              crossPlatformLog("\x1b[3m");
-            } else if (part.type === "tool_use") {
-              crossPlatformLog(
-                `[${part.tool_use_id}] Calling '${part.kind}' with parameters '${part.content}'`,
-              );
-            } else if (part.type === "tool_result_text") {
-              crossPlatformLog(
-                `[${part.tool_use_id}] Got result '${part.content}'`,
-              );
-            }
-          }
-
-          if (part.type === "delta_output_text") {
-            crossPlatformLog(part.delta);
-          } else if (part.type === "delta_output_reasoning") {
-            crossPlatformLog(part.delta);
-          }
-          addStreamItem(newHistory, part);
-        }
-      } catch (err) {
-        if (!abortController.signal.aborted) {
-          throw err;
-        }
+  /** Execute a single tool call with tracing and error handling. */
+  async #runTool(
+    use: ChatItemToolUse,
+    agentSignal: AbortSignal,
+    toolSignal: AbortSignal,
+    traceId: string,
+    parent: TraceRef,
+  ): Promise<RunToolResult> {
+    using trace = newTrace({
+      id: traceId,
+      type: "tool",
+      parent,
+      content: { name: use.kind },
+    });
+    try {
+      const tool = this.#tools.find((t) => t.normalizedName === use.kind);
+      if (!tool) {
+        throw new Error(`Tool does not exist: ${use.kind}`);
       }
-      history.push(...newHistory);
-      crossPlatformLog("\x1b[0m\n");
 
-      crossPlatformRemoveHandleSigInt(handler);
-      crossPlatformLog(prompt);
+      let param = use.content ? JSON.parse(use.content) : undefined;
+      try {
+        // When it is meant to be a void, it doesn't matter if the provider sent something - we ignore it and pass undefined to the tool
+        // This sometimes happens for providers that don't support providing "nothing" as input, e.g. OpenAI's function calls
+        param = tool.parameters instanceof z.ZodVoid ? undefined : tool.parameters.parse(param);
+      } catch (error) {
+        throw new Error(`Invalid parameters for tool: ${errMessage(error)}`);
+      }
+
+      const result = await signalAsyncLocalStorage.run(
+        toolSignal,
+        () => tracerAsyncLocalStorage.run(trace, () => tool.execute(param, { signal: toolSignal })),
+      );
+
+      if (result instanceof ModelOutput) {
+        throw result;
+      }
+
+      return {
+        id: use.tool_use_id,
+        items: convertToolResultLikeToChatItem(result, use.tool_use_id, trace.id),
+      };
+    } catch (error) {
+      if (error instanceof ModelOutput) throw error;
+
+      trace.error(error);
+      if (agentSignal.aborted) throw error;
+
+      return {
+        id: use.tool_use_id,
+        items: [{
+          type: "tool_result_text" as const,
+          tool_use_id: use.tool_use_id,
+          content: `Error: ${errMessage(error)}`,
+          trace: trace.id,
+        }],
+      };
     }
   }
 }

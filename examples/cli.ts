@@ -1,5 +1,5 @@
 import z from "zod";
-import { Agent, Tool } from "../mod.ts";
+import { Agent, cli, Tool } from "../mod.ts";
 
 const calculator = new Tool({
   name: "Calculating...",
@@ -11,17 +11,17 @@ const calculator = new Tool({
     left: z.number(),
     right: z.number(),
   }),
-  execute: ({ param }) => {
-    if (param.operation === "add") {
-      return (param.left + param.right).toString();
-    } else if (param.operation === "multiply") {
-      return (param.left * param.right).toString();
-    } else if (param.operation === "divide") {
-      return (param.left / param.right).toString();
-    } else if (param.operation === "subtract") {
-      return (param.left - param.right).toString();
+  execute: ({ operation, left, right }) => {
+    if (operation === "add") {
+      return (left + right).toString();
+    } else if (operation === "multiply") {
+      return (left * right).toString();
+    } else if (operation === "divide") {
+      return (left / right).toString();
+    } else if (operation === "subtract") {
+      return (left - right).toString();
     }
-    param.operation satisfies never;
+    operation satisfies never;
     return "";
   },
 });
@@ -30,7 +30,7 @@ const search = new Tool({
   name: "Searching the internet...",
   description: "Use when you want to search the internet",
   parameters: z.string().describe("Query parameter"),
-  execute: ({ param }) => {
+  execute: (param) => {
     if (param === "cats") {
       return JSON.stringify(["bingus.com", "bungus.com"]);
     }
@@ -91,10 +91,9 @@ const getMysteryImage = new Tool({
 });
 
 const agent = new Agent({
-  model: "anthropic:claude-haiku-4-5",
+  model: "openai:gpt-5.4-nano",
   instructions: "You are a friendly assistant",
   tools: [search, calculator, pingSupport, complexSearch, getMysteryImage],
-  reasoningEffort: "minimal",
 });
 
-await agent.cli();
+await cli(agent);

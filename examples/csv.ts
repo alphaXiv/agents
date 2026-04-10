@@ -1,7 +1,7 @@
 import { Agent } from "../mod.ts";
 
 const agent = new Agent({
-  model: "openrouter:openai/gpt-oss-20b",
+  model: "openrouter:openai/gpt-oss-20b:nitro",
   instructions: "You are a friendly assistant",
 });
 

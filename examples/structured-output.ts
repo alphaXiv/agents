@@ -2,7 +2,7 @@ import z from "zod";
 import { Agent } from "../mod.ts";
 
 const agent = new Agent({
-  model: "google:gemini-2.0-flash",
+  model: "gemini:gemini-2.0-flash",
   instructions:
     "You are an expert at extracting out the title and abstract from raw text from the pdf of a research paper. The user will give you the raw text.",
   output: z.object({

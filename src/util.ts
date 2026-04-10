@@ -1,12 +1,5 @@
 import process from "node:process";
-import { Readable } from "node:stream";
-import type {
-  ChatItem,
-  ChatItemToolResult,
-  ChatLike,
-  ToolResultLike,
-  WithTraceId,
-} from "./types.ts";
+import type { ChatItem, ChatItemToolResult, ChatLike, ToolResultLike, WithTraceId } from "./types.ts";
 import { encodeHex } from "@std/encoding/hex";
 
 export function convertChatLikeToChatItem(
@@ -57,49 +50,8 @@ export function convertToolResultLikeToChatItem(
   });
 }
 
-export function crossPlatformStdin() {
-  return Readable.toWeb(process.stdin) as ReadableStream<
-    Uint8Array<ArrayBuffer>
-  >;
-}
-
 export function crossPlatformEnv(key: string) {
   return process.env[key];
-}
-
-export function crossPlatformLog(str: string) {
-  process.stdout.write(str);
-}
-
-export function crossPlatformHandleSigInt(handler: () => void) {
-  process.on("SIGINT", handler);
-}
-
-export function crossPlatformRemoveHandleSigInt(handler: () => void) {
-  process.off("SIGINT", handler);
-}
-
-// deno-lint-ignore no-explicit-any
-export function removeDollarSchema(schema: any) {
-  const { $schema: _$schema, ...result } = schema;
-
-  return result;
-}
-
-export async function runWithRetries<T>(
-  func: () => Promise<T>,
-  retries: number,
-) {
-  let err: unknown;
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await func();
-    } catch (error) {
-      err = error;
-      // no-op
-    }
-  }
-  throw err;
 }
 
 export async function hashString(str: string) {

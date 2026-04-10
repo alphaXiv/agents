@@ -116,8 +116,6 @@ type StreamItemType = {
   content: string;
 };
 
-export type ReasoningEffort = "minimal" | "normal"; // TODO: investigate adding "low" and "high" here
-
 export type StreamItem = BaseStreamItem & StreamItemType;
 
 export type AdapterStreamIterator = AsyncGenerator<
