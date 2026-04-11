@@ -246,7 +246,9 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     WithTraceId<StreamItem>,
     { newHistory: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number }
   > {
-    const { signal, initialHistory, history, pendingTools, toolSignal, agentTrace, modelCallReason } = options;
+    const { signal, initialHistory, history, pendingTools, toolSignal, agentTrace } = options;
+    let { modelCallReason } = options;
+
     const newHistory: WithTraceId<ChatItem>[] = [];
     let lastError: unknown;
 
@@ -332,6 +334,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           modelTrace.error(error);
           lastError = error;
           agentTrace.log(`Model ${adapter.name} failed: ${errMessage(error)}`, error);
+          modelCallReason = "retry-provider-error";
         }
       }
     }
