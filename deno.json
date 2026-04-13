@@ -1,6 +1,6 @@
 {
   "name": "@alphaxiv/agents",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "license": "MIT",
   "fmt": {
     "lineWidth": 120
@@ -51,6 +51,7 @@
     "@std/assert": "jsr:@std/assert@^1.0.19",
     "@std/async": "jsr:@std/async@^1.2.0",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
+    "@std/testing": "jsr:@std/testing@^1.0.17",
     "@std/uuid": "jsr:@std/uuid@^1.1.0",
     "openai": "npm:openai@^6.33.0",
     "zod": "npm:zod@^4.3.6"

@@ -29,9 +29,10 @@ import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage,
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RETRIES = 3;
 
-type ExtractModelOutput<Tools extends Tool[]> = [Tools[number]] extends [never] ? never
-  : Tools[number] extends Tool<infer _, infer _, infer MO> ? MO
-  : never;
+type ExtractModelOutput<Tools extends unknown[]> = {
+  [K in keyof Tools]: Tools[K] extends Tool<infer _zO, infer _zI, infer MO> ? unknown extends MO ? never : MO
+    : never;
+}[number];
 
 type ResolveAgentOutput<zO, Tools extends Tool[]> = unknown extends zO
   ? ([ExtractModelOutput<Tools>] extends [never] ? undefined : ExtractModelOutput<Tools> | undefined)
@@ -92,8 +93,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   #name?: string;
   #models: Model[];
   #instructions: string;
-  // deno-lint-ignore no-explicit-any
-  #tools: Tool<any, any, any>[];
+  #tools: Tools;
   #output?: z.ZodType<zO, zI>;
   #maxTurns: number;
   #maxRetries: number;
@@ -102,7 +102,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     this.#name = options.name;
     this.#models = (Array.isArray(options.model) ? options.model : [options.model]).map(resolveModel);
     this.#instructions = options.instructions;
-    this.#tools = options.tools?.slice() ?? [];
+    this.#tools = (options.tools?.slice() ?? []) as Tools;
     this.#output = options.output;
     this.#maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.#maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
