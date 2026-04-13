@@ -163,6 +163,7 @@ const MESSAGE_PALETTE = {
   reasoning: [37, 99, 235],
   tool: [59, 130, 246],
   file: [96, 165, 250],
+  context_summary: [100, 116, 139],
 } as const satisfies Record<MessageSpanKind, Color>;
 
 const loadMenu = new Tool({
@@ -230,7 +231,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type MessageSpanKind = "text" | "reasoning" | "tool" | "file";
+type MessageSpanKind = "text" | "reasoning" | "tool" | "file" | "context_summary";
 type PartialEventWithEnd = PartialTraceEvent & { end: number };
 
 export function renderTraceFlamegraph(
@@ -404,6 +405,12 @@ function messageSpanLabel(type: ChatItem["type"]): MessageSpanKind {
     case "input_file":
     case "tool_result_file":
       return "file";
+    case "context_summary":
+      return "context_summary";
+    default:
+      // deno-fmt-ignore no deno, you can't format the parenthesis away
+      (type) satisfies never;
+      throw new Error(`unknown type: ${type}`);
   }
 }
 

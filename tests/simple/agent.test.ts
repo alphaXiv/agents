@@ -425,11 +425,11 @@ Deno.test("model receives history filtered from last context_summary", async () 
 
   assertEquals(receivedHistory.length, 3);
   assertEquals(receivedHistory[0].type, "context_summary");
-  assertEquals((receivedHistory[0] as { content: string }).content, "Summary of old conversation");
+  assertEquals(receivedHistory[0].content, "Summary of old conversation");
   assertEquals(receivedHistory[1].type, "input_text");
-  assertEquals((receivedHistory[1] as { content: string }).content, "recent message");
+  assertEquals(receivedHistory[1].content, "recent message");
   assertEquals(receivedHistory[2].type, "output_text");
-  assertEquals((receivedHistory[2] as { content: string }).content, "recent response");
+  assertEquals(receivedHistory[2].content, "recent response");
 });
 
 Deno.test("model receives history filtered from LATEST context_summary when multiple exist", async () => {
@@ -460,9 +460,9 @@ Deno.test("model receives history filtered from LATEST context_summary when mult
 
   assertEquals(receivedHistory.length, 2);
   assertEquals(receivedHistory[0].type, "context_summary");
-  assertEquals((receivedHistory[0] as { content: string }).content, "compactionB - summary of A+B");
+  assertEquals(receivedHistory[0].content, "compactionB - summary of A+B");
   assertEquals(receivedHistory[1].type, "input_text");
-  assertEquals((receivedHistory[1] as { content: string }).content, "conversationC message");
+  assertEquals(receivedHistory[1].content, "conversationC message");
 });
 
 Deno.test("beforeModelCall compaction items appear before model output in history", async () => {
