@@ -171,11 +171,11 @@ class DeterministicTestAdapter extends Adapter<"deterministic"> {
   }
 }
 
-class FailingTestAdapter extends Adapter<"deterministic"> {
-  name = "deterministic";
+class FailingTestAdapter extends Adapter<"deterministic-failing"> {
+  name = "deterministic-failing";
 
   constructor() {
-    super({ model: "deterministic" });
+    super({ model: "deterministic-failing" });
   }
 
   stream<zO, zI>(_options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
@@ -196,11 +196,11 @@ export class DeterministicTestModel extends Model<"deterministic"> {
   }
 }
 
-export class FailingTestModel extends Model<"deterministic"> {
+export class FailingTestModel extends Model<"deterministic-failing"> {
   adapter: FailingTestAdapter;
 
   constructor() {
-    super({ model: "deterministic" });
+    super({ model: "deterministic-failing" });
     this.adapter = new FailingTestAdapter();
   }
 }

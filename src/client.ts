@@ -69,6 +69,7 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
       };
     case "context_summary_start":
     case "context_summary":
+    case "model_switched":
       throw new Error(
         `Context summary items cannot be unambiguously converted into ChatItem. Spotted "${streamItem.type}".`,
       );
@@ -87,8 +88,12 @@ export function addStreamItem<T extends ChatItem>(
 ): void {
   const currentChatItems = chatItems as MutableChatItem[];
 
-  // Compaction events don't produce conversation items, they are internal representation of the current context in the conversation.
-  if (streamItem.type === "context_summary_start" || streamItem.type === "context_summary") {
+  // Informational events don't produce conversation items.
+  if (
+    streamItem.type === "context_summary_start" ||
+    streamItem.type === "context_summary" ||
+    streamItem.type === "model_switched"
+  ) {
     return;
   }
 

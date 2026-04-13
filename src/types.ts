@@ -101,6 +101,11 @@ export type WithTraceId<T> = T & {
   trace: string;
 };
 
+export interface ModelInfo {
+  provider: string;
+  model: string;
+}
+
 export type ToolResultLike = string | ({
   type: "tool_result_file";
   kind: string;
@@ -144,6 +149,11 @@ type StreamItemType = {
 } | {
   type: "context_summary";
   content: string;
+} | {
+  type: "model_switched";
+  from: ModelInfo;
+  to: ModelInfo;
+  cause: unknown;
 };
 
 export type StreamItem = BaseStreamItem & StreamItemType;

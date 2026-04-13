@@ -2,7 +2,14 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { assertObjectMatch } from "@std/assert/object-match";
 import { delay } from "@std/async/delay";
 import z from "zod";
-import { Agent, type ChatItem, type ContextSummaryStartEvent, type TokenUsage, Tool } from "../../mod.ts";
+import {
+  Agent,
+  type ChatItem,
+  type ContextSummaryStartEvent,
+  type StreamItem,
+  type TokenUsage,
+  Tool,
+} from "../../mod.ts";
 import {
   ContextWindowTestModel,
   DeterministicTestModel,
@@ -526,4 +533,29 @@ Deno.test("compaction items are only added after successful model call", async (
 
   // beforeModelCall was called multiple times due to retries
   assert(beforeModelCallCount >= 2, "beforeModelCall should be called on retries");
+});
+
+Deno.test("model_switched event is emitted when falling back to another model", async () => {
+  const agent = new Agent({
+    model: [new FailingTestModel(), new DeterministicTestModel()],
+    instructions: "You are a friendly assistant",
+    maxRetries: 1,
+  });
+
+  const streamItems: StreamItem[] = [];
+  const stream = agent.stream("Hello!");
+
+  for await (const item of stream) {
+    streamItems.push(item);
+  }
+
+  const switchEvent = streamItems.find((item) => item.type === "model_switched");
+  assert(switchEvent, "Should emit a model_switched event");
+  assert(switchEvent.type === "model_switched");
+  assertEquals(switchEvent.from.provider, "deterministic-failing");
+  assertEquals(switchEvent.from.model, "deterministic-failing");
+  assertEquals(switchEvent.to.provider, "deterministic");
+  assertEquals(switchEvent.to.model, "deterministic");
+  assert(switchEvent.cause instanceof Error, "cause should be the original error");
+  assertEquals((switchEvent.cause as Error).message, "Deterministic Provider Error");
 });

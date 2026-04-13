@@ -23,6 +23,7 @@ import type {
   ChatItemToolUse,
   ChatLike,
   ContextSummaryStartEvent,
+  ModelInfo,
   StreamItem,
   TokenUsage,
   WithTraceId,
@@ -385,6 +386,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     // These get appended to the agent's persistent history after a successful turn.
     const turnItems: WithTraceId<ChatItem>[] = [];
     let lastError: unknown;
+    let lastSwitchCause: unknown = null;
+    let previousModel: ModelInfo | null = null;
 
     // The full conversation that will be passed to beforeModelCall and potentially the model.
     // Copied so that handleModelError can return a modified version without mutating the caller's arrays.
@@ -393,6 +396,18 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     for (let retry = 0; retry < this.#maxRetries; retry++) {
       for (const model of this.#models) {
         const adapter = model.adapter;
+
+        // Emit model_switched event when switching to a different model after a failure
+        if (previousModel && (previousModel.provider !== adapter.name || previousModel.model !== adapter.model)) {
+          yield {
+            type: "model_switched",
+            index: history.length,
+            from: previousModel,
+            to: { provider: adapter.name, model: adapter.model },
+            cause: lastSwitchCause,
+            trace: agentTrace.id,
+          };
+        }
 
         // attempt 0 = initial call, 1..N = recovery retries via handleModelError
         for (let attempt = 0; attempt <= this.#maxRecoveryAttempts; attempt++) {
@@ -471,6 +486,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             }
 
             // No recovery possible - try the next model in the fallback list
+            lastSwitchCause = error;
+            previousModel = { provider: adapter.name, model: adapter.model };
             modelCallReason = "retry-provider-error";
             break;
           }
