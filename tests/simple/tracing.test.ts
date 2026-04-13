@@ -146,8 +146,8 @@ Deno.test("global tracer captures tool turns, message spans, and token counts", 
 
   const run = await agent.run("find cats");
   assertEquals(run.outputText, "done: results for cats");
-  assertEquals(run.inputTokens, 10);
-  assertEquals(run.outputTokens, 16);
+  assertEquals(run.usage.totalInputTokens, 10);
+  assertEquals(run.usage.totalOutputTokens, 16);
   assertStartsMatchEvents(starts, events);
 
   const agentTrace = filterTrace(events, "agent")[0];
@@ -271,8 +271,8 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     tracers: [tracer],
   });
   assertEquals(run.outputText, "subagent result");
-  assertEquals(run.inputTokens, 6);
-  assertEquals(run.outputTokens, 8);
+  assertEquals(run.usage.totalInputTokens, 6);
+  assertEquals(run.usage.totalOutputTokens, 8);
   assertStartsMatchEvents(starts, events);
 
   assertEquals(traceSnapshot(events), [

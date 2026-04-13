@@ -180,6 +180,9 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
           // Responses API expects provider-issued reasoning item ids on replay.
           // We only persist the text summary, so skip it rather than sending fake ids.
           break;
+        case "context_summary":
+          responseHistory.push(createUserTextMessage(historyItem.content));
+          break;
         case "tool_use": {
           const tool = normalizedTools.find((candidate) => candidate.original.normalizedName === historyItem.kind);
           responseHistory.push({

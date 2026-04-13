@@ -92,6 +92,16 @@ export class AnthropicAdapter<TModel extends AnthropicModels> extends Adapter<TM
           });
           break;
         }
+        case "context_summary": {
+          anthropicHistory.push(...anthropicToolFileBuffer);
+          anthropicToolFileBuffer = [];
+
+          anthropicHistory.push({
+            role: "user",
+            content: [{ type: "text", text: historyItem.content }],
+          });
+          break;
+        }
         case "tool_use": {
           const tool = normalizedTools.find((tool) => tool.original.normalizedName === historyItem.kind);
           const content = historyItem.content ? JSON.parse(historyItem.content) : {};

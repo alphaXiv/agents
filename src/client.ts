@@ -67,6 +67,11 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
         kind: streamItem.kind,
         content: streamItem.content,
       };
+    case "context_summary_start":
+    case "context_summary":
+      throw new Error(
+        `Context summary items cannot be unambiguously converted into ChatItem. Spotted "${streamItem.type}".`,
+      );
   }
 }
 
@@ -81,6 +86,12 @@ export function addStreamItem<T extends ChatItem>(
   streamItem: T extends { trace: string } ? WithTraceId<StreamItem> : StreamItem,
 ): void {
   const currentChatItems = chatItems as MutableChatItem[];
+
+  // Compaction events don't produce conversation items, they are internal representation of the current context in the conversation.
+  if (streamItem.type === "context_summary_start" || streamItem.type === "context_summary") {
+    return;
+  }
+
   const { denseIndex, isNew } = ensureDenseIndex(
     currentChatItems,
     streamItem.index,
@@ -159,6 +170,13 @@ export async function* convertChatItemsToStream(input: {
         type: "tool_result_file",
         tool_use_id: item.tool_use_id,
         kind: item.kind,
+        content: item.content,
+        index,
+      };
+      index += 1;
+    } else if (item.type === "context_summary") {
+      yield {
+        type: "context_summary",
         content: item.content,
         index,
       };

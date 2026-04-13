@@ -1,6 +1,7 @@
 import { assert } from "@std/assert/assert";
 import { generate } from "@std/uuid/v7";
 import z from "zod";
+import type { Adapter } from "./adapters/adapter.ts";
 import type { Model } from "./adapters/model.ts";
 import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
@@ -21,13 +22,16 @@ import type {
   ChatItemToolResult,
   ChatItemToolUse,
   ChatLike,
+  ContextSummaryStartEvent,
   StreamItem,
+  TokenUsage,
   WithTraceId,
 } from "./types.ts";
 import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
 
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
 
 type ExtractModelOutput<Tools extends Tool[]> = [Tools[number]] extends [never] ? never
   : Tools[number] extends Tool<infer _, infer _, infer MO> ? MO
@@ -40,8 +44,7 @@ type ResolveAgentOutput<zO, Tools extends Tool[]> = unknown extends zO
 export interface AgentRunResult<zO> {
   output: zO;
   history: WithTraceId<ChatItem>[];
-  inputTokens: number;
-  outputTokens: number;
+  usage: TokenUsage;
   get outputText(): string;
 }
 
@@ -86,6 +89,92 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
    * @default 3
    */
   maxRetries?: number;
+  /**
+   * Maximum number of model error recovery attempts per model error before continuing with the next model.
+   * Only relevant when `Agent.handleModelError` is implemented.
+   * @experimental - might be removed or have its behaviour modified without any notice
+   * @default 3
+   */
+  maxRecoveryAttempts?: number;
+}
+
+/**
+ * Result from consuming a compaction hook (beforeModelCall or handleModelError).
+ * - `assembled`: The full history returned by the hook (passed to the model after filtering)
+ * - `compactionItems`: Only the NEW context_summary items that need to be added to agent history
+ */
+interface CompactionResult<T> {
+  assembled: T;
+  compactionItems: WithTraceId<ChatItem>[];
+}
+
+/**
+ * Consumes a compaction generator (beforeModelCall/handleModelError), yielding stream events
+ * for any context_summary items and extracting new summaries that weren't in the previous history.
+ *
+ * The generator may yield ContextSummaryStartEvents to signal compaction progress to the caller.
+ * When the generator completes, we inspect its returned history for new context_summary items
+ * that need to be tracked in the agent's persistent history.
+ */
+async function* consumeCompactionEvents<T extends ChatItem[] | null>(
+  gen: AsyncGenerator<ContextSummaryStartEvent, T>,
+  previousHistory: ChatItem[],
+  historyLength: number,
+  traceId: string,
+): AsyncGenerator<WithTraceId<StreamItem>, CompactionResult<T>> {
+  // Forward any progress events from the compaction hook to the stream
+  let next = await gen.next();
+  while (!next.done) {
+    yield { type: "context_summary_start", index: historyLength, trace: traceId };
+    next = await gen.next();
+  }
+
+  const assembled = next.value;
+  const compactionItems: WithTraceId<ChatItem>[] = [];
+
+  if (!assembled) return { assembled, compactionItems };
+
+  // Extract NEW context_summary items (ones not already in history) so they can be
+  // added to the agent's persistent history after a successful model call
+  for (const item of assembled) {
+    if (item.type === "context_summary") {
+      const existsInPrevious = previousHistory.some(
+        (prev) => prev.type === "context_summary" && prev.content === item.content,
+      );
+
+      if (existsInPrevious) continue;
+
+      const tracedItem: WithTraceId<ChatItem> = { ...item, trace: traceId };
+      compactionItems.push(tracedItem);
+      yield {
+        type: "context_summary",
+        index: historyLength + compactionItems.length - 1,
+        content: item.content,
+        trace: traceId,
+      };
+    }
+  }
+
+  return { assembled, compactionItems };
+}
+
+/**
+ * Filters history to start from the last context_summary (inclusive).
+ * If no context_summary exists, returns the full history.
+ *
+ * This ensures the model only sees the most recent compacted context plus subsequent
+ * conversation, avoiding redundant/stale information from before the summary.
+ * Example: [convA, summaryA, convB, summaryB, convC] -> [summaryB, convC]
+ */
+function filterHistoryFromLastSummary(history: ChatItem[]): ChatItem[] {
+  let lastSummaryIndex = -1;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].type === "context_summary") {
+      lastSummaryIndex = i;
+      break;
+    }
+  }
+  return lastSummaryIndex === -1 ? history : history.slice(lastSummaryIndex);
 }
 
 export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = []> {
@@ -97,6 +186,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   #output?: z.ZodType<zO, zI>;
   #maxTurns: number;
   #maxRetries: number;
+  #maxRecoveryAttempts: number;
 
   constructor(options: AgentOptions<zO, zI, Tools>) {
     this.#name = options.name;
@@ -106,6 +196,37 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     this.#output = options.output;
     this.#maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.#maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.#maxRecoveryAttempts = options.maxRecoveryAttempts ?? DEFAULT_MAX_RECOVERY_ATTEMPTS;
+  }
+
+  /**
+   * Called before each model invocation with the assembled history and token usage.
+   * Override to modify what the model sees (e.g. sliding window, compaction).
+   * The returned array is used only for this call; internal history is unchanged.
+   *
+   * Yield {@link ContextSummaryStartEvent}s to stream compaction progress back to the caller.
+   */
+  // deno-lint-ignore require-yield
+  protected async *beforeModelCall(
+    history: ChatItem[],
+    _context: { turn: number; reason: string; usage: TokenUsage },
+  ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[]> {
+    return history;
+  }
+
+  /**
+   * Called when a model call fails. Return a replacement history to retry
+   * the same model, or `null` to fall through to normal retry/fallback.
+   *
+   * Yield {@link ContextSummaryStartEvent} at the start to indicate compaction
+   */
+  // deno-lint-ignore require-yield
+  protected async *handleModelError(
+    _error: unknown,
+    _history: ChatItem[],
+    _context: { turn: number; attempt: number; usage: TokenUsage },
+  ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[] | null> {
+    return null;
   }
 
   /**
@@ -147,8 +268,12 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       content: { name: this.#name },
     });
 
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
+    const usage: TokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+    };
 
     try {
       const toolController = new AbortController();
@@ -162,7 +287,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         signal.throwIfAborted();
 
         // Phase 1: Stream from a model (dispatches tool calls eagerly)
-        const { newHistory, inputTokens, outputTokens } = yield* this.#invokeModel({
+        const { turnItems, inputTokens, outputTokens } = yield* this.#invokeModel({
           signal,
           initialHistory,
           history,
@@ -170,34 +295,40 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           toolSignal: toolController.signal,
           agentTrace,
           modelCallReason,
+          turn,
+          usage,
         });
-        totalInputTokens += inputTokens;
-        totalOutputTokens += outputTokens;
+
+        usage.totalInputTokens += inputTokens;
+        usage.totalOutputTokens += outputTokens;
+        usage.inputTokens = inputTokens;
+        usage.outputTokens = outputTokens;
 
         // Phase 2: Collect tool results (if any were dispatched during streaming)
         if (pendingTools.size > 0) {
           const modelOutput = yield* this.#collectToolResults({
             signal,
             history,
-            newHistory,
+            turnItems,
             pendingTools,
             toolController,
             agentTrace,
           });
+
           if (modelOutput) {
             return createRunResult({
-              history: [...history, ...newHistory],
+              history: [...history, ...turnItems],
               output: modelOutput.output as ResolveAgentOutput<zO, Tools>,
-              totalInputTokens,
-              totalOutputTokens,
+              usage,
             });
           }
-          history.push(...newHistory);
+
+          history.push(...turnItems);
           modelCallReason = "tool";
           continue;
         }
 
-        history.push(...newHistory);
+        history.push(...turnItems);
 
         // Phase 3: Parse final output (retries on structured output errors)
         const result = this.#tryParseOutput(history, agentTrace);
@@ -218,8 +349,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         return createRunResult({
           history,
           output: result.output,
-          totalInputTokens,
-          totalOutputTokens,
+          usage,
         });
       }
 
@@ -242,104 +372,188 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     toolSignal: AbortSignal;
     agentTrace: ActiveTrace<"agent">;
     modelCallReason: string;
+    turn: number;
+    usage: TokenUsage;
   }): AsyncGenerator<
     WithTraceId<StreamItem>,
-    { newHistory: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number }
+    { turnItems: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number }
   > {
-    const { signal, initialHistory, history, pendingTools, toolSignal, agentTrace } = options;
+    const { signal, history, pendingTools, toolSignal, agentTrace, turn } = options;
     let { modelCallReason } = options;
 
-    const newHistory: WithTraceId<ChatItem>[] = [];
+    // Items produced during this turn: model output (text, tool calls) and any compaction summaries.
+    // These get appended to the agent's persistent history after a successful turn.
+    const turnItems: WithTraceId<ChatItem>[] = [];
     let lastError: unknown;
+
+    // The full conversation that will be passed to beforeModelCall and potentially the model.
+    // Copied so that handleModelError can return a modified version without mutating the caller's arrays.
+    let baseHistory: ChatItem[] = [...options.initialHistory, ...history];
 
     for (let retry = 0; retry < this.#maxRetries; retry++) {
       for (const model of this.#models) {
         const adapter = model.adapter;
 
-        using modelTrace = newTrace({
-          type: "model",
-          parent: agentTrace,
-          content: {
-            reason: modelCallReason,
-            provider: adapter.name,
-            model: adapter.model,
-            inputTokens: null,
-            outputTokens: null,
-          },
-        });
-        using messageTracer = new MessageTracer(modelTrace);
-
-        try {
-          const adapterStream = adapter.stream({
-            instructions: this.#instructions,
-            tools: this.#tools,
-            output: this.#output,
-            history: [...initialHistory, ...history],
-            signal,
+        // attempt 0 = initial call, 1..N = recovery retries via handleModelError
+        for (let attempt = 0; attempt <= this.#maxRecoveryAttempts; attempt++) {
+          using modelTrace = newTrace({
+            type: "model",
+            parent: agentTrace,
+            content: {
+              reason: modelCallReason,
+              provider: adapter.name,
+              model: adapter.model,
+              inputTokens: null,
+              outputTokens: null,
+            },
           });
+          using messageTracer = new MessageTracer(modelTrace);
 
-          while (true) {
-            const { value: part, done } = await adapterStream.next();
-            if (done) {
-              messageTracer.endMessageTraceIfStarted();
-              modelTrace.success({
-                inputTokens: part.inputTokens,
-                outputTokens: part.outputTokens,
-              });
-              return {
-                newHistory,
-                inputTokens: part.inputTokens ?? 0,
-                outputTokens: part.outputTokens ?? 0,
-              };
-            }
+          try {
+            // Allow subclasses to modify history before the model call (e.g., sliding window, summarization).
+            // Returns: assembled = full history for this call, compactionItems = new summaries to persist.
+            const { assembled, compactionItems } = yield* consumeCompactionEvents(
+              this.beforeModelCall(baseHistory, {
+                turn,
+                reason: modelCallReason,
+                usage: options.usage,
+              }),
+              baseHistory,
+              history.length,
+              agentTrace.id,
+            );
 
-            // Eager tool dispatch: start tool execution while the model is still streaming
-            let trace: string | null = null;
-            if (part.type === "tool_use") {
-              assert(
-                !pendingTools.has(part.tool_use_id),
-                `Provider ${adapter.name} did not use unique tool use id: ${part.tool_use_id}`,
+            // Only send history from the last context_summary onwards to avoid redundant context
+            const filteredHistory = filterHistoryFromLastSummary(assembled);
+
+            const result = yield* this.#streamModelCall({
+              adapter,
+              history: filteredHistory,
+              signal,
+              pendingTools,
+              toolSignal,
+              agentTrace,
+              modelTrace,
+              messageTracer,
+              turnItems,
+              historyLength: history.length,
+            });
+
+            // Only persist compaction items after the model succeeds. Using unshift ensures
+            // summaries appear before the model's output in history (correct chronological order).
+            turnItems.unshift(...compactionItems);
+
+            return { turnItems, ...result };
+          } catch (error) {
+            messageTracer.cancel();
+            modelTrace.error(error);
+            lastError = error;
+            agentTrace.log(`Model ${adapter.name} failed: ${errMessage(error)}`, error);
+
+            // Allow subclasses to recover from errors (e.g., compact history on context-window overflow).
+            // If handleModelError returns a new history, we retry the SAME model with that history.
+            if (attempt < this.#maxRecoveryAttempts) {
+              const { assembled: recovered, compactionItems: recoveryCompactionItems } = yield* consumeCompactionEvents(
+                this.handleModelError(error, baseHistory, { turn, attempt, usage: options.usage }),
+                baseHistory,
+                history.length,
+                agentTrace.id,
               );
-              trace = generate();
-              pendingTools.set(
-                part.tool_use_id,
-                this.#runTool(part, signal, toolSignal, trace, agentTrace),
-              );
+
+              if (recovered) {
+                // Clear any partial output from the failed attempt and start fresh with recovered history
+                turnItems.length = 0;
+                turnItems.push(...recoveryCompactionItems);
+                baseHistory = recovered;
+                modelCallReason = "retry-context-compaction";
+                continue;
+              }
             }
 
-            // Message tracing
-            if (
-              part.type === "delta_output_text" ||
-              part.type === "delta_output_reasoning" ||
-              part.type === "tool_use_start"
-            ) {
-              trace ??= messageTracer.startOrContinue({
-                index: part.index,
-                type: ({
-                  delta_output_text: "output_text",
-                  delta_output_reasoning: "output_reasoning",
-                  tool_use_start: "tool_use",
-                } as const)[part.type],
-              });
-            } else {
-              messageTracer.endMessageTraceIfStarted();
-              trace ??= modelTrace.id;
-            }
-
-            addStreamItem(newHistory, { ...part, trace });
-            yield { ...part, index: part.index + history.length, trace };
+            // No recovery possible - try the next model in the fallback list
+            modelCallReason = "retry-provider-error";
+            break;
           }
-        } catch (error) {
-          messageTracer.cancel();
-          modelTrace.error(error);
-          lastError = error;
-          agentTrace.log(`Model ${adapter.name} failed: ${errMessage(error)}`, error);
-          modelCallReason = "retry-provider-error";
         }
       }
     }
 
     throw lastError;
+  }
+
+  /** Stream a single model call, yielding traced stream items and dispatching tool calls eagerly. */
+  async *#streamModelCall(options: {
+    adapter: Adapter<string>;
+    history: ChatItem[];
+    signal: AbortSignal;
+    pendingTools: Map<string, Promise<RunToolResult>>;
+    toolSignal: AbortSignal;
+    agentTrace: ActiveTrace<"agent">;
+    modelTrace: ActiveTrace<"model">;
+    messageTracer: MessageTracer;
+    turnItems: WithTraceId<ChatItem>[];
+    historyLength: number;
+  }): AsyncGenerator<WithTraceId<StreamItem>, { inputTokens: number; outputTokens: number }> {
+    const { adapter, signal, pendingTools, toolSignal, agentTrace, modelTrace, messageTracer, turnItems } = options;
+
+    const adapterStream = adapter.stream({
+      instructions: this.#instructions,
+      tools: this.#tools,
+      output: this.#output,
+      history: options.history,
+      signal,
+    });
+
+    while (true) {
+      const { value: part, done } = await adapterStream.next();
+      if (done) {
+        messageTracer.endMessageTraceIfStarted();
+        modelTrace.success({
+          inputTokens: part.inputTokens,
+          outputTokens: part.outputTokens,
+        });
+        return {
+          inputTokens: part.inputTokens ?? 0,
+          outputTokens: part.outputTokens ?? 0,
+        };
+      }
+
+      // Eager tool dispatch: start tool execution while the model is still streaming
+      let trace: string | null = null;
+      if (part.type === "tool_use") {
+        assert(
+          !pendingTools.has(part.tool_use_id),
+          `Provider ${adapter.name} did not use unique tool use id: ${part.tool_use_id}`,
+        );
+        trace = generate();
+        pendingTools.set(
+          part.tool_use_id,
+          this.#runTool(part, signal, toolSignal, trace, agentTrace),
+        );
+      }
+
+      // Message tracing
+      if (
+        part.type === "delta_output_text" ||
+        part.type === "delta_output_reasoning" ||
+        part.type === "tool_use_start"
+      ) {
+        trace ??= messageTracer.startOrContinue({
+          index: part.index,
+          type: ({
+            delta_output_text: "output_text",
+            delta_output_reasoning: "output_reasoning",
+            tool_use_start: "tool_use",
+          } as const)[part.type],
+        });
+      } else {
+        messageTracer.endMessageTraceIfStarted();
+        trace ??= modelTrace.id;
+      }
+
+      addStreamItem(turnItems, { ...part, trace });
+      yield { ...part, index: part.index + options.historyLength, trace };
+    }
   }
 
   /**
@@ -350,12 +564,12 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   async *#collectToolResults(options: {
     signal: AbortSignal;
     history: WithTraceId<ChatItem>[];
-    newHistory: WithTraceId<ChatItem>[];
+    turnItems: WithTraceId<ChatItem>[];
     pendingTools: Map<string, Promise<RunToolResult>>;
     toolController: AbortController;
     agentTrace: ActiveTrace<"agent">;
   }): AsyncGenerator<WithTraceId<StreamItem>, ModelOutput<unknown> | null> {
-    const { signal, history, newHistory, pendingTools, toolController, agentTrace } = options;
+    const { signal, history, turnItems, pendingTools, toolController, agentTrace } = options;
 
     try {
       signal.throwIfAborted();
@@ -365,27 +579,27 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           const streamItem: WithTraceId<StreamItem> = toolResult.type === "tool_result_text"
             ? {
               type: "tool_result_text",
-              index: newHistory.length + history.length,
+              index: turnItems.length + history.length,
               tool_use_id: toolResult.tool_use_id,
               content: toolResult.content,
               trace: toolResult.trace,
             }
             : {
               type: "tool_result_file",
-              index: newHistory.length + history.length,
+              index: turnItems.length + history.length,
               tool_use_id: toolResult.tool_use_id,
               kind: toolResult.kind,
               content: toolResult.content,
               trace: toolResult.trace,
             };
           yield streamItem;
-          newHistory.push(toolResult);
+          turnItems.push(toolResult);
         }
       }
       return null;
     } catch (error) {
       // Emit error results for any remaining pending tools
-      let index = newHistory.length + history.length;
+      let index = turnItems.length + history.length;
       for (const tool_use_id of pendingTools.keys()) {
         yield {
           type: "tool_result_text",
@@ -504,16 +718,14 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
 function createRunResult<T>(completion: {
   history: WithTraceId<ChatItem>[];
-  totalInputTokens: number;
-  totalOutputTokens: number;
+  usage: TokenUsage;
   output: T;
 }): AgentRunResult<T> {
-  const { output, history } = completion;
+  const { output, history, usage } = completion;
   return {
     history,
     output,
-    inputTokens: completion.totalInputTokens,
-    outputTokens: completion.totalOutputTokens,
+    usage,
     // using a getter so that if you console.log this object, you
     // don't see all the data twice.
     get outputText() {

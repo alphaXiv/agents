@@ -186,6 +186,12 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
           break;
         case "output_reasoning":
           break;
+        case "context_summary":
+          messages.push({
+            role: "user",
+            content: historyItem.content,
+          });
+          break;
         case "tool_use": {
           const tool = normalizedTools.find((candidate) => candidate.original.normalizedName === historyItem.kind);
           messages.push({

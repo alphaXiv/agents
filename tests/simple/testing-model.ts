@@ -4,11 +4,11 @@ import { Adapter, type AdapterStreamOptions } from "../../src/adapters/adapter.t
 import { Model } from "../../src/adapters/model.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../src/types.ts";
 
-export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
-
 function isToolResult(item: ChatItem): item is Extract<ChatItem, { type: "tool_result_text" | "tool_result_file" }> {
   return item.type === "tool_result_text" || item.type === "tool_result_file";
 }
+
+export const testingTracker = new AsyncLocalStorage<{ failures: number }>();
 
 async function* streamText(text: string): AdapterStreamIterator {
   for (const char of [...text]) {
@@ -202,5 +202,70 @@ export class FailingTestModel extends Model<"deterministic"> {
   constructor() {
     super({ model: "deterministic" });
     this.adapter = new FailingTestAdapter();
+  }
+}
+
+class ContextWindowTestAdapter extends Adapter<"deterministic"> {
+  name = "deterministic";
+  #threshold: number;
+
+  constructor(threshold: number) {
+    super({ model: "deterministic" });
+    this.#threshold = threshold;
+  }
+
+  stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
+    if (options.history.length > this.#threshold) {
+      throw new Error("This model's maximum context length is exceeded");
+    }
+
+    return convertChatItemsToStream({
+      items: [{ type: "output_text", content: "Recovery successful!" }],
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  }
+}
+
+export class ContextWindowTestModel extends Model<"deterministic"> {
+  adapter: ContextWindowTestAdapter;
+
+  constructor(threshold: number) {
+    super({ model: "deterministic" });
+    this.adapter = new ContextWindowTestAdapter(threshold);
+  }
+}
+
+class HistoryRecordingTestAdapter extends Adapter<"deterministic"> {
+  name = "deterministic";
+  receivedHistories: ChatItem[][] = [];
+  #response: string;
+
+  constructor(response: string = "ok") {
+    super({ model: "deterministic" });
+    this.#response = response;
+  }
+
+  stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
+    this.receivedHistories.push([...options.history]);
+
+    return convertChatItemsToStream({
+      items: [{ type: "output_text", content: this.#response }],
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  }
+}
+
+export class HistoryRecordingTestModel extends Model<"deterministic"> {
+  adapter: HistoryRecordingTestAdapter;
+
+  constructor(response: string = "ok") {
+    super({ model: "deterministic" });
+    this.adapter = new HistoryRecordingTestAdapter(response);
+  }
+
+  get receivedHistories(): ChatItem[][] {
+    return this.adapter.receivedHistories;
   }
 }
