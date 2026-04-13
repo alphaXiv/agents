@@ -72,6 +72,7 @@ function normalizeToolName(name: string): string {
   return normalized.slice(0, 64);
 }
 
+/** workaround for the existential type situation. learn more: https://stackoverflow.com/a/51880956  */
 // deno-lint-ignore no-explicit-any
 export type AnyTool = Tool<any, any, any>;
 

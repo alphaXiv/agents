@@ -1,11 +1,12 @@
 import z from "zod";
 import { type ExecuteFunc, ModelOutput, Tool } from "../../tool.ts";
 
-export class SidEmbeddingSearchTool<zO, zI> extends Tool<zO, zI> {
+export class SidEmbeddingSearchTool<zO = unknown, zI = unknown, ModelOutput = unknown>
+  extends Tool<zO, zI, ModelOutput> {
   constructor({ description, parameters, execute, retries }: {
     description: string;
     parameters: z.ZodType<zO, zI>;
-    execute: ExecuteFunc<zO>;
+    execute: ExecuteFunc<zO, ModelOutput>;
     retries?: number;
   }) {
     super({
@@ -18,11 +19,11 @@ export class SidEmbeddingSearchTool<zO, zI> extends Tool<zO, zI> {
   }
 }
 
-export class SidTextSearchTool<zO, zI> extends Tool<zO, zI> {
+export class SidTextSearchTool<zO = unknown, zI = unknown, ModelOutput = unknown> extends Tool<zO, zI, ModelOutput> {
   constructor({ description, parameters, execute, retries }: {
     description: string;
     parameters: z.ZodType<zO, zI>;
-    execute: ExecuteFunc<zO>;
+    execute: ExecuteFunc<zO, ModelOutput>;
     retries?: number;
   }) {
     super({
