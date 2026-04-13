@@ -61,6 +61,17 @@ export interface AgentRunOptions {
   signal?: AbortSignal;
 }
 
+export type BeforeModelCall = (
+  history: ChatItem[],
+  context: { turn: number; reason: string; usage: TokenUsage },
+) => AsyncGenerator<ContextSummaryStartEvent, ChatItem[]>;
+
+export type HandleModelError = (
+  error: unknown,
+  history: ChatItem[],
+  context: { turn: number; attempt: number; usage: TokenUsage },
+) => AsyncGenerator<ContextSummaryStartEvent, ChatItem[] | null>;
+
 export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
   /** Optionally name this agent for tracing and debugging purposes */
   name?: string;
@@ -92,11 +103,26 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
   maxRetries?: number;
   /**
    * Maximum number of model error recovery attempts per model error before continuing with the next model.
-   * Only relevant when `Agent.handleModelError` is implemented.
+   * Only relevant when `handleModelError` callback is provided.
    * @experimental - might be removed or have its behaviour modified without any notice
    * @default 3
    */
   maxRecoveryAttempts?: number;
+  /**
+   * Called before each model invocation with the assembled history and token usage.
+   * Use to modify what the model sees (e.g. sliding window, compaction).
+   * The returned array is used only for this call; internal history is unchanged.
+   *
+   * Yield {@link ContextSummaryStartEvent} to stream compaction progress back to the caller.
+   */
+  beforeModelCall?: BeforeModelCall;
+  /**
+   * Called when a model call fails. Return a replacement history to retry
+   * the same model, or `null` to fall through to normal retry/fallback.
+   *
+   * Yield {@link ContextSummaryStartEvent} at the start to indicate compaction.
+   */
+  handleModelError?: HandleModelError;
 }
 
 /**
@@ -188,6 +214,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   #maxTurns: number;
   #maxRetries: number;
   #maxRecoveryAttempts: number;
+  #beforeModelCall: BeforeModelCall;
+  #handleModelError?: HandleModelError;
 
   constructor(options: AgentOptions<zO, zI, Tools>) {
     this.#name = options.name;
@@ -198,36 +226,13 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     this.#maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.#maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.#maxRecoveryAttempts = options.maxRecoveryAttempts ?? DEFAULT_MAX_RECOVERY_ATTEMPTS;
-  }
 
-  /**
-   * Called before each model invocation with the assembled history and token usage.
-   * Override to modify what the model sees (e.g. sliding window, compaction).
-   * The returned array is used only for this call; internal history is unchanged.
-   *
-   * Yield {@link ContextSummaryStartEvent}s to stream compaction progress back to the caller.
-   */
-  // deno-lint-ignore require-yield
-  protected async *beforeModelCall(
-    history: ChatItem[],
-    _context: { turn: number; reason: string; usage: TokenUsage },
-  ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[]> {
-    return history;
-  }
-
-  /**
-   * Called when a model call fails. Return a replacement history to retry
-   * the same model, or `null` to fall through to normal retry/fallback.
-   *
-   * Yield {@link ContextSummaryStartEvent} at the start to indicate compaction
-   */
-  // deno-lint-ignore require-yield
-  protected async *handleModelError(
-    _error: unknown,
-    _history: ChatItem[],
-    _context: { turn: number; attempt: number; usage: TokenUsage },
-  ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[] | null> {
-    return null;
+    this.#beforeModelCall = options.beforeModelCall ??
+      // deno-lint-ignore require-yield
+      async function* noopBeforeModelCall(history) {
+        return history;
+      };
+    this.#handleModelError = options.handleModelError;
   }
 
   /**
@@ -425,10 +430,10 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           using messageTracer = new MessageTracer(modelTrace);
 
           try {
-            // Allow subclasses to modify history before the model call (e.g., sliding window, summarization).
+            // Allow modifying history before the model call (e.g., sliding window, summarization).
             // Returns: assembled = full history for this call, compactionItems = new summaries to persist.
             const { assembled, compactionItems } = yield* consumeCompactionEvents(
-              this.beforeModelCall(baseHistory, {
+              this.#beforeModelCall(baseHistory, {
                 turn,
                 reason: modelCallReason,
                 usage: options.usage,
@@ -465,11 +470,11 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             lastError = error;
             agentTrace.log(`Model ${adapter.name} failed: ${errMessage(error)}`, error);
 
-            // Allow subclasses to recover from errors (e.g., compact history on context-window overflow).
+            // Allow recovering from errors (e.g., compact history on context-window overflow).
             // If handleModelError returns a new history, we retry the SAME model with that history.
-            if (attempt < this.#maxRecoveryAttempts) {
+            if (attempt < this.#maxRecoveryAttempts && this.#handleModelError) {
               const { assembled: recovered, compactionItems: recoveryCompactionItems } = yield* consumeCompactionEvents(
-                this.handleModelError(error, baseHistory, { turn, attempt, usage: options.usage }),
+                this.#handleModelError(error, baseHistory, { turn, attempt, usage: options.usage }),
                 baseHistory,
                 history.length,
                 agentTrace.id,

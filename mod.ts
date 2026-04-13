@@ -1,5 +1,11 @@
 export { Agent } from "./src/agent.ts";
-export type { AgentOptions, AgentRunOptions, AgentRunResult } from "./src/agent.ts";
+export type {
+  AgentOptions,
+  AgentRunOptions,
+  AgentRunResult,
+  BeforeModelCall as BeforeModelCallFn,
+  HandleModelError as HandleModelErrorFn,
+} from "./src/agent.ts";
 
 export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
 export { cli } from "./src/cli.ts";

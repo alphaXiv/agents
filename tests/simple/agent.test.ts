@@ -2,14 +2,7 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { assertObjectMatch } from "@std/assert/object-match";
 import { delay } from "@std/async/delay";
 import z from "zod";
-import {
-  Agent,
-  type ChatItem,
-  type ContextSummaryStartEvent,
-  type StreamItem,
-  type TokenUsage,
-  Tool,
-} from "../../mod.ts";
+import { Agent, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
 import {
   ContextWindowTestModel,
   DeterministicTestModel,
@@ -347,24 +340,17 @@ Deno.test("Disable retrying of an agent", async () => {
 Deno.test("handleModelError recovers from context window errors", async () => {
   let recoveryCalls = 0;
 
-  class RecoveringAgent extends Agent {
-    override async *handleModelError(
-      error: unknown,
-      history: ChatItem[],
-      _context: { turn: number; attempt: number; usage: TokenUsage },
-    ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[] | null> {
+  const agent = new Agent({
+    model: new ContextWindowTestModel(3),
+    instructions: "You are a friendly assistant",
+    async *handleModelError(error, history, _context) {
       if (error instanceof Error && error.message.includes("context length")) {
         yield { type: "context_summary_start" as const };
         recoveryCalls += 1;
         return history.filter((item) => item.type !== "input_file");
       }
       return null;
-    }
-  }
-
-  const agent = new RecoveringAgent({
-    model: new ContextWindowTestModel(3),
-    instructions: "You are a friendly assistant",
+    },
   });
 
   const run = await agent.run([
@@ -382,21 +368,14 @@ Deno.test("handleModelError recovers from context window errors", async () => {
 Deno.test("handleModelError returning null falls through to normal retry", async () => {
   let handleCalls = 0;
 
-  class PassthroughAgent extends Agent {
-    // deno-lint-ignore require-yield
-    override async *handleModelError(
-      _error: unknown,
-      _history: ChatItem[],
-      _context: { turn: number; attempt: number; usage: TokenUsage },
-    ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[] | null> {
-      handleCalls += 1;
-      return null;
-    }
-  }
-
-  const agent = new PassthroughAgent({
+  const agent = new Agent({
     model: new FailingTestModel(),
     instructions: "You are a friendly assistant.",
+    // deno-lint-ignore require-yield
+    async *handleModelError(_error, _history, _context) {
+      handleCalls += 1;
+      return null;
+    },
   });
 
   await assertRejects(
@@ -475,23 +454,17 @@ Deno.test("model receives history filtered from LATEST context_summary when mult
 Deno.test("beforeModelCall compaction items appear before model output in history", async () => {
   const model = new HistoryRecordingTestModel("model response");
 
-  class CompactingAgent extends Agent {
-    override async *beforeModelCall(
-      history: ChatItem[],
-      _context: { turn: number; reason: string; usage: TokenUsage },
-    ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[]> {
+  const agent = new Agent({
+    model,
+    instructions: "Test agent",
+    async *beforeModelCall(history, _context) {
       // Always add a compaction summary at the start
       yield { type: "context_summary_start" };
       return [
         { type: "context_summary", content: "Summary of prior context" },
         ...history,
       ];
-    }
-  }
-
-  const agent = new CompactingAgent({
-    model,
-    instructions: "Test agent",
+    },
   });
 
   const run = await agent.run("Hello");
@@ -508,24 +481,18 @@ Deno.test("beforeModelCall compaction items appear before model output in histor
 Deno.test("compaction items are only added after successful model call", async () => {
   let beforeModelCallCount = 0;
 
-  class CompactingAgent extends Agent {
-    override async *beforeModelCall(
-      history: ChatItem[],
-      _context: { turn: number; reason: string; usage: TokenUsage },
-    ): AsyncGenerator<ContextSummaryStartEvent, ChatItem[]> {
+  const agent = new Agent({
+    model: new FailingTestModel(),
+    instructions: "Test agent",
+    maxRetries: 2,
+    async *beforeModelCall(history, _context) {
       beforeModelCallCount++;
       yield { type: "context_summary_start" };
       return [
         { type: "context_summary", content: `Summary ${beforeModelCallCount}` },
         ...history,
       ];
-    }
-  }
-
-  const agent = new CompactingAgent({
-    model: new FailingTestModel(),
-    instructions: "Test agent",
-    maxRetries: 2,
+    },
   });
 
   // The agent will fail, but beforeModelCall will be called multiple times
