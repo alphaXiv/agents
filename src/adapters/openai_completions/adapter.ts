@@ -23,6 +23,7 @@ import {
 } from "../shared/media.ts";
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
 import { normalizeOpenAICompletionsTools, type OpenAICompletionsToolMap } from "./tools.ts";
+import type { ClassifiedError } from "../../errors.ts";
 
 type FileHistoryItem = ChatItemInputFile | ChatItemToolResultFile;
 export type OpenAICompletionsClient = Pick<OpenAI, "chat">;
@@ -160,7 +161,7 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
     this.#extraRequestBody = options.extraRequestBody;
   }
 
-  override classifyError(error: unknown) {
+  override classifyError(error: unknown): ClassifiedError | null {
     return classifyOpenAIError(error);
   }
 
