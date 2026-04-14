@@ -26,7 +26,7 @@ export class SidAdapter<TModel extends SidModels> extends OpenAICompletionsAdapt
         baseURL: options.baseUrl ?? crossPlatformEnv("SID_BASE_URL") ?? "https://api.sid-1.com/v1",
       }),
       supportedMimeTypes: options.supportedMimeTypes ?? [],
-      extraRequestBody: options.extraRequestBody ?? {},
+      extraRequestBody: { tool_choice: "required", ...(options.extraRequestBody ?? {}) },
     });
   }
 }
