@@ -10,6 +10,7 @@ import type {
   ResponseOutputMessage,
 } from "openai/resources/responses/responses";
 import type { ReasoningEffort } from "openai/resources/shared";
+
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
@@ -25,6 +26,7 @@ import {
   unsupportedMediaTypeError,
 } from "../shared/media.ts";
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
+import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { normalizeOpenResponsesTools, type OpenResponsesToolMap } from "./tools.ts";
 
 type FileHistoryItem = Extract<ChatItem, { type: "input_file" } | { type: "tool_result_file" }>;
@@ -155,6 +157,10 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
     this.#serviceTier = options.serviceTier;
     this.#parallelToolCalls = options.parallelToolCalls ?? true;
     this.#supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
+  }
+
+  override classifyError(error: unknown) {
+    return classifyOpenAIError(error);
   }
 
   async getHistory(

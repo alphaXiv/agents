@@ -7,6 +7,12 @@ export type {
   HandleModelError as HandleModelErrorFn,
 } from "./src/agent.ts";
 
+export { classifyError, createClassifiedError, ERROR_KINDS } from "./src/errors.ts";
+export type { ClassifiedError, ErrorKind } from "./src/errors.ts";
+
+export { DEFAULT_RETRY_STRATEGY, determineRetryBehavior, resolveRetryStrategy } from "./src/retry.ts";
+export type { ResolvedRetryStrategy, RetryBehavior, RetryStrategy } from "./src/retry.ts";
+
 export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
 export { cli } from "./src/cli.ts";
 

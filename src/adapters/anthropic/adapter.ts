@@ -1,5 +1,6 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import { assert } from "@std/assert";
+import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
@@ -55,6 +56,25 @@ export class AnthropicAdapter<TModel extends AnthropicModels> extends Adapter<TM
 
   get supportsNativeStructuredOutput(): boolean {
     return anthropicModelStructuredOutputSupport[this.model];
+  }
+
+  override classifyError(error: unknown): ClassifiedError | null {
+    if (error instanceof Anthropic.APIConnectionTimeoutError) {
+      return createClassifiedError("timeout", error, error.status);
+    } else if (error instanceof Anthropic.APIConnectionError) {
+      return createClassifiedError("network", error, error.status);
+    } else if (error instanceof Anthropic.RateLimitError) {
+      return createClassifiedError("rate_limit", error, error.status);
+    } else if (error instanceof Anthropic.AuthenticationError) {
+      return createClassifiedError("auth", error, error.status);
+    } else if (error instanceof Anthropic.PermissionDeniedError) {
+      return createClassifiedError("auth", error, error.status);
+    } else if (error instanceof Anthropic.InternalServerError) {
+      return createClassifiedError("server", error, error.status);
+    } else if (error instanceof Anthropic.APIUserAbortError) {
+      return createClassifiedError("aborted", error, error.status);
+    }
+    return null;
   }
 
   async getHistory(

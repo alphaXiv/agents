@@ -323,7 +323,7 @@ Deno.test("Disable retrying of an agent", async () => {
     model: new FailingTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
-    maxRetries: 1,
+    retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
   });
 
   const counter = { failures: 0 };
@@ -484,7 +484,7 @@ Deno.test("compaction items are only added after successful model call", async (
   const agent = new Agent({
     model: new FailingTestModel(),
     instructions: "Test agent",
-    maxRetries: 2,
+    retryStrategy: { modelCycles: 2, sameModelRetries: 0 },
     async *beforeModelCall(history, _context) {
       beforeModelCallCount++;
       yield { type: "context_summary_start" };
@@ -506,7 +506,7 @@ Deno.test("model_switched event is emitted when falling back to another model", 
   const agent = new Agent({
     model: [new FailingTestModel(), new DeterministicTestModel()],
     instructions: "You are a friendly assistant",
-    maxRetries: 1,
+    retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
   });
 
   const streamItems: StreamItem[] = [];

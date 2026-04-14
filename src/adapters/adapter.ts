@@ -1,4 +1,5 @@
 import type z from "zod";
+import type { ClassifiedError } from "../errors.ts";
 import type { AnyTool } from "../tool.ts";
 import type { AdapterStreamIterator, ChatItem } from "../types.ts";
 
@@ -31,4 +32,14 @@ export abstract class Adapter<SupportedModels extends string> {
   }
 
   abstract stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator;
+
+  /**
+   * Classify an error using provider-specific error types.
+   * Override this in adapter implementations to provide precise error classification.
+   *
+   * @experimental Might be removed or have its behaviour modified without any notice
+   * @param error The error thrown during a model call
+   * @returns ClassifiedError if the adapter can classify it, null to fall back to heuristics
+   */
+  classifyError?(error: unknown): ClassifiedError | null;
 }

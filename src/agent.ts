@@ -6,6 +6,13 @@ import type { Model } from "./adapters/model.ts";
 import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
+import { classifyError } from "./errors.ts";
+import {
+  determineRetryBehavior,
+  type ResolvedRetryStrategy,
+  resolveRetryStrategy,
+  type RetryStrategy,
+} from "./retry.ts";
 import { signalAsyncLocalStorage } from "./storage.ts";
 import { type AnyTool, ModelOutput, type Tool } from "./tool.ts";
 import {
@@ -31,7 +38,6 @@ import type {
 import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
 
 const DEFAULT_MAX_TURNS = 100;
-const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
 
 type ExtractModelOutput<Tools extends Tool[]> = [Tools[number]] extends [never] ? never
@@ -89,22 +95,30 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
   output?: z.ZodType<zO, zI>;
   /**
    * Maximum number of agentic turns (model call -> tool execution cycles).
-   * @experimental - might be removed or have its behaviour modified without any notice
+   * @experimental Might be removed or have its behaviour modified without any notice
    * @default 100
    */
   maxTurns?: number;
   /**
-   * Maximum number of consecutive retries per model before moving to the next
-   * model in the fallback list. After exhausting all models, the last error is
-   * thrown. Models are tried in round-robin when retries are available.
-   * @experimental - might be removed or have its behaviour modified without any notice
-   * @default 3
+   * Configuration for retry and fallback behavior when model calls fail.
+   * Controls how the agent handles different error types (network issues, timeouts, rate limits, etc.)
+   *
+   * @experimental Might be removed or have its behaviour modified without any notice
+   * @example
+   * ```ts
+   * retryStrategy: {
+   *   sameModelRetries: 2,  // Retry transient errors on same model
+   *   modelCycles: 1,       // How many times to cycle through all models
+   *   onTimeout: 'switch-model',
+   *   onNetworkError: 'retry-same',
+   * }
+   * ```
    */
-  maxRetries?: number;
+  retryStrategy?: RetryStrategy;
   /**
    * Maximum number of model error recovery attempts per model error before continuing with the next model.
    * Only relevant when `handleModelError` callback is provided.
-   * @experimental - might be removed or have its behaviour modified without any notice
+   * @experimental Might be removed or have its behaviour modified without any notice
    * @default 3
    */
   maxRecoveryAttempts?: number;
@@ -114,6 +128,8 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
    * The returned array is used only for this call; internal history is unchanged.
    *
    * Yield {@link ContextSummaryStartEvent} to stream compaction progress back to the caller.
+   *
+   * @experimental Might be removed or have its behaviour modified without any notice
    */
   beforeModelCall?: BeforeModelCall;
   /**
@@ -121,6 +137,8 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
    * the same model, or `null` to fall through to normal retry/fallback.
    *
    * Yield {@link ContextSummaryStartEvent} at the start to indicate compaction.
+   *
+   * @experimental Might be removed or have its behaviour modified without any notice
    */
   handleModelError?: HandleModelError;
 }
@@ -212,7 +230,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   #tools: Tool<any, any, any>[];
   #output?: z.ZodType<zO, zI>;
   #maxTurns: number;
-  #maxRetries: number;
+  #retryStrategy: ResolvedRetryStrategy;
   #maxRecoveryAttempts: number;
   #beforeModelCall: BeforeModelCall;
   #handleModelError?: HandleModelError;
@@ -224,7 +242,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     this.#tools = options.tools?.slice() ?? [];
     this.#output = options.output;
     this.#maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
-    this.#maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.#retryStrategy = resolveRetryStrategy(options.retryStrategy);
     this.#maxRecoveryAttempts = options.maxRecoveryAttempts ?? DEFAULT_MAX_RECOVERY_ATTEMPTS;
 
     this.#beforeModelCall = options.beforeModelCall ??
@@ -367,7 +385,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   }
 
   /**
-   * Try each model in round-robin, up to `maxRetries` full cycles.
+   * Try models with intelligent retry/fallback based on error classification.
    * Yields traced stream items. Tools are dispatched eagerly into `pendingTools`.
    */
   async *#invokeModel(options: {
@@ -398,8 +416,16 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     // Copied so that handleModelError can return a modified version without mutating the caller's arrays.
     let baseHistory: ChatItem[] = [...options.initialHistory, ...history];
 
-    for (let retry = 0; retry < this.#maxRetries; retry++) {
-      for (const model of this.#models) {
+    // Track retries per model within each cycle
+    let currentModelIndex = 0;
+    let sameModelRetries = 0;
+
+    for (let cycle = 0; cycle < this.#retryStrategy.modelCycles; cycle++) {
+      currentModelIndex = 0;
+      sameModelRetries = 0;
+
+      modelLoop: while (currentModelIndex < this.#models.length) {
+        const model = this.#models[currentModelIndex];
         const adapter = model.adapter;
 
         // Emit model_switched event when switching to a different model after a failure
@@ -412,6 +438,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             cause: lastSwitchCause,
             trace: agentTrace.id,
           };
+          sameModelRetries = 0;
         }
 
         // attempt 0 = initial call, 1..N = recovery retries via handleModelError
@@ -468,10 +495,14 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             messageTracer.cancel();
             modelTrace.error(error);
             lastError = error;
-            agentTrace.log(`Model ${adapter.name} failed: ${errMessage(error)}`, error);
 
-            // Allow recovering from errors (e.g., compact history on context-window overflow).
-            // If handleModelError returns a new history, we retry the SAME model with that history.
+            // Classify the error - try adapter's classifier first, fall back to heuristics
+            const classified = adapter.classifyError?.(error) ?? classifyError(error);
+            agentTrace.log(`Model ${adapter.name} failed (${classified.kind}): ${errMessage(error)}`, error);
+
+            const behavior = determineRetryBehavior(classified, this.#retryStrategy, sameModelRetries);
+
+            // Always try handleModelError if provided - let the user decide what errors to handle
             if (attempt < this.#maxRecoveryAttempts && this.#handleModelError) {
               const { assembled: recovered, compactionItems: recoveryCompactionItems } = yield* consumeCompactionEvents(
                 this.#handleModelError(error, baseHistory, { turn, attempt, usage: options.usage }),
@@ -490,13 +521,26 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               }
             }
 
-            // No recovery possible - try the next model in the fallback list
+            if (behavior === "no-retry") {
+              throw error;
+            }
+
+            if (behavior === "retry-same") {
+              sameModelRetries++;
+              modelCallReason = "retry-transient";
+              continue modelLoop;
+            }
+
+            // switch-model: break out of recovery loop, fall through to next model
             lastSwitchCause = error;
             previousModel = { provider: adapter.name, model: adapter.model };
-            modelCallReason = "retry-provider-error";
+            modelCallReason = "retry-model-switch";
             break;
           }
         }
+
+        // If we got here, we exhausted recovery attempts without success - move to next model
+        currentModelIndex++;
       }
     }
 

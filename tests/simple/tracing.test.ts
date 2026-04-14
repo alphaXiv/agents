@@ -596,7 +596,7 @@ Deno.test("provider retries after partial output keep failed message spans", asy
   assertEquals(modelTraces[0].errorMessage, "provider failed");
   assertEquals(modelTraces[0].content.reason, "init");
   assertEquals(modelTraces[1].errorMessage, null);
-  assertEquals(modelTraces[1].content.reason, "retry-provider-error");
+  assertEquals(modelTraces[1].content.reason, "retry-transient");
   assertEquals(agentTrace.errorMessage, null);
   assertEquals(run.history.length, 1);
   assertEquals(run.history[0]?.content, "partialworked");
@@ -637,7 +637,7 @@ Deno.test("regression: all provider retry traces are annotated as 'retry-provide
   assertEquals(modelTraces.length, 3);
   assertEquals(
     modelTraces.map((t) => t.content.reason),
-    ["init", "retry-provider-error", "retry-provider-error"],
+    ["init", "retry-transient", "retry-transient"],
   );
   assertEquals(modelTraces[0].errorMessage, "provider failed");
   assertEquals(modelTraces[1].errorMessage, "provider failed");

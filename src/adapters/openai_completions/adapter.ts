@@ -4,6 +4,7 @@ import type {
   ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
 import type z from "zod";
+import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import type { AdapterStreamIterator, ChatItem, ChatItemInputFile, ChatItemToolResultFile } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
@@ -157,6 +158,10 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
     this.#supportedMimeTypes = supportedMimeTypes;
     this.#pdfSupport = options.pdfSupport;
     this.#extraRequestBody = options.extraRequestBody;
+  }
+
+  override classifyError(error: unknown) {
+    return classifyOpenAIError(error);
   }
 
   async getHistory(
