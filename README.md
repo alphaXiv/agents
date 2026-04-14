@@ -168,7 +168,9 @@ const agent = new Agent({
 
 ## Fallback models and retry strategy
 
-An agent can be configured with multiple models for automatic fallback. The retry behavior is dependant on the error type that occured and will automatically determine whether to retry, fallback to the next model or try to handle it differently.
+An agent can be configured with multiple models for automatic fallback. The retry behavior is dependant on the error
+type that occured and will automatically determine whether to retry, fallback to the next model or try to handle it
+differently.
 
 ```ts
 import { Agent, AnthropicModel, OpenAIModel } from "jsr:@alphaxiv/agents";
