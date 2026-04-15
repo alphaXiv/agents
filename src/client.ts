@@ -67,6 +67,12 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
         kind: streamItem.kind,
         content: streamItem.content,
       };
+    case "context_summary_start":
+    case "context_summary":
+    case "model_switched":
+      throw new Error(
+        `Context summary items cannot be unambiguously converted into ChatItem. Spotted "${streamItem.type}".`,
+      );
   }
 }
 
@@ -81,6 +87,16 @@ export function addStreamItem<T extends ChatItem>(
   streamItem: T extends { trace: string } ? WithTraceId<StreamItem> : StreamItem,
 ): void {
   const currentChatItems = chatItems as MutableChatItem[];
+
+  // Informational events don't produce conversation items.
+  if (
+    streamItem.type === "context_summary_start" ||
+    streamItem.type === "context_summary" ||
+    streamItem.type === "model_switched"
+  ) {
+    return;
+  }
+
   const { denseIndex, isNew } = ensureDenseIndex(
     currentChatItems,
     streamItem.index,
@@ -159,6 +175,13 @@ export async function* convertChatItemsToStream(input: {
         type: "tool_result_file",
         tool_use_id: item.tool_use_id,
         kind: item.kind,
+        content: item.content,
+        index,
+      };
+      index += 1;
+    } else if (item.type === "context_summary") {
+      yield {
+        type: "context_summary",
         content: item.content,
         index,
       };

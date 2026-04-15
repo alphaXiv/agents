@@ -4,6 +4,7 @@ import type {
   ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
 import type z from "zod";
+import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import type { AdapterStreamIterator, ChatItem, ChatItemInputFile, ChatItemToolResultFile } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
@@ -22,6 +23,7 @@ import {
 } from "../shared/media.ts";
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
 import { normalizeOpenAICompletionsTools, type OpenAICompletionsToolMap } from "./tools.ts";
+import type { ClassifiedError } from "../../errors.ts";
 
 type FileHistoryItem = ChatItemInputFile | ChatItemToolResultFile;
 export type OpenAICompletionsClient = Pick<OpenAI, "chat">;
@@ -159,6 +161,10 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
     this.#extraRequestBody = options.extraRequestBody;
   }
 
+  override classifyError(error: unknown): ClassifiedError | null {
+    return classifyOpenAIError(error);
+  }
+
   async getHistory(
     history: ChatItem[],
     instructions: string,
@@ -185,6 +191,12 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
           });
           break;
         case "output_reasoning":
+          break;
+        case "context_summary":
+          messages.push({
+            role: "user",
+            content: historyItem.content,
+          });
           break;
         case "tool_use": {
           const tool = normalizedTools.find((candidate) => candidate.original.normalizedName === historyItem.kind);

@@ -116,6 +116,9 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
         case "output_text":
           googleHistory.push({ role: "model", parts: [{ text: item.content }] });
           break;
+        case "context_summary":
+          googleHistory.push({ role: "user", parts: [{ text: item.content }] });
+          break;
         case "tool_use": {
           const tool = toolMap.find((tool) => tool.original.normalizedName === item.kind);
           const content = item.content ? JSON.parse(item.content) : undefined;

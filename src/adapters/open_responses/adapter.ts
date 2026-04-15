@@ -10,6 +10,7 @@ import type {
   ResponseOutputMessage,
 } from "openai/resources/responses/responses";
 import type { ReasoningEffort } from "openai/resources/shared";
+
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
@@ -25,7 +26,9 @@ import {
   unsupportedMediaTypeError,
 } from "../shared/media.ts";
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
+import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { normalizeOpenResponsesTools, type OpenResponsesToolMap } from "./tools.ts";
+import type { ClassifiedError } from "../../errors.ts";
 
 type FileHistoryItem = Extract<ChatItem, { type: "input_file" } | { type: "tool_result_file" }>;
 
@@ -157,6 +160,10 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
     this.#supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
   }
 
+  override classifyError(error: unknown): ClassifiedError | null {
+    return classifyOpenAIError(error);
+  }
+
   async getHistory(
     history: ChatItem[],
     normalizedTools: OpenResponsesToolMap[],
@@ -179,6 +186,9 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
         case "output_reasoning":
           // Responses API expects provider-issued reasoning item ids on replay.
           // We only persist the text summary, so skip it rather than sending fake ids.
+          break;
+        case "context_summary":
+          responseHistory.push(createUserTextMessage(historyItem.content));
           break;
         case "tool_use": {
           const tool = normalizedTools.find((candidate) => candidate.original.normalizedName === historyItem.kind);

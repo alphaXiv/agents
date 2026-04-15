@@ -1,5 +1,17 @@
 export { Agent } from "./src/agent.ts";
-export type { AgentOptions, AgentRunOptions, AgentRunResult } from "./src/agent.ts";
+export type {
+  AgentOptions,
+  AgentRunOptions,
+  AgentRunResult,
+  BeforeModelCall as BeforeModelCallFn,
+  HandleModelError as HandleModelErrorFn,
+} from "./src/agent.ts";
+
+export { classifyError, createClassifiedError, ERROR_KINDS } from "./src/errors.ts";
+export type { ClassifiedError, ErrorKind } from "./src/errors.ts";
+
+export { DEFAULT_RETRY_STRATEGY, determineRetryBehavior, resolveRetryStrategy } from "./src/retry.ts";
+export type { ResolvedRetryStrategy, RetryBehavior, RetryStrategy } from "./src/retry.ts";
 
 export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
 export { cli } from "./src/cli.ts";
@@ -81,14 +93,17 @@ export type {
   AgentStreamIterator,
   Awaitable,
   ChatItem,
+  ChatItemContextSummary,
   ChatItemInputFile,
   ChatItemToolResult,
   ChatItemToolResultFile,
   ChatItemToolResultText,
   ChatItemToolUse,
   ChatLike,
+  ContextSummaryStartEvent,
   ProviderStreamMetadata,
   StreamItem,
+  TokenUsage,
   ToolResultLike,
   WithTraceId,
 } from "./src/types.ts";

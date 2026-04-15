@@ -146,8 +146,8 @@ Deno.test("global tracer captures tool turns, message spans, and token counts", 
 
   const run = await agent.run("find cats");
   assertEquals(run.outputText, "done: results for cats");
-  assertEquals(run.inputTokens, 10);
-  assertEquals(run.outputTokens, 16);
+  assertEquals(run.usage.totalInputTokens, 10);
+  assertEquals(run.usage.totalOutputTokens, 16);
   assertStartsMatchEvents(starts, events);
 
   const agentTrace = filterTrace(events, "agent")[0];
@@ -271,8 +271,8 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     tracers: [tracer],
   });
   assertEquals(run.outputText, "subagent result");
-  assertEquals(run.inputTokens, 6);
-  assertEquals(run.outputTokens, 8);
+  assertEquals(run.usage.totalInputTokens, 6);
+  assertEquals(run.usage.totalOutputTokens, 8);
   assertStartsMatchEvents(starts, events);
 
   assertEquals(traceSnapshot(events), [
@@ -594,12 +594,54 @@ Deno.test("provider retries after partial output keep failed message spans", asy
   assertEquals(messageTraces.length, 2);
   assertEquals(messageTraces[0].errorMessage, "Cancelled by provider error");
   assertEquals(modelTraces[0].errorMessage, "provider failed");
+  assertEquals(modelTraces[0].content.reason, "init");
   assertEquals(modelTraces[1].errorMessage, null);
-  assertEquals(modelTraces[1].content.reason, "init");
+  assertEquals(modelTraces[1].content.reason, "retry-transient");
   assertEquals(agentTrace.errorMessage, null);
   assertEquals(run.history.length, 1);
   assertEquals(run.history[0]?.content, "partialworked");
   assertEquals(run.history[0]?.trace, messageTraces[1].id);
+});
+
+Deno.test("regression: all provider retry traces are annotated as 'retry-provider-error', not 'init'", async () => {
+  const { events, tracer } = createRecorder();
+  let calls = 0;
+
+  const model = new TraceTestModel({
+    name: "flaky",
+    model: "flaky-model",
+    stream: async function* () {
+      calls += 1;
+      if (calls < 3) {
+        throw new Error("provider failed");
+      }
+      yield {
+        type: "delta_output_text",
+        index: 0,
+        delta: "done",
+      };
+      return { inputTokens: 1, outputTokens: 1 };
+    },
+  });
+
+  const agent = new Agent({
+    model,
+    instructions: "Answer plainly.",
+  });
+
+  const run = await agent.run("hello", { tracers: [tracer] });
+  assertEquals(run.outputText, "done");
+  assertEquals(calls, 3);
+
+  const modelTraces = filterTrace(events, "model");
+  assertEquals(modelTraces.length, 3);
+  assertEquals(
+    modelTraces.map((t) => t.content.reason),
+    ["init", "retry-transient", "retry-transient"],
+  );
+  assertEquals(modelTraces[0].errorMessage, "provider failed");
+  assertEquals(modelTraces[1].errorMessage, "provider failed");
+  assertEquals(modelTraces[2].errorMessage, null);
 });
 
 Deno.test("malformed structured output emits a log span and retries cleanly", async () => {

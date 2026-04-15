@@ -49,7 +49,7 @@ interface ToolOptions<zO, zI, TModelOutput> {
   /**
    * Total timeout in milliseconds for each tool execution.
    * Does not reset on {@linkcode retries} attempts.
-   * @experimental - might be removed or have its behaviour modified without any notice
+   * @experimental Might be removed or have its behaviour modified without any notice
    */
   timeout?: number;
 }

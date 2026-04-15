@@ -1,5 +1,21 @@
 import type { AgentRunResult } from "./agent.ts";
 
+/**
+ * Token usage statistics for an agent run.
+ * If the provider is unable to classify, then all tokens are "output" tokens.
+ */
+export interface TokenUsage {
+  /** Input tokens from the most recent model call. */
+  inputTokens: number;
+  /** Output tokens from the most recent model call. */
+  outputTokens: number;
+
+  /** Total input tokens used over the span of the agent run */
+  totalInputTokens: number;
+  /** Total output tokens used over the span of the agent run */
+  totalOutputTokens: number;
+}
+
 export type ChatItemToolUse = {
   type: "tool_use";
   /** Provider generated string representing the id of the tool call */
@@ -36,6 +52,14 @@ export type ChatItemInputFile = {
   content: string;
 };
 
+export type ChatItemContextSummary = {
+  type: "context_summary";
+  /** Summary of prior conversation */
+  content: string;
+};
+
+export type ContextSummaryStartEvent = { type: "context_summary_start" };
+
 export type ChatItemToolResult =
   | ChatItemToolResultText
   | ChatItemToolResultFile;
@@ -58,6 +82,7 @@ export type ChatItem =
     content: string;
   }
   | ChatItemInputFile
+  | ChatItemContextSummary
   | ChatItemToolUse
   | ChatItemToolResultText
   | ChatItemToolResultFile;
@@ -75,6 +100,11 @@ export type WithTraceId<T> = T & {
    */
   trace: string;
 };
+
+export interface ModelInfo {
+  provider: string;
+  model: string;
+}
 
 export type ToolResultLike = string | ({
   type: "tool_result_file";
@@ -114,6 +144,16 @@ type StreamItemType = {
   tool_use_id: string;
   kind: string;
   content: string;
+} | {
+  type: "context_summary_start";
+} | {
+  type: "context_summary";
+  content: string;
+} | {
+  type: "model_switched";
+  from: ModelInfo;
+  to: ModelInfo;
+  cause: unknown;
 };
 
 export type StreamItem = BaseStreamItem & StreamItemType;

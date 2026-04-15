@@ -166,10 +166,11 @@ const agent = new Agent({
 - Tools support per-tool retries, timeouts and signal cancellation
 - Agent-level aborts propagate into running tools
 
-## Fallback models
+## Fallback models and retry strategy
 
-An agent can be configured with multiple models. The run retries in round-robin order and falls back across providers if
-needed.
+An agent can be configured with multiple models for automatic fallback. The retry behavior is dependant on the error
+type that occured and will automatically determine whether to retry, fallback to the next model or try to handle it
+differently.
 
 ```ts
 import { Agent, AnthropicModel, OpenAIModel } from "jsr:@alphaxiv/agents";
@@ -180,7 +181,53 @@ const agent = new Agent({
     new AnthropicModel({ model: "claude-haiku-4-5" }),
   ],
   instructions: "You are a reliable assistant.",
-  maxRetries: 3,
+});
+```
+
+### Customizing retry behavior
+
+You can customize the retry strategy to match your needs:
+
+```ts
+const agent = new Agent({
+  model: [
+    new OpenAIModel({ model: "gpt-5.4-mini" }),
+    new AnthropicModel({ model: "claude-haiku-4-5" }),
+  ],
+  instructions: "You are a helpful assistant.",
+  retryStrategy: {
+    // How many times to retry transient errors on the same model
+    sameModelRetries: 2,
+    // How many complete cycles through all models to attempt
+    modelCycles: 1,
+    // Behavior per error type
+    onTimeout: "switch-model",
+    onRateLimit: "switch-model",
+    onNetworkError: "retry-same",
+    onServerError: "retry-same",
+    onModelUnavailable: "switch-model",
+  },
+});
+```
+
+### Custom error handling
+
+For advanced use cases, you can provide a custom handler to override retry behavior:
+
+```ts
+const agent = new Agent({
+  model: myModel,
+  instructions: "...",
+  retryStrategy: {
+    customHandler: (classified) => {
+      // classified.kind is one of: "network", "timeout", "rate_limit", "server", etc.
+      // Return "retry-same", "switch-model", "no-retry", or null to use defaults
+      if (classified.kind === "rate_limit") {
+        return "no-retry"; // Give up immediately on rate limits
+      }
+      return null; // Use default behavior
+    },
+  },
 });
 ```
 

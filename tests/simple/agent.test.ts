@@ -2,8 +2,14 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { assertObjectMatch } from "@std/assert/object-match";
 import { delay } from "@std/async/delay";
 import z from "zod";
-import { Agent, Tool } from "../../mod.ts";
-import { DeterministicTestModel, FailingTestModel, testingTracker } from "./testing-model.ts";
+import { Agent, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
+import {
+  ContextWindowTestModel,
+  DeterministicTestModel,
+  FailingTestModel,
+  HistoryRecordingTestModel,
+  testingTracker,
+} from "./testing-model.ts";
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({
@@ -317,7 +323,7 @@ Deno.test("Disable retrying of an agent", async () => {
     model: new FailingTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
-    maxRetries: 1,
+    retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
   });
 
   const counter = { failures: 0 };
@@ -329,4 +335,194 @@ Deno.test("Disable retrying of an agent", async () => {
     "Deterministic Provider Error",
   );
   assertEquals(counter.failures, 1);
+});
+
+Deno.test("handleModelError recovers from context window errors", async () => {
+  let recoveryCalls = 0;
+
+  const agent = new Agent({
+    model: new ContextWindowTestModel(3),
+    instructions: "You are a friendly assistant",
+    async *handleModelError(error, history, _context) {
+      if (error instanceof Error && error.message.includes("context length")) {
+        yield { type: "context_summary_start" as const };
+        recoveryCalls += 1;
+        return history.filter((item) => item.type !== "input_file");
+      }
+      return null;
+    },
+  });
+
+  const run = await agent.run([
+    { type: "input_text", content: "Hello!" },
+    { type: "input_file", kind: "image/png", content: "aaa" },
+    { type: "input_file", kind: "image/png", content: "bbb" },
+    { type: "input_file", kind: "image/png", content: "ccc" },
+    { type: "input_file", kind: "image/png", content: "ddd" },
+  ]);
+
+  assert(recoveryCalls > 0);
+  assertEquals(run.outputText, "Recovery successful!");
+});
+
+Deno.test("handleModelError returning null falls through to normal retry", async () => {
+  let handleCalls = 0;
+
+  const agent = new Agent({
+    model: new FailingTestModel(),
+    instructions: "You are a friendly assistant.",
+    // deno-lint-ignore require-yield
+    async *handleModelError(_error, _history, _context) {
+      handleCalls += 1;
+      return null;
+    },
+  });
+
+  await assertRejects(
+    () => agent.run("Hello!"),
+    Error,
+    "Deterministic Provider Error",
+  );
+  assertEquals(handleCalls, 3);
+});
+
+Deno.test("model receives history filtered from last context_summary", async () => {
+  const model = new HistoryRecordingTestModel("response");
+
+  // Simulate a history with a context_summary in the middle
+  const historyWithSummary: ChatItem[] = [
+    { type: "input_text", content: "old message 1" },
+    { type: "output_text", content: "old response 1" },
+    { type: "context_summary", content: "Summary of old conversation" },
+    { type: "input_text", content: "recent message" },
+    { type: "output_text", content: "recent response" },
+  ];
+
+  const agent = new Agent({
+    model,
+    instructions: "Test agent",
+  });
+
+  await agent.run(historyWithSummary);
+
+  // Model should only see from the last context_summary onwards
+  assertEquals(model.receivedHistories.length, 1);
+  const receivedHistory = model.receivedHistories[0];
+
+  assertEquals(receivedHistory.length, 3);
+  assertEquals(receivedHistory[0].type, "context_summary");
+  assertEquals(receivedHistory[0].content, "Summary of old conversation");
+  assertEquals(receivedHistory[1].type, "input_text");
+  assertEquals(receivedHistory[1].content, "recent message");
+  assertEquals(receivedHistory[2].type, "output_text");
+  assertEquals(receivedHistory[2].content, "recent response");
+});
+
+Deno.test("model receives history filtered from LATEST context_summary when multiple exist", async () => {
+  const model = new HistoryRecordingTestModel("response");
+
+  // History with multiple context_summaries:
+  // [conversationA, compactionA, conversationB, compactionB, conversationC]
+  const historyWithMultipleSummaries: ChatItem[] = [
+    { type: "input_text", content: "conversationA message" },
+    { type: "output_text", content: "conversationA response" },
+    { type: "context_summary", content: "compactionA - summary of A" },
+    { type: "input_text", content: "conversationB message" },
+    { type: "output_text", content: "conversationB response" },
+    { type: "context_summary", content: "compactionB - summary of A+B" },
+    { type: "input_text", content: "conversationC message" },
+  ];
+
+  const agent = new Agent({
+    model,
+    instructions: "Test agent",
+  });
+
+  await agent.run(historyWithMultipleSummaries);
+
+  // Model should only see [compactionB, conversationC]
+  assertEquals(model.receivedHistories.length, 1);
+  const receivedHistory = model.receivedHistories[0];
+
+  assertEquals(receivedHistory.length, 2);
+  assertEquals(receivedHistory[0].type, "context_summary");
+  assertEquals(receivedHistory[0].content, "compactionB - summary of A+B");
+  assertEquals(receivedHistory[1].type, "input_text");
+  assertEquals(receivedHistory[1].content, "conversationC message");
+});
+
+Deno.test("beforeModelCall compaction items appear before model output in history", async () => {
+  const model = new HistoryRecordingTestModel("model response");
+
+  const agent = new Agent({
+    model,
+    instructions: "Test agent",
+    async *beforeModelCall(history, _context) {
+      // Always add a compaction summary at the start
+      yield { type: "context_summary_start" };
+      return [
+        { type: "context_summary", content: "Summary of prior context" },
+        ...history,
+      ];
+    },
+  });
+
+  const run = await agent.run("Hello");
+
+  // History should have context_summary BEFORE the model's output
+  const summaryIndex = run.history.findIndex((item) => item.type === "context_summary");
+  const outputIndex = run.history.findIndex((item) => item.type === "output_text");
+
+  assert(summaryIndex !== -1, "Should have a context_summary in history");
+  assert(outputIndex !== -1, "Should have an output_text in history");
+  assert(summaryIndex < outputIndex, "context_summary should appear before output_text");
+});
+
+Deno.test("compaction items are only added after successful model call", async () => {
+  let beforeModelCallCount = 0;
+
+  const agent = new Agent({
+    model: new FailingTestModel(),
+    instructions: "Test agent",
+    retryStrategy: { modelCycles: 2, sameModelRetries: 0 },
+    async *beforeModelCall(history, _context) {
+      beforeModelCallCount++;
+      yield { type: "context_summary_start" };
+      return [
+        { type: "context_summary", content: `Summary ${beforeModelCallCount}` },
+        ...history,
+      ];
+    },
+  });
+
+  // The agent will fail, but beforeModelCall will be called multiple times
+  await assertRejects(() => agent.run("Hello"), Error, "Deterministic Provider Error");
+
+  // beforeModelCall was called multiple times due to retries
+  assert(beforeModelCallCount >= 2, "beforeModelCall should be called on retries");
+});
+
+Deno.test("model_switched event is emitted when falling back to another model", async () => {
+  const agent = new Agent({
+    model: [new FailingTestModel(), new DeterministicTestModel()],
+    instructions: "You are a friendly assistant",
+    retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
+  });
+
+  const streamItems: StreamItem[] = [];
+  const stream = agent.stream("Hello!");
+
+  for await (const item of stream) {
+    streamItems.push(item);
+  }
+
+  const switchEvent = streamItems.find((item) => item.type === "model_switched");
+  assert(switchEvent, "Should emit a model_switched event");
+  assert(switchEvent.type === "model_switched");
+  assertEquals(switchEvent.from.provider, "deterministic-failing");
+  assertEquals(switchEvent.from.model, "deterministic-failing");
+  assertEquals(switchEvent.to.provider, "deterministic");
+  assertEquals(switchEvent.to.model, "deterministic");
+  assert(switchEvent.cause instanceof Error, "cause should be the original error");
+  assertEquals((switchEvent.cause as Error).message, "Deterministic Provider Error");
 });
