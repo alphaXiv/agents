@@ -736,7 +736,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       content: { name: use.kind },
     });
     try {
-      const tool = this.#tools.find((t) => t.normalizedName === use.kind);
+      const tool = this.#tools.find((t) => t.name === use.kind);
       if (!tool) {
         throw new Error(`Tool does not exist: ${use.kind}`);
       }

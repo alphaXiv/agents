@@ -64,7 +64,7 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
         { type: "input_text", content: "hello" },
         { type: "output_text", content: "hi there" },
         { type: "output_reasoning", content: "I should search first." },
-        { type: "tool_use", tool_use_id: "call_1", kind: searchTool.normalizedName, content: '"cats"' },
+        { type: "tool_use", tool_use_id: "call_1", kind: searchTool.name, content: '"cats"' },
         { type: "tool_result_text", tool_use_id: "call_1", content: "found 2 results" },
         { type: "tool_result_file", tool_use_id: "call_1", kind: "text/csv", content: "https://example.com/cats.csv" },
         { type: "input_file", kind: "application/pdf", content: "https://example.com/cats.pdf" },
@@ -253,9 +253,9 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
   assertEquals(items, [
     { type: "delta_output_text", delta: "Hello", index: 0 },
     { type: "delta_output_reasoning", delta: "Need tool", index: 1 },
-    { type: "tool_use_start", tool_use_id: "call_1", kind: "search", index: 2 },
+    { type: "tool_use_start", tool_use_id: "call_1", kind: "Search", index: 2 },
     { type: "delta_output_text", delta: "Done", index: 3 },
-    { type: "tool_use", tool_use_id: "call_1", kind: "search", content: '"cats"', index: 2 },
+    { type: "tool_use", tool_use_id: "call_1", kind: "Search", content: '"cats"', index: 2 },
   ]);
 
   assertEquals(capturedRequest, {

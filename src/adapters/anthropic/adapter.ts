@@ -123,7 +123,7 @@ export class AnthropicAdapter<TModel extends AnthropicModels> extends Adapter<TM
           break;
         }
         case "tool_use": {
-          const tool = normalizedTools.find((tool) => tool.original.normalizedName === historyItem.kind);
+          const tool = normalizedTools.find((tool) => tool.original.name === historyItem.kind);
           const content = historyItem.content ? JSON.parse(historyItem.content) : {};
           anthropicHistory.push({
             role: "assistant",
@@ -340,7 +340,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           yield {
             type: "tool_use_start",
             index: part.index,
-            kind: tool?.original.normalizedName ?? block.name,
+            kind: tool?.original.name ?? block.name,
             tool_use_id: block.id,
           };
         }
@@ -358,7 +358,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           yield {
             type: "tool_use",
             index: part.index,
-            kind: tool?.original.normalizedName ?? endingPart.kind,
+            kind: tool?.original.name ?? endingPart.kind,
             tool_use_id: endingPart.tool_use_id,
             content: restoredContent,
           };
