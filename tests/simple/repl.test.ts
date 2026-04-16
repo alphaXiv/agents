@@ -107,13 +107,13 @@ class StatusReplAdapter extends Adapter<"repl-status-test"> {
       yield {
         type: "tool_use_start",
         tool_use_id: "tool-1",
-        kind: lookupTool.normalizedName,
+        kind: lookupTool.name,
         index: 1,
       };
       yield {
         type: "tool_use",
         tool_use_id: "tool-1",
-        kind: lookupTool.normalizedName,
+        kind: lookupTool.name,
         content: '"hello"',
         index: 1,
       };

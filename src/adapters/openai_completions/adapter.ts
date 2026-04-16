@@ -199,7 +199,7 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
           });
           break;
         case "tool_use": {
-          const tool = normalizedTools.find((candidate) => candidate.original.normalizedName === historyItem.kind);
+          const tool = normalizedTools.find((candidate) => candidate.original.name === historyItem.kind);
           messages.push({
             role: "assistant",
             content: null,
@@ -353,7 +353,7 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
             type: "tool_use_start",
             index: pending.streamIndex,
             tool_use_id: pending.callId,
-            kind: tool?.original.normalizedName ?? pending.name,
+            kind: tool?.original.name ?? pending.name,
           };
         }
 
@@ -373,7 +373,7 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
         type: "tool_use",
         index: pending.streamIndex,
         tool_use_id: pending.callId,
-        kind: tool?.original.normalizedName ?? pending.name,
+        kind: tool?.original.name ?? pending.name,
         content: restoreWrappedToolArguments(pending.content, tool),
       };
     }

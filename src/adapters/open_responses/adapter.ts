@@ -191,13 +191,13 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
           responseHistory.push(createUserTextMessage(historyItem.content));
           break;
         case "tool_use": {
-          const tool = normalizedTools.find((candidate) => candidate.original.normalizedName === historyItem.kind);
+          const tool = normalizedTools.find((candidate) => candidate.original.name === historyItem.kind);
           responseHistory.push({
             id: getSyntheticId("fc"),
             type: "function_call",
             status: "completed",
             call_id: historyItem.tool_use_id,
-            name: historyItem.kind,
+            name: tool?.openResponses.name ?? historyItem.kind,
             arguments: serializeWrappedToolArguments(historyItem.content, tool),
           });
           break;
@@ -242,7 +242,7 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
   ): AdapterStreamIterator {
     const normalizedTools = normalizeOpenResponsesTools(tools);
     const responseHistory = await this.getHistory(history, normalizedTools, signal);
-    const toolByName = new Map(normalizedTools.map((tool) => [tool.original.normalizedName, tool]));
+    const toolByName = new Map(normalizedTools.map((tool) => [tool.openResponses.name, tool]));
     const pendingToolCallsByOutputIndex = new Map<number, { tool_use_id: string; kind: string }>();
     const pendingToolCallsByItemId = new Map<string, { tool_use_id: string; kind: string }>();
 
@@ -291,7 +291,7 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
             const tool = toolByName.get(part.item.name);
             const pendingToolCall = {
               tool_use_id: part.item.call_id,
-              kind: tool?.original.normalizedName ?? part.item.name,
+              kind: tool?.original.name ?? part.item.name,
             };
             pendingToolCallsByOutputIndex.set(part.output_index, pendingToolCall);
             if (part.item.id) {
@@ -313,7 +313,7 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
             type: "tool_use",
             index: part.output_index,
             tool_use_id: pendingToolCall?.tool_use_id ?? part.item_id,
-            kind: pendingToolCall?.kind ?? tool?.original.normalizedName ?? part.name,
+            kind: pendingToolCall?.kind ?? tool?.original.name ?? part.name,
             content: restoreWrappedToolArguments(part.arguments, tool),
           };
           break;

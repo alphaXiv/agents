@@ -1,7 +1,7 @@
 import type { Tool as AnthropicTool } from "@anthropic-ai/sdk/resources/messages/messages";
 import z from "zod";
 import type { JSONSchema } from "zod/v4/core";
-import type { Tool } from "../../tool.ts";
+import type { AnyTool, Tool } from "../../tool.ts";
 
 type ZodJsonSchema = JSONSchema.BaseSchema;
 type ZodJsonSchemaInput = JSONSchema._JSONSchema;
@@ -63,7 +63,7 @@ interface TransformContext {
 const INTEGER_BOUNDS =
   `within the JavaScript safe integer range (${Number.MIN_SAFE_INTEGER} to ${Number.MAX_SAFE_INTEGER})`;
 
-export function normalizeAnthropicTools(tools: Tool[]): AnthropicToolMap[] {
+export function normalizeAnthropicTools(tools: AnyTool[]): AnthropicToolMap[] {
   return tools.map((tool): AnthropicToolMap => {
     const name = tool.normalizedName;
 

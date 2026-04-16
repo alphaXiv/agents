@@ -120,7 +120,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
           googleHistory.push({ role: "user", parts: [{ text: item.content }] });
           break;
         case "tool_use": {
-          const tool = toolMap.find((tool) => tool.original.normalizedName === item.kind);
+          const tool = toolMap.find((tool) => tool.original.name === item.kind);
           const content = item.content ? JSON.parse(item.content) : undefined;
           // Magic word comes from https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#migrating_from_other_models
           const thoughtSignature = signatureMap.get(item.tool_use_id) ?? "context_engineering_is_the_way_to_go";
@@ -145,7 +145,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
           );
           assert(toolCall);
 
-          const definition = toolMap.find((x) => x.original.normalizedName === toolCall.kind);
+          const definition = toolMap.find((x) => x.original.name === toolCall.kind);
           assert(definition);
 
           googleHistory.push({
@@ -252,13 +252,13 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
           yield {
             type: "tool_use_start",
             index,
-            kind: tool?.original.normalizedName ?? func.name,
+            kind: tool?.original.name ?? func.name,
             tool_use_id: funcId,
           };
           yield {
             type: "tool_use",
             tool_use_id: funcId,
-            kind: tool?.original.normalizedName ?? func.name,
+            kind: tool?.original.name ?? func.name,
             content: tool?.isVoid ? undefined : JSON.stringify(
               tool?.wrapperObject ? func.args?.content : func.args,
             ),

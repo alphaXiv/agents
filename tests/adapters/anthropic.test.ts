@@ -291,10 +291,10 @@ Deno.test("Anthropic tool history re-wraps normalized string tool inputs as obje
     [{
       type: "tool_use",
       tool_use_id: "call_1",
-      kind: searchTool.normalizedName,
+      kind: searchTool.name,
       content: '"cats"',
     }],
-    normalizeAnthropicTools([searchTool as unknown as Tool]),
+    normalizeAnthropicTools([searchTool]),
     AbortSignal.abort(),
   );
 

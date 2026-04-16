@@ -80,8 +80,8 @@ class DeterministicTestAdapter extends Adapter<"deterministic"> {
         return convertChatItemsToStream({
           items: [{
             type: "tool_use",
-            tool_use_id: `id-${outputTool.normalizedName}`,
-            kind: outputTool.normalizedName,
+            tool_use_id: `id-${outputTool.name}`,
+            kind: outputTool.name,
           }],
           inputTokens: 0,
           outputTokens: 0,
@@ -95,13 +95,13 @@ class DeterministicTestAdapter extends Adapter<"deterministic"> {
             type: "tool_use_start" as const,
             index: 0,
             tool_use_id: "id-my-tool",
-            kind: tool.normalizedName,
+            kind: tool.name,
           };
           yield {
             type: "tool_use" as const,
             index: 0,
             tool_use_id: "id-my-tool",
-            kind: tool.normalizedName,
+            kind: tool.name,
             content: JSON.stringify("go"),
           };
           return { inputTokens: 0, outputTokens: 0 };
@@ -114,26 +114,26 @@ class DeterministicTestAdapter extends Adapter<"deterministic"> {
             type: "tool_use_start" as const,
             index: 0,
             tool_use_id: "id-slow",
-            kind: tools[0].normalizedName,
+            kind: tools[0].name,
           };
           yield {
             type: "tool_use" as const,
             index: 0,
             tool_use_id: "id-slow",
-            kind: tools[0].normalizedName,
+            kind: tools[0].name,
             content: JSON.stringify("go"),
           };
           yield {
             type: "tool_use_start" as const,
             index: 1,
             tool_use_id: "id-fast",
-            kind: tools[1].normalizedName,
+            kind: tools[1].name,
           };
           yield {
             type: "tool_use" as const,
             index: 1,
             tool_use_id: "id-fast",
-            kind: tools[1].normalizedName,
+            kind: tools[1].name,
             content: JSON.stringify("go"),
           };
           return { inputTokens: 0, outputTokens: 0 };
@@ -146,7 +146,7 @@ class DeterministicTestAdapter extends Adapter<"deterministic"> {
           items: [{
             type: "tool_use",
             tool_use_id: "id-search",
-            kind: searchTool.normalizedName,
+            kind: searchTool.name,
             content: JSON.stringify("cats"),
           }],
           inputTokens: 0,

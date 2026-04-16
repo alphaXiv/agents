@@ -1,10 +1,10 @@
-import type { Tool } from "openai/resources/responses/responses";
+import type { FunctionTool } from "openai/resources/responses/responses";
 import z from "zod";
 import type { AnyTool } from "../../tool.ts";
 
 export interface OpenResponsesToolMap {
   original: AnyTool;
-  openResponses: Tool;
+  openResponses: FunctionTool;
   /** Open Responses function tools expect object-shaped params, so non-objects are wrapped under `content`. */
   wrapperObject: boolean;
   /** No parameter specified. */

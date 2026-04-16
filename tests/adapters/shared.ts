@@ -209,8 +209,8 @@ export async function runAgentToolStreamingTest(
 
   const instructions = [
     "You are running a live SDK integration test.",
-    `Call ${fixtures.pingTool.normalizedName} exactly once with no parameters.`,
-    `Call ${fixtures.echoTool.normalizedName} exactly once with {\"query\":\"${fixtures.query}\"}.`,
+    `Call ${fixtures.pingTool.name} exactly once with no parameters.`,
+    `Call ${fixtures.echoTool.name} exactly once with {\"query\":\"${fixtures.query}\"}.`,
     `After all tool calls, respond with exactly ${fixtures.marker} and nothing else.`,
   ].join(" ");
 
@@ -235,43 +235,43 @@ export async function runAgentToolStreamingTest(
 
   await t.step("assert streamed void tool invocation", () => {
     assert(
-      items.some((item) => item.type === "tool_use_start" && item.kind === fixtures.pingTool.normalizedName),
-      `expected ${fixtures.pingTool.normalizedName} tool_use_start`,
+      items.some((item) => item.type === "tool_use_start" && item.kind === fixtures.pingTool.name),
+      `expected ${fixtures.pingTool.name} tool_use_start`,
     );
 
-    const toolUse = findToolUse(items, fixtures.pingTool.normalizedName);
-    assert(toolUse, `expected ${fixtures.pingTool.normalizedName} tool_use item`);
+    const toolUse = findToolUse(items, fixtures.pingTool.name);
+    assert(toolUse, `expected ${fixtures.pingTool.name} tool_use item`);
   });
 
   await t.step("assert streamed parameterized tool invocation", () => {
     assert(
-      items.some((item) => item.type === "tool_use_start" && item.kind === fixtures.echoTool.normalizedName),
-      `expected ${fixtures.echoTool.normalizedName} tool_use_start`,
+      items.some((item) => item.type === "tool_use_start" && item.kind === fixtures.echoTool.name),
+      `expected ${fixtures.echoTool.name} tool_use_start`,
     );
 
-    const toolUse = findToolUse(items, fixtures.echoTool.normalizedName);
-    assert(toolUse, `expected ${fixtures.echoTool.normalizedName} tool_use item`);
+    const toolUse = findToolUse(items, fixtures.echoTool.name);
+    assert(toolUse, `expected ${fixtures.echoTool.name} tool_use item`);
     assert(
       toolUse.content?.includes(fixtures.query),
-      `expected ${fixtures.echoTool.normalizedName} content to include ${fixtures.query}`,
+      `expected ${fixtures.echoTool.name} content to include ${fixtures.query}`,
     );
   });
 
   await t.step("assert streamed void tool result", () => {
-    const toolUse = findToolUse(items, fixtures.pingTool.normalizedName);
-    assert(toolUse, `missing ${fixtures.pingTool.normalizedName} tool use for result assertion`);
+    const toolUse = findToolUse(items, fixtures.pingTool.name);
+    assert(toolUse, `missing ${fixtures.pingTool.name} tool use for result assertion`);
 
     const toolResult = findToolResult(items, toolUse.tool_use_id);
-    assert(toolResult, `expected ${fixtures.pingTool.normalizedName} tool_result_text`);
+    assert(toolResult, `expected ${fixtures.pingTool.name} tool_result_text`);
     assertEquals(toolResult.content, fixtures.pingResult);
   });
 
   await t.step("assert streamed parameterized tool result", () => {
-    const toolUse = findToolUse(items, fixtures.echoTool.normalizedName);
-    assert(toolUse, `missing ${fixtures.echoTool.normalizedName} tool use for result assertion`);
+    const toolUse = findToolUse(items, fixtures.echoTool.name);
+    assert(toolUse, `missing ${fixtures.echoTool.name} tool use for result assertion`);
 
     const toolResult = findToolResult(items, toolUse.tool_use_id);
-    assert(toolResult, `expected ${fixtures.echoTool.normalizedName} tool_result_text`);
+    assert(toolResult, `expected ${fixtures.echoTool.name} tool_result_text`);
     assertEquals(toolResult.content, fixtures.echoResult);
   });
 
