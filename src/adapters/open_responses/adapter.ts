@@ -12,8 +12,10 @@ import type {
 import type { ReasoningEffort } from "openai/resources/shared";
 
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
+import type { ClassifiedError } from "../../errors.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
+import { classifyOpenAIError } from "../shared/classify_error.ts";
 import {
   DEFAULT_SUPPORTED_MIME_TYPES,
   fetchRemoteFileAsDataUrl,
@@ -25,10 +27,15 @@ import {
   supportsMimeType,
   unsupportedMediaTypeError,
 } from "../shared/media.ts";
+import { createOpenAICompatibleSchema } from "../shared/openai_compatibility.ts";
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
-import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { normalizeOpenResponsesTools, type OpenResponsesToolMap } from "./tools.ts";
-import type { ClassifiedError } from "../../errors.ts";
+
+interface PendingToolCall {
+  tool_use_id: string;
+  kind: string;
+  tool?: OpenResponsesToolMap;
+}
 
 type FileHistoryItem = Extract<ChatItem, { type: "input_file" } | { type: "tool_result_file" }>;
 
@@ -241,21 +248,33 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
     { history, instructions, tools, signal, output }: AdapterStreamOptions<zO, zI>,
   ): AdapterStreamIterator {
     const normalizedTools = normalizeOpenResponsesTools(tools);
+    const structuredOutput = output && createOpenAICompatibleSchema(output, {
+      kind: "output",
+      rootPath: "output",
+    });
+    const shouldRestoreStructuredOutput = structuredOutput?.requiresValueTransformation ?? false;
     const responseHistory = await this.getHistory(history, normalizedTools, signal);
-    const toolByName = new Map(normalizedTools.map((tool) => [tool.openResponses.name, tool]));
-    const pendingToolCallsByOutputIndex = new Map<number, { tool_use_id: string; kind: string }>();
-    const pendingToolCallsByItemId = new Map<string, { tool_use_id: string; kind: string }>();
+    const pendingToolCallsByOutputIndex: PendingToolCall[] = [];
+    const pendingToolCallsByItemId: Record<string, PendingToolCall> = {};
+    const pendingStructuredOutput: string[] = [];
 
     const request: OpenResponsesStreamingRequest = {
       model: this.model,
       input: responseHistory,
-      instructions,
+      instructions: structuredOutput?.instructions
+        ? `${structuredOutput.instructions}\n\n${instructions}`
+        : instructions,
       parallel_tool_calls: this.#parallelToolCalls,
       service_tier: this.#serviceTier,
       tools: normalizedTools.map((tool) => tool.openResponses),
       text: {
-        format: output
-          ? { type: "json_schema", name: "output", strict: true, schema: output.toJSONSchema() }
+        format: structuredOutput
+          ? {
+            type: "json_schema",
+            name: "output",
+            strict: true,
+            schema: structuredOutput.jsonSchema,
+          }
           : { type: "text" },
       },
       reasoning: this.#reasoning,
@@ -269,11 +288,16 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
         case "response.output_text.delta":
         case "response.refusal.delta":
           if (part.delta) {
-            yield {
-              type: "delta_output_text",
-              delta: part.delta,
-              index: part.output_index,
-            };
+            if (shouldRestoreStructuredOutput) {
+              pendingStructuredOutput[part.output_index] ??= "";
+              pendingStructuredOutput[part.output_index] += part.delta;
+            } else {
+              yield {
+                type: "delta_output_text",
+                delta: part.delta,
+                index: part.output_index,
+              };
+            }
           }
           break;
         case "response.reasoning_summary_text.delta":
@@ -286,38 +310,74 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
             };
           }
           break;
-        case "response.output_item.added":
-          if (part.item.type === "function_call") {
-            const tool = toolByName.get(part.item.name);
-            const pendingToolCall = {
-              tool_use_id: part.item.call_id,
-              kind: tool?.original.name ?? part.item.name,
-            };
-            pendingToolCallsByOutputIndex.set(part.output_index, pendingToolCall);
-            if (part.item.id) {
-              pendingToolCallsByItemId.set(part.item.id, pendingToolCall);
-            }
+        case "response.output_item.added": {
+          const item = part.item;
+          if (item.type !== "function_call") break;
+
+          const tool = normalizedTools.find((candidate) => candidate.openResponses.name === item.name);
+          const pendingToolCall: PendingToolCall = {
+            tool_use_id: item.call_id,
+            kind: tool?.original.name ?? item.name,
+            tool,
+          };
+          pendingToolCallsByOutputIndex[part.output_index] = pendingToolCall;
+          if (item.id) {
+            pendingToolCallsByItemId[item.id] = pendingToolCall;
+          }
+          yield {
+            type: "tool_use_start",
+            index: part.output_index,
+            tool_use_id: pendingToolCall.tool_use_id,
+            kind: pendingToolCall.kind,
+          };
+          break;
+        }
+        case "response.function_call_arguments.done": {
+          const pendingToolCall = pendingToolCallsByItemId[part.item_id] ??
+            pendingToolCallsByOutputIndex[part.output_index];
+          const tool = pendingToolCall?.tool ??
+            normalizedTools.find((candidate) => candidate.openResponses.name === part.name);
+          const toolUseId = pendingToolCall?.tool_use_id ?? part.item_id;
+          const kind = pendingToolCall?.kind ?? tool?.original.name ?? part.name;
+
+          if (!pendingToolCall) {
             yield {
               type: "tool_use_start",
               index: part.output_index,
-              tool_use_id: pendingToolCall.tool_use_id,
-              kind: pendingToolCall.kind,
+              tool_use_id: toolUseId,
+              kind,
             };
           }
-          break;
-        case "response.function_call_arguments.done": {
-          const pendingToolCall = pendingToolCallsByItemId.get(part.item_id) ??
-            pendingToolCallsByOutputIndex.get(part.output_index);
-          const tool = toolByName.get(part.name);
+
           yield {
             type: "tool_use",
             index: part.output_index,
-            tool_use_id: pendingToolCall?.tool_use_id ?? part.item_id,
-            kind: pendingToolCall?.kind ?? tool?.original.name ?? part.name,
+            tool_use_id: toolUseId,
+            kind,
             content: restoreWrappedToolArguments(part.arguments, tool),
           };
           break;
         }
+      }
+    }
+
+    if (shouldRestoreStructuredOutput) {
+      for (let index = 0; index < pendingStructuredOutput.length; index++) {
+        const rawText = pendingStructuredOutput[index];
+        if (!rawText) continue;
+
+        let restoredText = rawText;
+        try {
+          restoredText = JSON.stringify(structuredOutput!.fromProvider(JSON.parse(rawText)));
+        } catch {
+          restoredText = rawText;
+        }
+
+        yield {
+          type: "delta_output_text",
+          delta: restoredText,
+          index,
+        };
       }
     }
 

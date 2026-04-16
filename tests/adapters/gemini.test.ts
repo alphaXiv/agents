@@ -8,6 +8,7 @@ import {
   runAgentToolStreamingTest,
   runBackAndForthCalculatorConversationTest,
   runStructuredOutputStreamingTest,
+  runStructuredToolParameterStreamingTest,
 } from "./shared.ts";
 
 const HAS_GEMINI_KEY = Boolean(Deno.env.get("GEMINI_API_KEY"));
@@ -208,6 +209,18 @@ Deno.test({
   async fn(t) {
     await runAgentToolStreamingTest(t, {
       model: new GeminiModel({ model: "gemini-2.0-flash-lite" }),
+    });
+  },
+});
+
+Deno.test({
+  name: "GeminiModel executes structured tool parameters (gemini-2.5-flash, legacy thinking-budget)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runStructuredToolParameterStreamingTest(t, {
+      model: new GeminiModel({ model: "gemini-2.5-flash", thinkingLevel: "low" }),
     });
   },
 });

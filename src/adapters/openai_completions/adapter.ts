@@ -4,10 +4,11 @@ import type {
   ChatCompletionMessageParam,
 } from "openai/resources/chat/completions";
 import type z from "zod";
-import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
+import type { ClassifiedError } from "../../errors.ts";
 import type { AdapterStreamIterator, ChatItem, ChatItemInputFile, ChatItemToolResultFile } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
+import { classifyOpenAIError } from "../shared/classify_error.ts";
 import {
   DEFAULT_SUPPORTED_MIME_TYPES,
   fetchPdfAsText,
@@ -21,9 +22,17 @@ import {
   supportsMimeType,
   unsupportedMediaTypeError,
 } from "../shared/media.ts";
+import { createOpenAICompatibleSchema } from "../shared/openai_compatibility.ts";
 import { restoreWrappedToolArguments, serializeWrappedToolArguments } from "../shared/tools.ts";
+
 import { normalizeOpenAICompletionsTools, type OpenAICompletionsToolMap } from "./tools.ts";
-import type { ClassifiedError } from "../../errors.ts";
+
+interface PendingToolUse {
+  streamIndex: number | null;
+  callId?: string;
+  name?: string;
+  content: string;
+}
 
 type FileHistoryItem = ChatItemInputFile | ChatItemToolResultFile;
 export type OpenAICompletionsClient = Pick<OpenAI, "chat">;
@@ -253,8 +262,15 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
     { history, instructions, tools, signal, output }: AdapterStreamOptions<zO, zI>,
   ): AdapterStreamIterator {
     const normalizedTools = normalizeOpenAICompletionsTools(tools);
-    const messages = await this.getHistory(history, instructions, normalizedTools, signal);
-    const toolByName = new Map(normalizedTools.map((tool) => [tool.openAI.function.name, tool]));
+    const structuredOutput = output && createOpenAICompatibleSchema(output, {
+      kind: "output",
+      rootPath: "output",
+    });
+    const shouldRestoreStructuredOutput = structuredOutput?.requiresValueTransformation ?? false;
+    const fullInstructions = structuredOutput?.instructions
+      ? `${structuredOutput.instructions}\n\n${instructions}`
+      : instructions;
+    const messages = await this.getHistory(history, fullInstructions, normalizedTools, signal);
 
     const extraRequestBody = resolveOpenAICompletionsExtraRequestBody(this.#extraRequestBody, {
       model: this.model,
@@ -267,13 +283,13 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
       messages,
       parallel_tool_calls: normalizedTools.length > 0 ? this.#parallelToolCalls : undefined,
       tools: normalizedTools.length > 0 ? normalizedTools.map((tool) => tool.openAI) : undefined,
-      response_format: output
+      response_format: structuredOutput
         ? {
           type: "json_schema",
           json_schema: {
             name: "output",
             strict: true,
-            schema: output.toJSONSchema(),
+            schema: structuredOutput.jsonSchema,
           },
         }
         : { type: "text" },
@@ -287,12 +303,9 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
 
     const response = this.#client.chat.completions.stream(request, { signal });
 
-    const pendingToolUses = new Map<number, {
-      streamIndex: number | null;
-      callId?: string;
-      name?: string;
-      content: string;
-    }>();
+    const pendingToolUses: PendingToolUse[] = [];
+    const startedToolUses: PendingToolUse[] = [];
+    const pendingStructuredOutput: string[] = [];
 
     let lastType = "";
     let lastIndex = -1;
@@ -329,25 +342,31 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
           lastIndex++;
         }
 
-        yield {
-          type: "delta_output_text",
-          index: lastIndex,
-          delta: delta.content,
-        };
+        if (shouldRestoreStructuredOutput) {
+          pendingStructuredOutput[lastIndex] ??= "";
+          pendingStructuredOutput[lastIndex] += delta.content;
+        } else {
+          yield {
+            type: "delta_output_text",
+            index: lastIndex,
+            delta: delta.content,
+          };
+        }
       }
 
       for (const call of delta.tool_calls ?? []) {
         const callIndex = call.index ?? 0;
-        const pending = pendingToolUses.get(callIndex) ?? { streamIndex: null, content: "" };
+        const pending = pendingToolUses[callIndex] ?? { streamIndex: null, content: "" };
 
         if (call.id) pending.callId = call.id;
         if (call.function?.name) pending.name = call.function.name;
         if (call.function?.arguments) pending.content += call.function.arguments;
 
         if (pending.streamIndex === null && pending.callId && pending.name) {
-          const tool = toolByName.get(pending.name);
+          const tool = normalizedTools.find((candidate) => candidate.openAI.function.name === pending.name);
           pending.streamIndex = ++lastIndex;
           lastType = "tool_use";
+          startedToolUses.push(pending);
 
           yield {
             type: "tool_use_start",
@@ -357,17 +376,13 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
           };
         }
 
-        pendingToolUses.set(callIndex, pending);
+        pendingToolUses[callIndex] = pending;
       }
     }
 
-    for (
-      const pending of [...pendingToolUses.values()].sort((left, right) =>
-        (left.streamIndex ?? 0) - (right.streamIndex ?? 0)
-      )
-    ) {
+    for (const pending of startedToolUses) {
       if (pending.streamIndex === null || !pending.callId || !pending.name) continue;
-      const tool = toolByName.get(pending.name);
+      const tool = normalizedTools.find((candidate) => candidate.openAI.function.name === pending.name);
 
       yield {
         type: "tool_use",
@@ -376,6 +391,26 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
         kind: tool?.original.name ?? pending.name,
         content: restoreWrappedToolArguments(pending.content, tool),
       };
+    }
+
+    if (shouldRestoreStructuredOutput) {
+      for (let index = 0; index < pendingStructuredOutput.length; index++) {
+        const rawText = pendingStructuredOutput[index];
+        if (rawText === undefined) continue;
+
+        let restoredText = rawText;
+        try {
+          restoredText = JSON.stringify(structuredOutput!.fromProvider(JSON.parse(rawText)));
+        } catch {
+          restoredText = rawText;
+        }
+
+        yield {
+          type: "delta_output_text",
+          index,
+          delta: restoredText,
+        };
+      }
     }
 
     const usage = await response.totalUsage();

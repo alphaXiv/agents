@@ -12,6 +12,7 @@ import {
   runAgentToolStreamingTest,
   runBackAndForthCalculatorConversationTest,
   runStructuredOutputStreamingTest,
+  runStructuredToolParameterStreamingTest,
 } from "./shared.ts";
 
 const HAS_ANTHROPIC_KEY = Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
@@ -128,6 +129,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "AnthropicModel executes structured tool parameters (claude-sonnet-4-6, adaptive mode)",
+  ignore: !HAS_ANTHROPIC_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runStructuredToolParameterStreamingTest(t, {
+      model: new AnthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
+    });
+  },
+});
+
+Deno.test({
   name: "AnthropicModel streams native structured output (claude-sonnet-4-6)",
   ignore: !HAS_ANTHROPIC_KEY,
   sanitizeOps: false,
@@ -182,7 +195,7 @@ Deno.test("dynamic records and tuples round-trip through Anthropic compatibility
     },
   };
 
-  const anthropic = compatibility.toAnthropic(original);
+  const anthropic = compatibility.toProvider(original);
   assertEquals(anthropic, {
     tone: { item0: "formal", item1: "warm" },
     metadata: [
@@ -191,7 +204,7 @@ Deno.test("dynamic records and tuples round-trip through Anthropic compatibility
     ],
   });
 
-  assertEquals(compatibility.fromAnthropic(anthropic), original);
+  assertEquals(compatibility.fromProvider(anthropic), original);
   assert(compatibility.instructions.includes("Tuple"));
   assert(compatibility.instructions.includes("Record"));
 });
@@ -207,11 +220,11 @@ Deno.test("finite-key records stay object-shaped", () => {
   const anthropicJsonSchema = compatibility.jsonSchema;
   assertEquals(anthropicJsonSchema.type, "object");
   assertEquals(Array.isArray(anthropicJsonSchema.required), true);
-  assertEquals(compatibility.toAnthropic({ id: "1", name: "Bingus" }), {
+  assertEquals(compatibility.toProvider({ id: "1", name: "Bingus" }), {
     id: "1",
     name: "Bingus",
   });
-  assertEquals(compatibility.fromAnthropic({ id: "1", name: "Bingus" }), {
+  assertEquals(compatibility.fromProvider({ id: "1", name: "Bingus" }), {
     id: "1",
     name: "Bingus",
   });
@@ -226,8 +239,8 @@ Deno.test("tool schemas can be wrapped to satisfy Anthropic top-level object req
     rootPath: "input",
   });
 
-  assertEquals(compatibility.toAnthropic("cats"), { content: "cats" });
-  assertEquals(compatibility.fromAnthropic({ content: "cats" }), "cats");
+  assertEquals(compatibility.toProvider("cats"), { content: "cats" });
+  assertEquals(compatibility.fromProvider({ content: "cats" }), "cats");
 
   const anthropicJsonSchema = compatibility.jsonSchema;
   assertEquals(anthropicJsonSchema.type, "object");
