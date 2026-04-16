@@ -36,6 +36,7 @@ import type {
   WithTraceId,
 } from "./types.ts";
 import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
+import type { ClassifiedError } from "@alphaxiv/agents";
 
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
@@ -409,7 +410,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     // These get appended to the agent's persistent history after a successful turn.
     const turnItems: WithTraceId<ChatItem>[] = [];
     let lastError: unknown;
-    let lastSwitchCause: unknown = null;
+    let lastSwitchCause: { error: unknown; classified: ClassifiedError } | null = null;
     let previousModel: ModelInfo | null = null;
 
     // The full conversation that will be passed to beforeModelCall and potentially the model.
@@ -435,7 +436,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             index: history.length,
             from: previousModel,
             to: { provider: adapter.name, model: adapter.model },
-            cause: lastSwitchCause,
+            cause: lastSwitchCause?.error,
+            classified: lastSwitchCause?.classified,
             trace: agentTrace.id,
           };
           sameModelRetries = 0;
@@ -532,7 +534,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             }
 
             // switch-model: break out of recovery loop, fall through to next model
-            lastSwitchCause = error;
+            lastSwitchCause = { error, classified };
             previousModel = { provider: adapter.name, model: adapter.model };
             modelCallReason = "retry-model-switch";
             break;

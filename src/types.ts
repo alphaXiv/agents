@@ -1,4 +1,5 @@
 import type { AgentRunResult } from "./agent.ts";
+import { ClassifiedError } from "./errors.ts";
 
 /**
  * Token usage statistics for an agent run.
@@ -153,7 +154,8 @@ type StreamItemType = {
   type: "model_switched";
   from: ModelInfo;
   to: ModelInfo;
-  cause: unknown;
+  cause?: unknown;
+  classified?: ClassifiedError;
 };
 
 export type StreamItem = BaseStreamItem & StreamItemType;
