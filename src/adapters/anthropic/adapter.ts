@@ -317,15 +317,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           assert(thinkingPart.type === "output_reasoning");
           signatureMap.set(thinkingPart.content, delta.signature);
         } else if (delta.type === "input_json_delta") {
-          if (!parts[part.index]) {
-            parts[part.index] = { type: "output_text", content: "" };
-          }
           parts[part.index].content += delta.partial_json;
-          yield {
-            type: "delta_output_text",
-            delta: delta.partial_json,
-            index: part.index,
-          };
         }
       } else if (part.type === "content_block_start") {
         if (part.content_block.type === "tool_use") {
