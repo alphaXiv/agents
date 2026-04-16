@@ -1,5 +1,5 @@
 import type { AgentRunResult } from "./agent.ts";
-import { ClassifiedError } from "./errors.ts";
+import type { ClassifiedError } from "./errors.ts";
 
 /**
  * Token usage statistics for an agent run.
