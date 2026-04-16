@@ -1,20 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { assert } from "@std/assert";
-import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
+import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
+import type { SchemaCompatibility } from "../shared/schema_compatibility.ts";
 import {
   type AnthropicMessagesStreamConfig,
   type AnthropicModels,
   anthropicModelStructuredOutputSupport,
 } from "./models.ts";
-import {
-  type AnthropicCompatibleSchema,
-  type AnthropicToolMap,
-  createAnthropicCompatibleSchema,
-  normalizeAnthropicTools,
-} from "./utils.ts";
+import { type AnthropicToolMap, createAnthropicCompatibleSchema, normalizeAnthropicTools } from "./utils.ts";
 
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
@@ -131,7 +127,7 @@ export class AnthropicAdapter<TModel extends AnthropicModels> extends Adapter<TM
               type: "tool_use",
               id: historyItem.tool_use_id,
               name: tool?.anthropic.name ?? historyItem.kind,
-              input: tool?.compatibility ? tool.compatibility.toAnthropic(content) : content,
+              input: tool?.compatibility ? tool.compatibility.toProvider(content) : content,
             }],
           });
           break;
@@ -226,7 +222,7 @@ export class AnthropicAdapter<TModel extends AnthropicModels> extends Adapter<TM
     return anthropicHistory;
   }
 
-  getSystemPrompt(instructions: string, structuredOutput?: AnthropicCompatibleSchema): string {
+  getSystemPrompt(instructions: string, structuredOutput?: SchemaCompatibility): string {
     if (!structuredOutput) {
       return instructions;
     }
@@ -343,7 +339,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           const restoredContent = endingPart.content
             ? JSON.stringify(
               tool?.compatibility
-                ? tool.compatibility.fromAnthropic(JSON.parse(endingPart.content))
+                ? tool.compatibility.fromProvider(JSON.parse(endingPart.content))
                 : JSON.parse(endingPart.content),
             )
             : undefined;
@@ -360,7 +356,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           let structuredContent: string;
           try {
             structuredContent = JSON.stringify(
-              structuredOutput.fromAnthropic(JSON.parse(rawJson)),
+              structuredOutput.fromProvider(JSON.parse(rawJson)),
             );
           } catch {
             structuredContent = rawJson;

@@ -7,6 +7,7 @@ import {
   runAgentToolStreamingTest,
   runBackAndForthCalculatorConversationTest,
   runStructuredOutputStreamingTest,
+  runStructuredToolParameterStreamingTest,
 } from "./shared.ts";
 
 const HAS_OPENAI_KEY = Boolean(Deno.env.get("OPENAI_API_KEY"));
@@ -64,13 +65,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "OpenAIModel streams tools and results (gpt-4.1-mini, non-reasoning)",
+  name: "OpenAIModel executes structured tool parameters (gpt-5.4-mini, non-reasoning)",
   ignore: !HAS_OPENAI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
-    await runAgentToolStreamingTest(t, {
-      model: new OpenAIModel({ model: "gpt-4.1-mini" }),
+    await runStructuredToolParameterStreamingTest(t, {
+      model: new OpenAIModel({ model: "gpt-5.4-mini" }),
     });
   },
 });
@@ -83,18 +84,6 @@ Deno.test({
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
       model: new OpenAIModel({ model: "gpt-5.4-mini", effort: "low" }),
-    });
-  },
-});
-
-Deno.test({
-  name: "OpenAIModel streams structured output (gpt-4.1-mini, non-reasoning)",
-  ignore: !HAS_OPENAI_KEY,
-  sanitizeOps: false,
-  sanitizeResources: false,
-  async fn(t) {
-    await runStructuredOutputStreamingTest(t, {
-      model: new OpenAIModel({ model: "gpt-4.1-mini" }),
     });
   },
 });

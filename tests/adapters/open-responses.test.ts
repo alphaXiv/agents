@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import type OpenAI from "openai";
 import z from "zod";
 import { OpenResponsesAdapter } from "../../src/adapters/open_responses/adapter.ts";
@@ -159,6 +159,231 @@ Deno.test("Open Responses retry feedback is replayed as a user message", async (
   ]);
 });
 
+Deno.test("Open Responses uses reversible OpenAI compatibility for tuple and record tool schemas", () => {
+  const tupleTool = new Tool({
+    name: "Tuple Tool",
+    description: "Uses nested tuple and record input",
+    parameters: z.object({
+      header: z.object({
+        tags: z.tuple([z.string(), z.number()]),
+      }).strict(),
+      metadata: z.record(z.string(), z.object({ score: z.number() }).strict()),
+    }).strict(),
+    execute: () => "unused",
+  });
+
+  const [normalizedTool] = normalizeOpenResponsesTools([tupleTool]);
+  const parameters = normalizedTool?.openResponses.parameters as {
+    properties?: Record<string, unknown>;
+  };
+  const header = parameters.properties?.header as { properties?: Record<string, unknown> } | undefined;
+  const metadata = parameters.properties?.metadata as { items?: Record<string, unknown> } | undefined;
+  const tags = header?.properties?.tags as {
+    type?: unknown;
+    properties?: Record<string, unknown>;
+    required?: unknown;
+    prefixItems?: unknown;
+  } | undefined;
+
+  assertEquals(
+    normalizedTool?.compatibility?.toProvider({
+      header: { tags: ["cats", 2] },
+      metadata: { alpha: { score: 0.5 } },
+    }),
+    {
+      header: { tags: { item0: "cats", item1: 2 } },
+      metadata: [{ key: "alpha", value: { score: 0.5 } }],
+    },
+  );
+  assertEquals(
+    normalizedTool?.compatibility?.fromProvider({
+      header: { tags: { item0: "cats", item1: 2 } },
+      metadata: [{ key: "alpha", value: { score: 0.5 } }],
+    }),
+    {
+      header: { tags: ["cats", 2] },
+      metadata: { alpha: { score: 0.5 } },
+    },
+  );
+
+  assertEquals(tags?.prefixItems, undefined);
+  assertEquals(tags?.type, "object");
+  assertEquals(tags?.properties, {
+    item0: { type: "string" },
+    item1: { type: "number" },
+  });
+  assertEquals(tags?.required, ["item0", "item1"]);
+  assertEquals(metadata?.items, {
+    type: "object",
+    properties: {
+      key: { type: "string" },
+      value: {
+        type: "object",
+        properties: { score: { type: "number" } },
+        required: ["score"],
+        additionalProperties: false,
+      },
+    },
+    required: ["key", "value"],
+    additionalProperties: false,
+  });
+  assert(normalizedTool?.openResponses.description?.includes("<input_requirements>"));
+});
+
+Deno.test("Open Responses restores structured output from OpenAI-compatible surrogate shapes", async () => {
+  let capturedRequest: unknown;
+
+  const adapter = new OpenResponsesAdapter({
+    model: "test-model",
+    name: "Test Provider",
+    client: createMockClient(
+      [
+        {
+          type: "response.output_text.delta",
+          sequence_number: 1,
+          output_index: 0,
+          content_index: 0,
+          item_id: "msg_1",
+          delta: '{"tags":{"item0":"red","item1":2},"metadata":[{"key":"alpha","value":"1"}]}',
+          logprobs: [],
+        },
+      ],
+      { usage: { input_tokens: 3, output_tokens: 2 } },
+      (request) => {
+        capturedRequest = request;
+      },
+    ),
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.abort(),
+    output: z.object({
+      tags: z.tuple([z.string(), z.number()]),
+      metadata: z.record(z.string(), z.string()),
+    }),
+  });
+
+  const items = [];
+  while (true) {
+    const next = await stream.next();
+    if (next.done) break;
+    items.push(next.value);
+  }
+
+  assertEquals(items, [{
+    type: "delta_output_text",
+    index: 0,
+    delta: '{"tags":["red",2],"metadata":{"alpha":"1"}}',
+  }]);
+
+  assert((capturedRequest as { instructions: string }).instructions.includes("<output_requirements>"));
+});
+
+Deno.test("Open Responses stream unwraps primitive tool arguments when the done event omits the tool name", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  const adapter = new OpenResponsesAdapter({
+    model: "test-model",
+    name: "Test Provider",
+    client: createMockClient([
+      {
+        type: "response.output_item.added",
+        sequence_number: 1,
+        output_index: 0,
+        item: {
+          id: "fc_1",
+          type: "function_call",
+          status: "in_progress",
+          call_id: "call_1",
+          name: "search",
+          arguments: "",
+        },
+      },
+      {
+        type: "response.function_call_arguments.done",
+        sequence_number: 2,
+        output_index: 0,
+        item_id: "fc_1",
+        arguments: '{"content":"cats"}',
+      },
+    ], {
+      usage: { input_tokens: 0, output_tokens: 0 },
+    }),
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [searchTool],
+    signal: AbortSignal.abort(),
+  });
+
+  const items = [];
+  while (true) {
+    const next = await stream.next();
+    if (next.done) break;
+    items.push(next.value);
+  }
+
+  assertEquals(items, [
+    { type: "tool_use_start", tool_use_id: "call_1", kind: "Search", index: 0 },
+    { type: "tool_use", tool_use_id: "call_1", kind: "Search", content: '"cats"', index: 0 },
+  ]);
+});
+
+Deno.test("Open Responses synthesizes tool_use_start when arguments.done arrives without output_item.added", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  const adapter = new OpenResponsesAdapter({
+    model: "test-model",
+    name: "Test Provider",
+    client: createMockClient([
+      {
+        type: "response.function_call_arguments.done",
+        sequence_number: 1,
+        output_index: 0,
+        item_id: "fc_1",
+        name: "search",
+        arguments: '{"content":"cats"}',
+      },
+    ], {
+      usage: { input_tokens: 0, output_tokens: 0 },
+    }),
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [searchTool],
+    signal: AbortSignal.abort(),
+  });
+
+  const items = [];
+  while (true) {
+    const next = await stream.next();
+    if (next.done) break;
+    items.push(next.value);
+  }
+
+  assertEquals(items, [
+    { type: "tool_use_start", tool_use_id: "fc_1", kind: "Search", index: 0 },
+    { type: "tool_use", tool_use_id: "fc_1", kind: "Search", content: '"cats"', index: 0 },
+  ]);
+});
+
 Deno.test("Open Responses stream maps text, reasoning, refusal, and function calls", async () => {
   let capturedRequest: unknown;
 
@@ -289,10 +514,12 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
       description: "Search for documents",
       strict: false,
       parameters: {
-        $schema: "https://json-schema.org/draft/2020-12/schema",
         type: "object",
         properties: {
-          content: { type: "string" },
+          content: {
+            $schema: "https://json-schema.org/draft/2020-12/schema",
+            type: "string",
+          },
         },
         required: ["content"],
         additionalProperties: false,
@@ -304,7 +531,6 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
         name: "output",
         strict: true,
         schema: {
-          $schema: "https://json-schema.org/draft/2020-12/schema",
           type: "object",
           properties: {
             answer: { type: "string" },
@@ -321,7 +547,7 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
 
 Deno.test("OpenAIModel defaults effort for reasoning models", () => {
   const model = new OpenAIModel({
-    model: "gpt-5",
+    model: "gpt-5.4",
     apiKey: "test-key",
   });
 
@@ -339,7 +565,7 @@ Deno.test("OpenAIModel omits reasoning for non-reasoning models", () => {
 
 Deno.test("OpenAIModel stores configured service tier", () => {
   const model = new OpenAIModel({
-    model: "gpt-4.1-mini",
+    model: "gpt-5.4-nano",
     apiKey: "test-key",
     serviceTier: "flex",
   });
@@ -369,7 +595,7 @@ Deno.test("Open Responses respects explicitly configured supported mime types", 
 
 Deno.test("OpenAIModel infers supported mime types from model modalities", async () => {
   const multimodalModel = new OpenAIModel({
-    model: "gpt-4.1-mini",
+    model: "gpt-5.4-nano",
     apiKey: "test-key",
   });
   const textOnlyModel = new OpenAIModel({

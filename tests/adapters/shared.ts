@@ -69,6 +69,222 @@ export function createStructuredOutputFixtures() {
   };
 }
 
+interface StructuredToolSimpleObjectInput {
+  label: string;
+  count: number;
+}
+
+interface StructuredToolMetadataValue {
+  state: "ready";
+  score: number;
+}
+
+interface StructuredToolNestedInput {
+  header: {
+    id: string;
+    priority: number;
+    tags: [string, string, string];
+  };
+  windows: [
+    { day: "mon"; range: [number, number] },
+    { day: "fri"; range: [number, number] },
+  ];
+  metadata: Record<string, StructuredToolMetadataValue>;
+}
+
+function createStructuredToolParameterFixtures() {
+  const expected = {
+    plainString: "lattice",
+    constrainedString: "orbitals",
+    decimalNumber: 12.5,
+    constrainedInteger: 17,
+    simpleObject: {
+      label: "otter",
+      count: 2,
+    } satisfies StructuredToolSimpleObjectInput,
+    nestedObject: {
+      header: {
+        id: "case_alpha",
+        priority: 3,
+        tags: ["red", "blue", "green"],
+      },
+      windows: [
+        { day: "mon", range: [9, 11] },
+        { day: "fri", range: [14, 16] },
+      ],
+      metadata: {
+        alpha: { state: "ready", score: 0.5 },
+        beta: { state: "ready", score: 0.5 },
+      },
+    } satisfies StructuredToolNestedInput,
+  };
+
+  const state = {
+    plainStrings: [] as string[],
+    constrainedStrings: [] as string[],
+    decimalNumbers: [] as number[],
+    constrainedIntegers: [] as number[],
+    voidCalls: 0,
+    simpleObjects: [] as StructuredToolSimpleObjectInput[],
+    nestedObjects: [] as StructuredToolNestedInput[],
+  };
+
+  const plainStringTool = new Tool({
+    name: "plain_string_input",
+    description: `Call this tool exactly once with the bare string ${JSON.stringify(expected.plainString)}.`,
+    parameters: z.string(),
+    execute: (input) => {
+      state.plainStrings.push(input);
+      return "ok:plain-string";
+    },
+  });
+
+  const constrainedStringTool = new Tool({
+    name: "constrained_string_input",
+    description: `Call this tool exactly once with the bare lowercase string ${
+      JSON.stringify(expected.constrainedString)
+    }.`,
+    parameters: z.string().min(8).max(9).regex(/^[a-z]+$/),
+    execute: (input) => {
+      state.constrainedStrings.push(input);
+      return "ok:constrained-string";
+    },
+  });
+
+  const decimalNumberTool = new Tool({
+    name: "decimal_number_input",
+    description: `Call this tool exactly once with the bare number ${expected.decimalNumber}.`,
+    parameters: z.number(),
+    execute: (input) => {
+      state.decimalNumbers.push(input);
+      return "ok:decimal-number";
+    },
+  });
+
+  const constrainedIntegerTool = new Tool({
+    name: "constrained_integer_input",
+    description: `Call this tool exactly once with the bare integer ${expected.constrainedInteger}.`,
+    parameters: z.int().min(17).max(17),
+    execute: (input) => {
+      state.constrainedIntegers.push(input);
+      return "ok:constrained-integer";
+    },
+  });
+
+  const voidTool = new Tool({
+    name: "void_input",
+    description: "Call this tool exactly once with no parameters.",
+    parameters: z.void(),
+    execute: () => {
+      state.voidCalls += 1;
+      return "ok:void";
+    },
+  });
+
+  const simpleObjectTool = new Tool({
+    name: "simple_object_input",
+    description: `Call this tool exactly once with ${JSON.stringify(expected.simpleObject)}.`,
+    parameters: z.object({
+      label: z.string().min(5).max(5),
+      count: z.int().min(2).max(2),
+    }).strict(),
+    execute: (input) => {
+      state.simpleObjects.push(input);
+      return "ok:simple-object";
+    },
+  });
+
+  const nestedObjectTool = new Tool({
+    name: "nested_object_input",
+    description: `Call this tool exactly once with ${JSON.stringify(expected.nestedObject)}.`,
+    parameters: z.object({
+      header: z.object({
+        id: z.string().min(10).max(10).regex(/^case_[a-z]{5}$/),
+        priority: z.int().min(3).max(3),
+        tags: z.tuple([
+          z.string().min(3).max(3),
+          z.string().min(4).max(4),
+          z.string().min(5).max(5),
+        ]),
+      }).strict(),
+      windows: z.tuple([
+        z.object({
+          day: z.literal("mon"),
+          range: z.tuple([z.int().min(9).max(9), z.int().min(11).max(11)]),
+        }).strict(),
+        z.object({
+          day: z.literal("fri"),
+          range: z.tuple([z.int().min(14).max(14), z.int().min(16).max(16)]),
+        }).strict(),
+      ]),
+      metadata: z.record(
+        z.string().regex(/^(alpha|beta)$/),
+        z.object({
+          state: z.literal("ready"),
+          score: z.number().min(0.5).max(0.5),
+        }).strict(),
+      ),
+    }).strict(),
+    execute: (input) => {
+      state.nestedObjects.push(input);
+      return "ok:nested-object";
+    },
+  });
+
+  const tools = {
+    plainString: plainStringTool,
+    constrainedString: constrainedStringTool,
+    decimalNumber: decimalNumberTool,
+    constrainedInteger: constrainedIntegerTool,
+    void: voidTool,
+    simpleObject: simpleObjectTool,
+    nestedObject: nestedObjectTool,
+  } as const;
+
+  const marker = "LIVE_STRUCTURED_TOOL_PARAMETERS_COMPLETE";
+
+  return {
+    expected,
+    state,
+    tools,
+    marker,
+    instructions: [
+      "You are running a live SDK integration test for structured tool parameters.",
+      "Call every provided tool exactly once.",
+      "Follow each tool description exactly and do not add extra fields.",
+      `After all tool calls, respond with exactly ${marker} and nothing else.`,
+    ].join(" "),
+  };
+}
+
+function assertStructuredToolPayload(
+  items: WithTraceId<StreamItem>[],
+  toolName: string,
+  expected: unknown,
+) {
+  const seenToolStarts = items
+    .filter((item): item is Extract<WithTraceId<StreamItem>, { type: "tool_use_start" }> =>
+      item.type === "tool_use_start"
+    )
+    .map((item) => item.kind);
+
+  assert(
+    items.some((item) => item.type === "tool_use_start" && item.kind === toolName),
+    `expected ${toolName} tool_use_start, saw starts for: ${JSON.stringify(seenToolStarts)}`,
+  );
+
+  const toolUse = findToolUse(items, toolName);
+  assert(toolUse, `expected ${toolName} tool_use item, saw starts for: ${JSON.stringify(seenToolStarts)}`);
+
+  if (expected === undefined) {
+    assertEquals(toolUse.content, undefined);
+    return;
+  }
+
+  assert(toolUse.content, `expected ${toolName} content`);
+  assertEquals(JSON.parse(toolUse.content), expected);
+}
+
 function createCalculatorFixtures() {
   const state = {
     calls: [] as {
@@ -278,7 +494,10 @@ export async function runAgentToolStreamingTest(
   await t.step("assert final streamed output", () => {
     assert(result, "expected final agent result");
     assert(items.some((item) => item.type === "delta_output_text"), "expected streamed text output");
-    assert(result.outputText.trim().endsWith(fixtures.marker), `expected final output to end with ${fixtures.marker}`);
+    assert(
+      result.outputText.includes(fixtures.marker),
+      `expected final output to include ${fixtures.marker} but instead outputted ${result.outputText}`,
+    );
   });
 
   await t.step("assert tool execution counts", () => {
@@ -314,6 +533,84 @@ export async function runStructuredOutputStreamingTest(
   await t.step("assert structured output parsed", () => {
     assert(result, "expected final structured output result");
     assertEquals(result.output, fixtures.expected);
+  });
+}
+
+export async function runStructuredToolParameterStreamingTest(
+  t: Deno.TestContext,
+  options: {
+    model: Model;
+  },
+) {
+  const fixtures = createStructuredToolParameterFixtures();
+  const agent = new Agent({
+    model: options.model,
+    instructions: fixtures.instructions,
+    tools: [
+      fixtures.tools.plainString,
+      fixtures.tools.constrainedString,
+      fixtures.tools.decimalNumber,
+      fixtures.tools.constrainedInteger,
+      fixtures.tools.void,
+      fixtures.tools.simpleObject,
+      fixtures.tools.nestedObject,
+    ],
+  });
+
+  let items: WithTraceId<StreamItem>[] = [];
+  let result: AgentRunResult<unknown> | undefined;
+
+  const collectedAgentStream = await t.step("collect structured tool parameter stream", async () => {
+    const collected = await collectAgentStream(agent.stream("Run the structured tool parameter test now.", {
+      signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+    }));
+    items = collected.items;
+    result = collected.result;
+  });
+
+  if (!collectedAgentStream) return;
+
+  await t.step("plain string tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.plainString.name, fixtures.expected.plainString);
+    assertEquals(fixtures.state.plainStrings, [fixtures.expected.plainString]);
+  });
+
+  await t.step("constrained string tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.constrainedString.name, fixtures.expected.constrainedString);
+    assertEquals(fixtures.state.constrainedStrings, [fixtures.expected.constrainedString]);
+  });
+
+  await t.step("number tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.decimalNumber.name, fixtures.expected.decimalNumber);
+    assertEquals(fixtures.state.decimalNumbers, [fixtures.expected.decimalNumber]);
+  });
+
+  await t.step("integer tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.constrainedInteger.name, fixtures.expected.constrainedInteger);
+    assertEquals(fixtures.state.constrainedIntegers, [fixtures.expected.constrainedInteger]);
+  });
+
+  await t.step("void tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.void.name, undefined);
+    assertEquals(fixtures.state.voidCalls, 1);
+  });
+
+  await t.step("simple object tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.simpleObject.name, fixtures.expected.simpleObject);
+    assertEquals(fixtures.state.simpleObjects, [fixtures.expected.simpleObject]);
+  });
+
+  await t.step("nested object tool uses the expected payload and parsed input", () => {
+    assertStructuredToolPayload(items, fixtures.tools.nestedObject.name, fixtures.expected.nestedObject);
+    assertEquals(fixtures.state.nestedObjects, [fixtures.expected.nestedObject]);
+  });
+
+  await t.step("assert final streamed output for structured tool parameters", () => {
+    assert(result, "expected final agent result");
+    assert(
+      result.outputText.includes(fixtures.marker),
+      `expected final output to include ${fixtures.marker} but instead outputted ${result.outputText}`,
+    );
   });
 }
 

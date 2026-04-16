@@ -1,9 +1,9 @@
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import type OpenAI from "openai";
-import { assertEquals, assertThrows } from "@std/assert";
 import z from "zod";
-import { RETRY_RESUMABILITY_PROMPT } from "../../src/constants.ts";
 import { OpenAICompletionsAdapter } from "../../src/adapters/openai_completions/adapter.ts";
 import { normalizeOpenAICompletionsTools } from "../../src/adapters/openai_completions/tools.ts";
+import { RETRY_RESUMABILITY_PROMPT } from "../../src/constants.ts";
 import { Tool } from "../../src/tool.ts";
 
 function createMockClient(
@@ -159,6 +159,131 @@ Deno.test("OpenAI Completions retry feedback is replayed as user content and res
   ]);
 });
 
+Deno.test("OpenAI Completions uses reversible OpenAI compatibility for tuple and record tool schemas", () => {
+  const tupleTool = new Tool({
+    name: "Tuple Tool",
+    description: "Uses nested tuple and record input",
+    parameters: z.object({
+      header: z.object({
+        tags: z.tuple([z.string(), z.number()]),
+      }).strict(),
+      metadata: z.record(z.string(), z.object({ score: z.number() }).strict()),
+    }).strict(),
+    execute: () => "unused",
+  });
+
+  const [normalizedTool] = normalizeOpenAICompletionsTools([tupleTool]);
+  const parameters = normalizedTool?.openAI.function.parameters as {
+    properties?: Record<string, unknown>;
+  };
+  const header = parameters.properties?.header as { properties?: Record<string, unknown> } | undefined;
+  const metadata = parameters.properties?.metadata as { items?: Record<string, unknown> } | undefined;
+  const tags = header?.properties?.tags as {
+    type?: unknown;
+    properties?: Record<string, unknown>;
+    required?: unknown;
+    prefixItems?: unknown;
+  } | undefined;
+
+  assertEquals(
+    normalizedTool?.compatibility?.toProvider({
+      header: { tags: ["cats", 2] },
+      metadata: { alpha: { score: 0.5 } },
+    }),
+    {
+      header: { tags: { item0: "cats", item1: 2 } },
+      metadata: [{ key: "alpha", value: { score: 0.5 } }],
+    },
+  );
+  assertEquals(
+    normalizedTool?.compatibility?.fromProvider({
+      header: { tags: { item0: "cats", item1: 2 } },
+      metadata: [{ key: "alpha", value: { score: 0.5 } }],
+    }),
+    {
+      header: { tags: ["cats", 2] },
+      metadata: { alpha: { score: 0.5 } },
+    },
+  );
+
+  assertEquals(tags?.prefixItems, undefined);
+  assertEquals(tags?.type, "object");
+  assertEquals(tags?.properties, {
+    item0: { type: "string" },
+    item1: { type: "number" },
+  });
+  assertEquals(tags?.required, ["item0", "item1"]);
+  assertEquals(metadata?.items, {
+    type: "object",
+    properties: {
+      key: { type: "string" },
+      value: {
+        type: "object",
+        properties: { score: { type: "number" } },
+        required: ["score"],
+        additionalProperties: false,
+      },
+    },
+    required: ["key", "value"],
+    additionalProperties: false,
+  });
+  assert(normalizedTool?.openAI.function.description?.includes("<input_requirements>"));
+});
+
+Deno.test("OpenAI Completions restores structured output from OpenAI-compatible surrogate shapes", async () => {
+  let capturedRequest: unknown;
+
+  const adapter = new OpenAICompletionsAdapter({
+    model: "test-model",
+    name: "Test Provider",
+    client: createMockClient(
+      [
+        {
+          choices: [{
+            delta: {
+              content: '{"tags":{"item0":"red","item1":2},"metadata":[{"key":"alpha","value":"1"}]}',
+            },
+          }],
+        },
+      ],
+      { prompt_tokens: 3, completion_tokens: 2 },
+      (request) => {
+        capturedRequest = request;
+      },
+    ),
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.abort(),
+    output: z.object({
+      tags: z.tuple([z.string(), z.number()]),
+      metadata: z.record(z.string(), z.string()),
+    }),
+  });
+
+  const items = [];
+  while (true) {
+    const next = await stream.next();
+    if (next.done) break;
+    items.push(next.value);
+  }
+
+  assertEquals(items, [{
+    type: "delta_output_text",
+    index: 0,
+    delta: '{"tags":["red",2],"metadata":{"alpha":"1"}}',
+  }]);
+
+  assert(
+    ((capturedRequest as { messages: Array<{ content: string }> }).messages[0]?.content).includes(
+      "<output_requirements>",
+    ),
+  );
+});
+
 Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", async () => {
   let capturedRequest: unknown;
 
@@ -269,10 +394,12 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
         description: "Search for documents",
         strict: true,
         parameters: {
-          $schema: "https://json-schema.org/draft/2020-12/schema",
           type: "object",
           properties: {
-            content: { type: "string" },
+            content: {
+              $schema: "https://json-schema.org/draft/2020-12/schema",
+              type: "string",
+            },
           },
           required: ["content"],
           additionalProperties: false,
@@ -285,7 +412,6 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
         name: "output",
         strict: true,
         schema: {
-          $schema: "https://json-schema.org/draft/2020-12/schema",
           type: "object",
           properties: {
             answer: { type: "string" },

@@ -7,6 +7,7 @@ import {
   runAgentToolStreamingTest,
   runBackAndForthCalculatorConversationTest,
   runStructuredOutputStreamingTest,
+  runStructuredToolParameterStreamingTest,
 } from "./shared.ts";
 
 const HAS_OPENROUTER_KEY = Boolean(Deno.env.get("OPENROUTER_API_KEY"));
@@ -59,6 +60,18 @@ Deno.test({
   async fn(t) {
     await runAgentToolStreamingTest(t, {
       model: new OpenRouterModel({ model: "anthropic/claude-sonnet-4.5", effort: "medium" }),
+    });
+  },
+});
+
+Deno.test({
+  name: "OpenRouterModel executes structured tool parameters (openai/gpt-5-mini)",
+  ignore: !HAS_OPENROUTER_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runStructuredToolParameterStreamingTest(t, {
+      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
     });
   },
 });
