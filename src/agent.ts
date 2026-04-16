@@ -6,7 +6,7 @@ import type { Model } from "./adapters/model.ts";
 import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
-import { classifyError } from "./errors.ts";
+import { type ClassifiedError, classifyError } from "./errors.ts";
 import {
   determineRetryBehavior,
   type ResolvedRetryStrategy,
@@ -409,7 +409,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     // These get appended to the agent's persistent history after a successful turn.
     const turnItems: WithTraceId<ChatItem>[] = [];
     let lastError: unknown;
-    let lastSwitchCause: unknown = null;
+    let lastSwitchCause: { error: unknown; classified: ClassifiedError } | null = null;
     let previousModel: ModelInfo | null = null;
 
     // The full conversation that will be passed to beforeModelCall and potentially the model.
@@ -435,7 +435,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             index: history.length,
             from: previousModel,
             to: { provider: adapter.name, model: adapter.model },
-            cause: lastSwitchCause,
+            cause: lastSwitchCause?.error,
+            classified: lastSwitchCause?.classified,
             trace: agentTrace.id,
           };
           sameModelRetries = 0;
@@ -532,7 +533,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             }
 
             // switch-model: break out of recovery loop, fall through to next model
-            lastSwitchCause = error;
+            lastSwitchCause = { error, classified };
             previousModel = { provider: adapter.name, model: adapter.model };
             modelCallReason = "retry-model-switch";
             break;
