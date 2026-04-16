@@ -6,7 +6,7 @@ import type { Model } from "./adapters/model.ts";
 import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
-import { classifyError } from "./errors.ts";
+import { type ClassifiedError, classifyError } from "./errors.ts";
 import {
   determineRetryBehavior,
   type ResolvedRetryStrategy,
@@ -36,7 +36,6 @@ import type {
   WithTraceId,
 } from "./types.ts";
 import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
-import type { ClassifiedError } from "@alphaxiv/agents";
 
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
