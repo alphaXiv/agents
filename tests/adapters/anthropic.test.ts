@@ -25,6 +25,38 @@ function createAnthropicClient() {
 }
 
 Deno.test({
+  name: "AnthropicAdapter streams a parameterized tool call (claude-opus-4-7, adaptive)",
+  ignore: !HAS_ANTHROPIC_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    const fixtures = createToolFixtures();
+    const adapter = new AnthropicAdapter({
+      model: "claude-opus-4-7",
+      client: createAnthropicClient(),
+      streamConfig: getAnthropicMessagesStreamConfig({
+        model: "claude-opus-4-7",
+        effort: "low",
+      }),
+    });
+
+    await runAdapterToolStreamingTest(t, {
+      stream: adapter.stream({
+        history: [{
+          type: "input_text",
+          content: `Call ${fixtures.echoTool.normalizedName} exactly once with {\"query\":\"${fixtures.query}\"}.`,
+        }],
+        instructions: "You are a compliant live integration test assistant.",
+        tools: [fixtures.echoTool],
+        signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+      }),
+      toolName: fixtures.echoTool.normalizedName,
+      expectedContentSubstring: fixtures.query,
+    });
+  },
+});
+
+Deno.test({
   name: "AnthropicAdapter streams a parameterized tool call (claude-opus-4-6, adaptive)",
   ignore: !HAS_ANTHROPIC_KEY,
   sanitizeOps: false,
@@ -57,6 +89,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "AnthropicModel streams tools and results (claude-opus-4-7, adaptive-only)",
+  ignore: !HAS_ANTHROPIC_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runAgentToolStreamingTest(t, {
+      model: new AnthropicModel({ model: "claude-opus-4-7", effort: "low" }),
+    });
+  },
+});
+
+Deno.test({
   name: "AnthropicModel streams tools and results (claude-opus-4-6, adaptive-only)",
   ignore: !HAS_ANTHROPIC_KEY,
   sanitizeOps: false,
@@ -65,6 +109,20 @@ Deno.test({
     await runAgentToolStreamingTest(t, {
       model: new AnthropicModel({ model: "claude-opus-4-6", effort: "low" }),
     });
+  },
+});
+
+Deno.test({
+  name: "claude-opus-4-7 works with",
+  fn() {
+    assertEquals(
+      getAnthropicMessagesStreamConfig({ model: "claude-opus-4-7", effort: "xhigh" }),
+      {
+        thinking: { type: "adaptive" },
+        output_config: { effort: "xhigh" },
+        betas: undefined,
+      },
+    );
   },
 });
 
