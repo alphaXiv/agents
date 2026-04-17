@@ -10,7 +10,7 @@ import type {
 
 export type ThinkingLevel = "adaptive" | "minimal" | "low" | "medium" | "high";
 
-export type EffortLevel = "low" | "medium" | "high" | "max";
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
 type ThinkingLevelOptions<T extends readonly ThinkingLevel[]> = {
   levels: T;
@@ -69,6 +69,10 @@ function extended<const T extends readonly [ThinkingLevel, ...ThinkingLevel[]]>(
 
 const anthropicModelThinkingSupportDefinition = {
   // Adaptive thinking only (effort controls thinking intensity)
+  "claude-opus-4-7": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
   "claude-opus-4-6": adaptive({
     levels: ["low", "medium", "high", "max"],
     default: "high",
@@ -166,6 +170,7 @@ export type SupportsInterleaved<TModel extends AnthropicModels> = ModelConfig<TM
  * Model support for native structured ouput.
  */
 export const anthropicModelStructuredOutputSupport = {
+  "claude-opus-4-7": true,
   "claude-opus-4-6": true,
   "claude-sonnet-4-6": true,
 

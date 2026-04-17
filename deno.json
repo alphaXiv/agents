@@ -45,7 +45,7 @@
     "test:adapters": "deno test -A tests/adapters/*.test.ts"
   },
   "imports": {
-    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@^0.85.0",
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@^0.90.0",
     "@google/genai": "npm:@google/genai@^1.48.0",
     "@lino/pdf-parse": "jsr:@lino/pdf-parse@^0.3.1",
     "@std/assert": "jsr:@std/assert@^1.0.19",
