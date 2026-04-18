@@ -13,8 +13,8 @@ export type { ClassifiedError, ErrorKind } from "./src/errors.ts";
 export { DEFAULT_RETRY_STRATEGY, determineRetryBehavior, resolveRetryStrategy } from "./src/retry.ts";
 export type { ResolvedRetryStrategy, RetryBehavior, RetryStrategy } from "./src/retry.ts";
 
-export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
 export { cli } from "./src/cli.ts";
+export { addStreamItem, convertChatItemsToStream } from "./src/client.ts";
 
 export type { CliIo, CliOptions } from "./src/cli.ts";
 export { ModelOutput, Tool } from "./src/tool.ts";
@@ -37,6 +37,7 @@ export type {
   SupportedEffortLevel as AnthropicSupportedEffortLevel,
   SupportedThinkingLevel as AnthropicSupportedThinkingLevel,
   SupportsInterleaved,
+  ThinkingDisplay as AnthropicThinkingDisplay,
   ThinkingLevel,
 } from "./src/adapters/anthropic/models.ts";
 

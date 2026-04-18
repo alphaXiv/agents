@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { assert } from "@std/assert";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
@@ -283,6 +282,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
     }, { signal });
 
     const parts: ChatItem[] = [];
+    const reasoningSignatures = new Map<number, string>();
     for await (const part of response) {
       if (part.type === "content_block_delta") {
         const { delta } = part;
@@ -309,9 +309,10 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
             index: part.index,
           };
         } else if (delta.type === "signature_delta") {
-          const thinkingPart = parts[part.index];
-          assert(thinkingPart.type === "output_reasoning");
-          signatureMap.set(thinkingPart.content, delta.signature);
+          if (!parts[part.index]) {
+            parts[part.index] = { type: "output_reasoning", content: "" };
+          }
+          reasoningSignatures.set(part.index, delta.signature);
         } else if (delta.type === "input_json_delta") {
           parts[part.index].content += delta.partial_json;
         }
@@ -331,10 +332,31 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
             kind: tool?.original.name ?? block.name,
             tool_use_id: block.id,
           };
+        } else if (part.content_block.type === "thinking") {
+          parts[part.index] = {
+            type: "output_reasoning",
+            content: part.content_block.thinking,
+          };
+          if (part.content_block.signature) {
+            reasoningSignatures.set(part.index, part.content_block.signature);
+          }
+          if (part.content_block.thinking) {
+            yield {
+              type: "delta_output_reasoning",
+              delta: part.content_block.thinking,
+              index: part.index,
+            };
+          }
         }
       } else if (part.type === "content_block_stop") {
         const endingPart = parts[part.index];
-        if (endingPart.type === "tool_use") {
+        if (endingPart?.type === "output_reasoning") {
+          const signature = reasoningSignatures.get(part.index);
+          if (signature && endingPart.content) {
+            signatureMap.set(endingPart.content, signature);
+          }
+          reasoningSignatures.delete(part.index);
+        } else if (endingPart.type === "tool_use") {
           const tool = normalizedTools.find((tool) => tool.anthropic.name === endingPart.kind);
           const restoredContent = endingPart.content
             ? JSON.stringify(
