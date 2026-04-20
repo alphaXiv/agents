@@ -151,6 +151,9 @@ type StreamItemType = {
   type: "context_summary";
   content: string;
 } | {
+  type: "token_usage";
+  usage: TokenUsage;
+} | {
   type: "model_switched";
   from: ModelInfo;
   to: ModelInfo;

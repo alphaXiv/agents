@@ -67,6 +67,7 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
         kind: streamItem.kind,
         content: streamItem.content,
       };
+    case "token_usage":
     case "context_summary_start":
     case "context_summary":
     case "model_switched":
@@ -90,6 +91,7 @@ export function addStreamItem<T extends ChatItem>(
 
   // Informational events don't produce conversation items.
   if (
+    streamItem.type === "token_usage" ||
     streamItem.type === "context_summary_start" ||
     streamItem.type === "context_summary" ||
     streamItem.type === "model_switched"
