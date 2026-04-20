@@ -68,15 +68,38 @@ export interface AgentRunOptions {
   signal?: AbortSignal;
 }
 
+export type ModelCallReason =
+  | "init"
+  | "tool"
+  | "retry-missing-output"
+  | "retry-malformed-output"
+  | "retry-context-compaction"
+  | "retry-transient"
+  | "retry-model-switch";
+
+interface BeforeModelCallContext {
+  turn: number;
+  reason: ModelCallReason;
+  usage: TokenUsage;
+  model: ModelInfo;
+}
+
+interface HandleModelErrorContext {
+  turn: number;
+  attempt: number;
+  usage: TokenUsage;
+  model: ModelInfo;
+}
+
 export type BeforeModelCall = (
   history: ChatItem[],
-  context: { turn: number; reason: string; usage: TokenUsage },
+  context: BeforeModelCallContext,
 ) => AsyncGenerator<ContextSummaryStartEvent, ChatItem[]>;
 
 export type HandleModelError = (
-  error: unknown,
+  error: ClassifiedError,
   history: ChatItem[],
-  context: { turn: number; attempt: number; usage: TokenUsage },
+  context: HandleModelErrorContext,
 ) => AsyncGenerator<ContextSummaryStartEvent, ChatItem[] | null>;
 
 export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
@@ -305,7 +328,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
       const pendingTools = new Map<string, Promise<RunToolResult>>();
       const history: WithTraceId<ChatItem>[] = [];
-      let modelCallReason = "init";
+      let modelCallReason: ModelCallReason = "init";
 
       for (let turn = 0; turn < this.#maxTurns; turn++) {
         signal.throwIfAborted();
@@ -395,7 +418,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     pendingTools: Map<string, Promise<RunToolResult>>;
     toolSignal: AbortSignal;
     agentTrace: ActiveTrace<"agent">;
-    modelCallReason: string;
+    modelCallReason: ModelCallReason;
     turn: number;
     usage: TokenUsage;
   }): AsyncGenerator<
@@ -427,6 +450,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       modelLoop: while (currentModelIndex < this.#models.length) {
         const model = this.#models[currentModelIndex];
         const adapter = model.adapter;
+        const currentModel: ModelInfo = { provider: adapter.name, model: adapter.model };
 
         // Emit model_switched event when switching to a different model after a failure
         if (previousModel && (previousModel.provider !== adapter.name || previousModel.model !== adapter.model)) {
@@ -434,7 +458,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             type: "model_switched",
             index: history.length,
             from: previousModel,
-            to: { provider: adapter.name, model: adapter.model },
+            to: currentModel,
             cause: lastSwitchCause?.error,
             classified: lastSwitchCause?.classified,
             trace: agentTrace.id,
@@ -465,6 +489,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
                 turn,
                 reason: modelCallReason,
                 usage: options.usage,
+                model: currentModel,
               }),
               baseHistory,
               history.length,
@@ -506,7 +531,12 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             // Always try handleModelError if provided - let the user decide what errors to handle
             if (attempt < this.#maxRecoveryAttempts && this.#handleModelError) {
               const { assembled: recovered, compactionItems: recoveryCompactionItems } = yield* consumeCompactionEvents(
-                this.#handleModelError(error, baseHistory, { turn, attempt, usage: options.usage }),
+                this.#handleModelError(classified, baseHistory, {
+                  turn,
+                  attempt,
+                  usage: options.usage,
+                  model: currentModel,
+                }),
                 baseHistory,
                 history.length,
                 agentTrace.id,
@@ -696,7 +726,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     agentTrace: ActiveTrace<"agent">,
   ):
     | { ok: true; output: ResolveAgentOutput<zO, Tools> }
-    | { ok: false; reason: string; feedback?: string } {
+    | { ok: false; reason: ModelCallReason; feedback?: string } {
     if (!this.#output) {
       return { ok: true, output: undefined as ResolveAgentOutput<zO, Tools> };
     }

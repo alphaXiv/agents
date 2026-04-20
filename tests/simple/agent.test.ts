@@ -343,8 +343,14 @@ Deno.test("handleModelError recovers from context window errors", async () => {
   const agent = new Agent({
     model: new ContextWindowTestModel(3),
     instructions: "You are a friendly assistant",
-    async *handleModelError(error, history, _context) {
-      if (error instanceof Error && error.message.includes("context length")) {
+    async *handleModelError(error, history, context) {
+      assertEquals(error.kind, "context_overflow");
+      assertEquals(context.turn, 0);
+      assertEquals(context.attempt, 0);
+      assertEquals(context.model.provider, "deterministic");
+      assertEquals(context.model.model, "deterministic");
+
+      if (error.original instanceof Error && error.original.message.includes("context length")) {
         yield { type: "context_summary_start" as const };
         recoveryCalls += 1;
         return history.filter((item) => item.type !== "input_file");
@@ -363,6 +369,34 @@ Deno.test("handleModelError recovers from context window errors", async () => {
 
   assert(recoveryCalls > 0);
   assertEquals(run.outputText, "Recovery successful!");
+});
+
+Deno.test("beforeModelCall receives current model in context", async () => {
+  let receivedContext:
+    | { turn: number; reason: string; model: { provider: string; model: string } }
+    | undefined;
+
+  const agent = new Agent({
+    model: new DeterministicTestModel(),
+    instructions: "Test agent",
+    // deno-lint-ignore require-yield
+    async *beforeModelCall(history, context) {
+      receivedContext = {
+        turn: context.turn,
+        reason: context.reason,
+        model: context.model,
+      };
+      return history;
+    },
+  });
+
+  await agent.run("Hello");
+
+  assert(receivedContext);
+  assertEquals(receivedContext.turn, 0);
+  assertEquals(receivedContext.reason, "init");
+  assertEquals(receivedContext.model.provider, "deterministic");
+  assertEquals(receivedContext.model.model, "deterministic");
 });
 
 Deno.test("handleModelError returning null falls through to normal retry", async () => {

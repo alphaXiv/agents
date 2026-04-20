@@ -16,6 +16,8 @@ export function classifyOpenAIError(error: unknown): ClassifiedError | null {
     return createClassifiedError("server", error, error.status);
   } else if (error instanceof OpenAI.APIUserAbortError) {
     return createClassifiedError("aborted", error, error.status);
+  } else if (error instanceof OpenAI.APIError && error.code === "context_length_exceeded") {
+    return createClassifiedError("context_overflow", error, error.status);
   }
   return null;
 }
