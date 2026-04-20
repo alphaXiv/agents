@@ -526,3 +526,25 @@ Deno.test("model_switched event is emitted when falling back to another model", 
   assert(switchEvent.cause instanceof Error, "cause should be the original error");
   assertEquals((switchEvent.cause as Error).message, "Deterministic Provider Error");
 });
+
+Deno.test("token_usage event is emitted after a successful model call", async () => {
+  const agent = new Agent({
+    model: new DeterministicTestModel(),
+    instructions: "You are a friendly assistant",
+  });
+
+  const streamItems: StreamItem[] = [];
+  for await (const item of agent.stream("Hello!")) {
+    streamItems.push(item);
+  }
+
+  const usageEvent = streamItems.find((item) => item.type === "token_usage");
+  assert(usageEvent, "Should emit a token_usage event");
+  assert(usageEvent.type === "token_usage");
+  assertEquals(usageEvent.usage, {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+  });
+});

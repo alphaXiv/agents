@@ -168,7 +168,6 @@ Deno.test("Structured output retry streams apology text and rebuilds history", a
       break;
     }
     addStreamItem(rebuiltHistory, next.value);
-    rebuiltHistory[next.value.index].trace = next.value.trace;
   }
 
   if (!run) throw new Error("stream did not return a final run result");

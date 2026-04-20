@@ -311,7 +311,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         signal.throwIfAborted();
 
         // Phase 1: Stream from a model (dispatches tool calls eagerly)
-        const { turnItems, inputTokens, outputTokens } = yield* this.#invokeModel({
+        const { turnItems, inputTokens, outputTokens, trace } = yield* this.#invokeModel({
           signal,
           initialHistory,
           history,
@@ -327,6 +327,14 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         usage.totalOutputTokens += outputTokens;
         usage.inputTokens = inputTokens;
         usage.outputTokens = outputTokens;
+
+        const usageEvent: WithTraceId<StreamItem> = {
+          type: "token_usage",
+          index: history.length + turnItems.length,
+          usage: { ...usage },
+          trace,
+        };
+        yield usageEvent;
 
         // Phase 2: Collect tool results (if any were dispatched during streaming)
         if (pendingTools.size > 0) {
@@ -400,7 +408,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     usage: TokenUsage;
   }): AsyncGenerator<
     WithTraceId<StreamItem>,
-    { turnItems: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number }
+    { turnItems: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number; trace: string }
   > {
     const { signal, history, pendingTools, toolSignal, agentTrace, turn } = options;
     let { modelCallReason } = options;
@@ -560,7 +568,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     messageTracer: MessageTracer;
     turnItems: WithTraceId<ChatItem>[];
     historyLength: number;
-  }): AsyncGenerator<WithTraceId<StreamItem>, { inputTokens: number; outputTokens: number }> {
+  }): AsyncGenerator<WithTraceId<StreamItem>, { inputTokens: number; outputTokens: number; trace: string }> {
     const { adapter, signal, pendingTools, toolSignal, agentTrace, modelTrace, messageTracer, turnItems } = options;
 
     const adapterStream = adapter.stream({
@@ -582,6 +590,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         return {
           inputTokens: part.inputTokens ?? 0,
           outputTokens: part.outputTokens ?? 0,
+          trace: modelTrace.id,
         };
       }
 
