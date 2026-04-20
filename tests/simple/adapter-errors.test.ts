@@ -199,6 +199,18 @@ const testCases: AdapterErrorTestCase[] = [
     expectedKind: "context_overflow",
   },
   {
+    name: "OpenResponses: APIError with request body too large -> context_overflow",
+    adapter: openResponsesAdapter,
+    error: new OpenAIAPIError(
+      413,
+      { message: "Request body too large" },
+      "Request body too large",
+      new Headers(),
+    ),
+    expectedKind: "context_overflow",
+    expectedStatus: 413,
+  },
+  {
     name: "OpenResponses: APIError with context_length_exceeded code -> context_overflow",
     adapter: openResponsesAdapter,
     error: new OpenAIAPIError(

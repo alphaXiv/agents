@@ -113,6 +113,7 @@ function isLikelyContextOverflow(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     lower.includes("prompt is too long") ||
+    lower.includes("request body too large") ||
     lower.includes("token count exceed") ||
     lower.includes("context_length_exceeded") ||
     lower.includes("context window") ||
