@@ -1,4 +1,3 @@
-import { assertEquals } from "@std/assert";
 import {
   APIConnectionError,
   APIConnectionTimeoutError,
@@ -9,6 +8,7 @@ import {
   PermissionDeniedError,
   RateLimitError,
 } from "@anthropic-ai/sdk";
+import { assertEquals } from "@std/assert";
 import {
   APIConnectionError as OpenAIAPIConnectionError,
   APIConnectionTimeoutError as OpenAIAPIConnectionTimeoutError,
@@ -19,11 +19,11 @@ import {
   PermissionDeniedError as OpenAIPermissionDeniedError,
   RateLimitError as OpenAIRateLimitError,
 } from "openai";
+import type { Adapter } from "../../src/adapters/adapter.ts";
 import { AnthropicAdapter } from "../../src/adapters/anthropic/adapter.ts";
 import { OpenResponsesAdapter } from "../../src/adapters/open_responses/adapter.ts";
 import { OpenAICompletionsAdapter } from "../../src/adapters/openai_completions/adapter.ts";
 import { type ClassifiedError, classifyError, type ErrorKind } from "../../src/errors.ts";
-import type { Adapter } from "../../src/adapters/adapter.ts";
 
 // Mirrors the real pipeline in agent.ts: adapter-specific classification first, heuristic fallback second
 function classify(adapter: Adapter<string>, error: unknown): ClassifiedError {
@@ -199,6 +199,23 @@ const testCases: AdapterErrorTestCase[] = [
     expectedKind: "context_overflow",
   },
   {
+    name: "OpenResponses: APIError with context_length_exceeded code -> context_overflow",
+    adapter: openResponsesAdapter,
+    error: new OpenAIAPIError(
+      400,
+      {
+        message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+        type: "invalid_request_error",
+        code: "context_length_exceeded",
+        param: "input",
+      },
+      "Your input exceeds the context window of this model. Please adjust your input and try again.",
+      new Headers(),
+    ),
+    expectedKind: "context_overflow",
+    expectedStatus: 400,
+  },
+  {
     name: "OpenResponses: unknown error falls through to heuristics",
     adapter: openResponsesAdapter,
     error: new TypeError("Cannot read property"),
@@ -241,6 +258,23 @@ const testCases: AdapterErrorTestCase[] = [
     adapter: openAICompletionsAdapter,
     error: new OpenAIAPIError(503, { message: "Service overloaded" }, "Service overloaded", new Headers()),
     expectedKind: "model_unavailable",
+  },
+  {
+    name: "OpenAICompletions: APIError with context_length_exceeded code -> context_overflow",
+    adapter: openAICompletionsAdapter,
+    error: new OpenAIAPIError(
+      400,
+      {
+        message: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+        type: "invalid_request_error",
+        code: "context_length_exceeded",
+        param: "input",
+      },
+      "Your input exceeds the context window of this model. Please adjust your input and try again.",
+      new Headers(),
+    ),
+    expectedKind: "context_overflow",
+    expectedStatus: 400,
   },
   {
     name: "OpenAICompletions: unknown error falls through to heuristics",

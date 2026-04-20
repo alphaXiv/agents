@@ -171,8 +171,18 @@ const testCases: ClassifyErrorTestCase[] = [
     expected: { kind: "context_overflow" },
   },
   {
+    name: "classifies context overflow from context window message",
+    error: "Your input exceeds the context window of this model. Please adjust your input and try again.",
+    expected: { kind: "context_overflow" },
+  },
+  {
     name: "classifies context overflow from token limit message",
     error: "Request exceeds token limit",
+    expected: { kind: "context_overflow" },
+  },
+  {
+    name: "classifies context overflow from context_length_exceeded code",
+    error: { error: { code: "context_length_exceeded" } },
     expected: { kind: "context_overflow" },
   },
 

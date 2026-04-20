@@ -5,6 +5,7 @@ export type {
   AgentRunResult,
   BeforeModelCall as BeforeModelCallFn,
   HandleModelError as HandleModelErrorFn,
+  ModelCallReason,
 } from "./src/agent.ts";
 
 export { classifyError, createClassifiedError, ERROR_KINDS } from "./src/errors.ts";
