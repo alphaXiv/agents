@@ -9,6 +9,7 @@ import type {
 } from "./types.ts";
 
 export type ThinkingLevel = "adaptive" | "minimal" | "low" | "medium" | "high";
+export type ThinkingDisplay = "summarized" | "omitted";
 
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -223,11 +224,13 @@ export interface GetAnthropicMessagesStreamConfigOptions {
   model: AnthropicModels;
   thinkingLevel?: ThinkingLevel;
   effort?: EffortLevel;
+  thinkingDisplay?: ThinkingDisplay;
   interleaved?: boolean;
 }
 
 export function getAnthropicMessagesStreamConfig(
-  { model, thinkingLevel, effort, interleaved }: GetAnthropicMessagesStreamConfigOptions,
+  { model, thinkingLevel, effort, thinkingDisplay = "summarized", interleaved }:
+    GetAnthropicMessagesStreamConfigOptions,
 ): AnthropicMessagesStreamConfig {
   const support = anthropicModelThinkingSupport[model];
 
@@ -240,7 +243,7 @@ export function getAnthropicMessagesStreamConfig(
     case "adaptive": {
       // Interleaved thinking is enabled automatically by adaptive thinking - no beta header needed.
       return {
-        thinking: { type: "adaptive" },
+        thinking: { type: "adaptive", display: thinkingDisplay },
         output_config: outputConfig,
         betas,
       };
@@ -258,7 +261,7 @@ export function getAnthropicMessagesStreamConfig(
       }
       // Adaptive thinking mode - interleaved is automatic, no beta header needed.
       return {
-        thinking: { type: "adaptive" },
+        thinking: { type: "adaptive", display: thinkingDisplay },
         output_config: outputConfig,
         betas,
       };

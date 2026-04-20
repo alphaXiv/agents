@@ -10,6 +10,7 @@ import {
   type SupportedEffortLevel,
   type SupportedThinkingLevel,
   type SupportsInterleaved,
+  type ThinkingDisplay,
   type ThinkingLevel,
 } from "./models.ts";
 
@@ -32,12 +33,13 @@ export type AnthropicModelOptions<TModel extends AnthropicModels> =
   & ThinkingLevelOption<TModel>
   & EffortOption<TModel>
   & InterleavedOption<TModel>
-  & { baseUrl?: string; apiKey?: string };
+  & { baseUrl?: string; apiKey?: string; thinkingDisplay?: ThinkingDisplay };
 
 export class AnthropicModel<TModel extends AnthropicModels = AnthropicModels> extends Model<TModel> {
   adapter: AnthropicAdapter<TModel>;
   readonly thinkingLevel: SupportedThinkingLevel<TModel> | undefined;
   readonly effort: SupportedEffortLevel<TModel> | undefined;
+  readonly thinkingDisplay: ThinkingDisplay;
   readonly interleaved: boolean | undefined;
 
   constructor(options: AnthropicModelOptions<TModel>) {
@@ -45,9 +47,10 @@ export class AnthropicModel<TModel extends AnthropicModels = AnthropicModels> ex
 
     const modelConfig = anthropicModelThinkingSupport[options.model];
     // Cast to access fields that are conditionally typed per model
-    const { thinkingLevel, effort, interleaved } = options as {
+    const { thinkingLevel, effort, thinkingDisplay, interleaved } = options as {
       thinkingLevel?: ThinkingLevel;
       effort?: EffortLevel;
+      thinkingDisplay?: ThinkingDisplay;
       interleaved?: boolean;
     };
 
@@ -60,12 +63,14 @@ export class AnthropicModel<TModel extends AnthropicModels = AnthropicModels> ex
       | SupportedEffortLevel<TModel>
       | undefined;
 
+    this.thinkingDisplay = thinkingDisplay ?? "summarized";
     this.interleaved = interleaved;
 
     const thinkingConfig = getAnthropicMessagesStreamConfig({
       model: options.model,
       thinkingLevel: this.thinkingLevel as ThinkingLevel | undefined,
       effort: this.effort as EffortLevel | undefined,
+      thinkingDisplay: this.thinkingDisplay,
       interleaved: this.interleaved,
     });
 
