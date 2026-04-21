@@ -113,6 +113,12 @@ function isLikelyContextOverflow(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     lower.includes("prompt is too long") ||
+    lower.includes("failed to buffer the request body") ||
+    lower.includes("input too long") ||
+    lower.includes("input too large") ||
+    lower.includes("body too long") ||
+    lower.includes("body too large") ||
+    lower.includes("request length exceeded") ||
     lower.includes("request body too large") ||
     lower.includes("token count exceed") ||
     lower.includes("context_length_exceeded") ||
@@ -198,7 +204,9 @@ export function classifyError(error: unknown, status?: number): ClassifiedError 
   } else if (isLikelyTimeout(message)) {
     kind = "timeout";
   } else if (typeof status === "number") {
-    if (status === 429) {
+    if (status === 413) {
+      kind = "context_overflow";
+    } else if (status === 429) {
       kind = message.toLowerCase().includes("quota exceeded") ? "quota_exceeded" : "rate_limit";
     } else if (status === 401 || status === 403) {
       kind = "auth";
