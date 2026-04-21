@@ -211,6 +211,30 @@ const testCases: AdapterErrorTestCase[] = [
     expectedStatus: 413,
   },
   {
+    name: "OpenResponses: APIError with 413 status and opaque message -> context_overflow",
+    adapter: openResponsesAdapter,
+    error: new OpenAIAPIError(
+      413,
+      { message: "Payload rejected" },
+      "Payload rejected",
+      new Headers(),
+    ),
+    expectedKind: "context_overflow",
+    expectedStatus: 413,
+  },
+  {
+    name: "OpenResponses: APIError with failed to buffer request body -> context_overflow",
+    adapter: openResponsesAdapter,
+    error: new OpenAIAPIError(
+      413,
+      { message: "413 Failed to buffer the request body: length limit exceeded" },
+      "413 Failed to buffer the request body: length limit exceeded",
+      new Headers(),
+    ),
+    expectedKind: "context_overflow",
+    expectedStatus: 413,
+  },
+  {
     name: "OpenResponses: APIError with context_length_exceeded code -> context_overflow",
     adapter: openResponsesAdapter,
     error: new OpenAIAPIError(
@@ -270,6 +294,18 @@ const testCases: AdapterErrorTestCase[] = [
     adapter: openAICompletionsAdapter,
     error: new OpenAIAPIError(503, { message: "Service overloaded" }, "Service overloaded", new Headers()),
     expectedKind: "model_unavailable",
+  },
+  {
+    name: "OpenAICompletions: APIError with 413 status and opaque message -> context_overflow",
+    adapter: openAICompletionsAdapter,
+    error: new OpenAIAPIError(
+      413,
+      { message: "Payload rejected" },
+      "Payload rejected",
+      new Headers(),
+    ),
+    expectedKind: "context_overflow",
+    expectedStatus: 413,
   },
   {
     name: "OpenAICompletions: APIError with context_length_exceeded code -> context_overflow",

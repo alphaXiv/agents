@@ -186,6 +186,41 @@ const testCases: ClassifyErrorTestCase[] = [
     expected: { kind: "context_overflow", status: 413 },
   },
   {
+    name: "classifies context overflow from 413 status without helpful message",
+    error: { status: 413, message: "Payload rejected" },
+    expected: { kind: "context_overflow", status: 413 },
+  },
+  {
+    name: "classifies context overflow from failed to buffer request body message",
+    error: { status: 413, message: "413 Failed to buffer the request body: length limit exceeded" },
+    expected: { kind: "context_overflow", status: 413 },
+  },
+  {
+    name: "classifies context overflow from input too long message",
+    error: "Input too long",
+    expected: { kind: "context_overflow" },
+  },
+  {
+    name: "classifies context overflow from input too large message",
+    error: "Input too large",
+    expected: { kind: "context_overflow" },
+  },
+  {
+    name: "classifies context overflow from body too long message",
+    error: "Body too long",
+    expected: { kind: "context_overflow" },
+  },
+  {
+    name: "classifies context overflow from body too large message",
+    error: "Body too large",
+    expected: { kind: "context_overflow" },
+  },
+  {
+    name: "classifies context overflow from request length exceeded message",
+    error: "Request length exceeded",
+    expected: { kind: "context_overflow" },
+  },
+  {
     name: "classifies context overflow from context_length_exceeded code",
     error: { error: { code: "context_length_exceeded" } },
     expected: { kind: "context_overflow" },
