@@ -339,3 +339,162 @@ Deno.test("GeminiAdapter replays tool calls and results without current tool def
     },
   ]);
 });
+
+Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without current tool definitions", async () => {
+  const adapter = new GeminiAdapter({
+    model: "gemini-3.1-flash-lite-preview",
+    apiKey: "test-key",
+    thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
+  });
+
+  const history = await adapter.getHistory(
+    [
+      {
+        type: "tool_use",
+        tool_use_id: "call_1",
+        kind: "Search Papers",
+        content: JSON.stringify("DeepSeek-V3 arXiv link"),
+      },
+    ],
+    [],
+    AbortSignal.abort(),
+  );
+
+  assertEquals(history, [
+    {
+      role: "model",
+      parts: [{
+        functionCall: {
+          id: "call_1",
+          name: "search_papers",
+          args: { content: "DeepSeek-V3 arXiv link" },
+        },
+        thoughtSignature: "context_engineering_is_the_way_to_go",
+      }],
+    },
+  ]);
+});
+
+Deno.test("GeminiAdapter replays mixed tool history for a tool-less handoff", async () => {
+  const adapter = new GeminiAdapter({
+    model: "gemini-3.1-flash-lite-preview",
+    apiKey: "test-key",
+    thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
+  });
+
+  const history = await adapter.getHistory(
+    [
+      {
+        type: "tool_use",
+        tool_use_id: "embed_1",
+        kind: "Embedding Similarity Search",
+        content: JSON.stringify({
+          query: "Recent reasoning papers related to DeepSeek-R1.",
+        }),
+      },
+      {
+        type: "tool_result_text",
+        tool_use_id: "embed_1",
+        content: "1. Step 3.5 Flash",
+      },
+      {
+        type: "tool_use",
+        tool_use_id: "web_1",
+        kind: "Search Web",
+        content: JSON.stringify("DeepSeek-V3 arXiv link"),
+      },
+      {
+        type: "tool_use",
+        tool_use_id: "web_2",
+        kind: "Search Web",
+        content: JSON.stringify("Kimi k1.5 arXiv paper"),
+      },
+      {
+        type: "tool_result_text",
+        tool_use_id: "web_1",
+        content: 'Error: Property accessor is not of type "number"',
+      },
+      {
+        type: "tool_result_text",
+        tool_use_id: "web_2",
+        content: 'Error: Property accessor is not of type "number"',
+      },
+      {
+        type: "input_text",
+        content: "Summarize the prior history without using any tools.",
+      },
+    ],
+    [],
+    AbortSignal.abort(),
+  );
+
+  assertEquals(history, [
+    {
+      role: "model",
+      parts: [{
+        functionCall: {
+          id: "embed_1",
+          name: "embedding_similarity_search",
+          args: { query: "Recent reasoning papers related to DeepSeek-R1." },
+        },
+        thoughtSignature: "context_engineering_is_the_way_to_go",
+      }],
+    },
+    {
+      role: "user",
+      parts: [{
+        functionResponse: {
+          id: "embed_1",
+          name: "embedding_similarity_search",
+          response: { content: "1. Step 3.5 Flash" },
+        },
+      }],
+    },
+    {
+      role: "model",
+      parts: [{
+        functionCall: {
+          id: "web_1",
+          name: "search_web",
+          args: { content: "DeepSeek-V3 arXiv link" },
+        },
+        thoughtSignature: "context_engineering_is_the_way_to_go",
+      }],
+    },
+    {
+      role: "model",
+      parts: [{
+        functionCall: {
+          id: "web_2",
+          name: "search_web",
+          args: { content: "Kimi k1.5 arXiv paper" },
+        },
+        thoughtSignature: "context_engineering_is_the_way_to_go",
+      }],
+    },
+    {
+      role: "user",
+      parts: [{
+        functionResponse: {
+          id: "web_1",
+          name: "search_web",
+          response: { content: 'Error: Property accessor is not of type "number"' },
+        },
+      }],
+    },
+    {
+      role: "user",
+      parts: [{
+        functionResponse: {
+          id: "web_2",
+          name: "search_web",
+          response: { content: 'Error: Property accessor is not of type "number"' },
+        },
+      }],
+    },
+    {
+      role: "user",
+      parts: [{ text: "Summarize the prior history without using any tools." }],
+    },
+  ]);
+});

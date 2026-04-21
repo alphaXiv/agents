@@ -10,12 +10,31 @@ import { normalizeToolName } from "../../tool.ts";
 import type { AdapterStreamIterator, ChatItem, ChatItemToolUse } from "../../types.ts";
 import { hashString } from "../../util.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
+import { serializeWrappedToolArguments } from "../shared/tools.ts";
 import type { GoogleModels } from "./models.ts";
 import { type GoogleToolMap, normalizeGoogleTools } from "./tools.ts";
 
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between function call and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
 const signatureMap = new Map<string, string>();
+
+/**
+ * Google requires functionCall.args to be an object-like Struct, so replayed
+ * primitive tool inputs need wrapping when we no longer have the original schema.
+ */
+function normalizeGoogleFunctionCallArgs(content: string | undefined, tool: GoogleToolMap | undefined) {
+  if (!content) return undefined;
+
+  try {
+    const parsed = JSON.parse(serializeWrappedToolArguments(content, tool));
+    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+      return parsed;
+    }
+    return { content: parsed };
+  } catch {
+    return { content };
+  }
+}
 
 function getGoogleFileBaseUrl(url: string) {
   return new URL("v1beta/files/", url.endsWith("/") ? url : `${url}/`).toString();
@@ -122,7 +141,6 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
           break;
         case "tool_use": {
           const tool = toolMap.find((tool) => tool.original.name === item.kind);
-          const content = item.content ? JSON.parse(item.content) : undefined;
           // Magic word comes from https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#migrating_from_other_models
           const thoughtSignature = signatureMap.get(item.tool_use_id) ?? "context_engineering_is_the_way_to_go";
 
@@ -132,7 +150,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
               functionCall: {
                 id: item.tool_use_id,
                 name: tool?.google.name ?? normalizeToolName(item.kind),
-                args: tool?.wrapperObject ? { content } : content,
+                args: normalizeGoogleFunctionCallArgs(item.content, tool),
               },
               thoughtSignature,
             }],
