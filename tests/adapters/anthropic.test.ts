@@ -399,6 +399,44 @@ Deno.test("Anthropic tool history re-wraps normalized string tool inputs as obje
   }]);
 });
 
+Deno.test("Anthropic replays missing tool definitions with normalized names", async () => {
+  const adapter = new AnthropicAdapter({
+    model: "claude-sonnet-4-5",
+    client: {} as Anthropic,
+    streamConfig: {},
+  });
+
+  const history = await adapter.getHistory(
+    [
+      { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
+      { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
+    ],
+    [],
+    AbortSignal.abort(),
+  );
+
+  assertEquals(history, [
+    {
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: "call_1",
+        name: "load_project_snapshot",
+        input: {},
+      }],
+    },
+    {
+      role: "user",
+      content: [{
+        type: "tool_result",
+        tool_use_id: "call_1",
+        content: "ready",
+        is_error: false,
+      }],
+    },
+  ]);
+});
+
 Deno.test("Anthropic structured output streamed as text is restored before emission", async () => {
   const chunks = [
     '{"memorySnapshot":{"longTermAssociations":[{"key":"a","value":"1"}]},',

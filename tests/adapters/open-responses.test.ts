@@ -159,6 +159,41 @@ Deno.test("Open Responses retry feedback is replayed as a user message", async (
   ]);
 });
 
+Deno.test("Open Responses replays missing tool definitions with normalized names", async () => {
+  const adapter = new OpenResponsesAdapter({
+    model: "test-model",
+    name: "Test Provider",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }),
+  });
+
+  const history = await adapter.getHistory(
+    [
+      { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
+      { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
+    ],
+    [],
+    AbortSignal.abort(),
+  );
+
+  assertEquals(history, [
+    {
+      id: getItemId(history[0]),
+      type: "function_call",
+      call_id: "call_1",
+      name: "load_project_snapshot",
+      arguments: "{}",
+      status: "completed",
+    },
+    {
+      id: getItemId(history[1]),
+      type: "function_call_output",
+      status: "completed",
+      call_id: "call_1",
+      output: [{ type: "input_text", text: "ready" }],
+    },
+  ]);
+});
+
 Deno.test("Open Responses uses reversible OpenAI compatibility for tuple and record tool schemas", () => {
   const tupleTool = new Tool({
     name: "Tuple Tool",

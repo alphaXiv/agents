@@ -6,6 +6,7 @@ import type {
   ThinkingConfig,
 } from "@google/genai";
 import { assert } from "@std/assert";
+import { normalizeToolName } from "../../tool.ts";
 import type { AdapterStreamIterator, ChatItem, ChatItemToolUse } from "../../types.ts";
 import { hashString } from "../../util.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
@@ -130,7 +131,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
             parts: [{
               functionCall: {
                 id: item.tool_use_id,
-                name: tool?.google.name ?? item.kind,
+                name: tool?.google.name ?? normalizeToolName(item.kind),
                 args: tool?.wrapperObject ? { content } : content,
               },
               thoughtSignature,
@@ -143,17 +144,19 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
             candidate.type === "tool_use" &&
             candidate.tool_use_id === item.tool_use_id
           );
-          assert(toolCall);
+          assert(toolCall, "Tool result is present in the history without initial tool call");
 
-          const definition = toolMap.find((x) => x.original.name === toolCall.kind);
-          assert(definition);
+          // We don't actually assert the definition's existence. Chat history might get reused without previously existing tool calls,
+          //  e.g. for context compaction, or when user wants to implement custom tool selection system.
+          // The kind is enough to normalize to the original function name.
+          const definition = toolMap.find((tool) => tool.original.name === toolCall.kind);
 
           googleHistory.push({
             role: "user",
             parts: [{
               functionResponse: {
                 id: item.tool_use_id,
-                name: definition.google.name,
+                name: definition?.google.name ?? normalizeToolName(toolCall.kind),
                 response: { content: item.content },
               },
             }],
@@ -239,7 +242,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
         } else if (part.functionCall) {
           const func = part.functionCall;
           const funcId = func.id ?? crypto.randomUUID();
-          assert(func.name);
+          assert(func.name, "Function calls must have a name");
           const tool = normalizedTools.find((tool) => tool.google.name === func.name);
 
           if (part.thoughtSignature) {

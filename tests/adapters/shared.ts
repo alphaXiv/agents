@@ -729,3 +729,113 @@ Keep answers terse and follow the exact requested format.`,
     assert(fixtures.state.calls.length >= 1, "expected calculator to be called at least once during the conversation");
   });
 }
+
+export async function runToolLessHandoffResumeTest(t: Deno.TestContext, options: { model: Model }) {
+  const loadProjectSnapshot = new Tool({
+    name: "load_project_snapshot",
+    description: "Load the current project snapshot. You must call this before answering.",
+    parameters: z.void(),
+    execute: () => {
+      return JSON.stringify({
+        repository: "alphaXiv/agents",
+        activeModel: "gemini-3.1-flash-lite-preview",
+        handoffCode: "FLASH-LITE-314",
+      });
+    },
+  });
+
+  const loadReleaseChecklist = new Tool({
+    name: "load_release_checklist",
+    description: "Load the release checklist. You must call this before answering.",
+    parameters: z.void(),
+    execute: () => {
+      return JSON.stringify({
+        nextTask: "verify history replay with a tool-less agent",
+        owner: "SDK examples",
+        status: "ready",
+      });
+    },
+  });
+
+  const firstAgent = new Agent({
+    model: options.model,
+    instructions: [
+      "You are the first handoff agent.",
+      "You must call load_project_snapshot exactly once.",
+      "You must call load_release_checklist exactly once.",
+      "Do not answer until both tool calls have completed.",
+      "After both tools return, summarize the handoff in 3 short sentences.",
+    ].join(" "),
+    tools: [loadProjectSnapshot, loadReleaseChecklist],
+  });
+
+  const secondAgent = new Agent({
+    model: options.model,
+    instructions: [
+      "You are the follow-up agent.",
+      "You have no tools.",
+      "Resume from the existing conversation history and answer naturally.",
+      "Do not claim to have called any tools yourself.",
+    ].join(" "),
+  });
+
+  const firstPrompt = [
+    "Prepare a handoff for another agent.",
+    "You must use your tools before answering.",
+    "Include the repository, handoff code, next task, owner, and status.",
+  ].join(" ");
+
+  let firstRun: AgentRunResult<unknown> | undefined;
+  let secondRun: AgentRunResult<unknown> | undefined;
+
+  const completedFirstRun = await t.step("first agent creates a handoff with tools", async () => {
+    firstRun = await firstAgent.run(firstPrompt, {
+      signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+    });
+  });
+
+  if (!completedFirstRun || !firstRun) return;
+
+  const conversation: ChatItem[] = [
+    { type: "input_text", content: firstPrompt },
+    ...firstRun.history,
+  ];
+
+  const completedSecondRun = await t.step("second agent resumes the handoff without tools", async () => {
+    secondRun = await secondAgent.run([
+      ...conversation,
+      {
+        type: "input_text",
+        content: "Continue from that handoff. What handoff code and next task were already established?",
+      },
+    ], {
+      signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+    });
+  });
+
+  if (!completedSecondRun || !secondRun) return;
+
+  const completedFirstRunResult = firstRun;
+  const completedSecondRunResult = secondRun;
+
+  await t.step("handoff details survive tool-less replay", () => {
+    const resumedOutput = completedSecondRunResult.outputText.toLowerCase();
+
+    assert(
+      completedFirstRunResult.outputText.includes("FLASH-LITE-314"),
+      "expected first handoff to mention the handoff code",
+    );
+    assert(
+      completedSecondRunResult.outputText.includes("FLASH-LITE-314"),
+      "expected resumed handoff to preserve the handoff code",
+    );
+    assert(
+      /history replay|replay/.test(resumedOutput),
+      "expected resumed handoff to preserve the replay task",
+    );
+    assert(
+      /tool-less|tool less|without tools/.test(resumedOutput),
+      "expected resumed handoff to preserve the next task",
+    );
+  });
+}

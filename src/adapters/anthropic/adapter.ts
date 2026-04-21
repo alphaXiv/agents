@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
+import { normalizeToolName } from "../../tool.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
 import type { SchemaCompatibility } from "../shared/schema_compatibility.ts";
@@ -125,7 +126,7 @@ export class AnthropicAdapter<TModel extends AnthropicModels> extends Adapter<TM
             content: [{
               type: "tool_use",
               id: historyItem.tool_use_id,
-              name: tool?.anthropic.name ?? historyItem.kind,
+              name: tool?.anthropic.name ?? normalizeToolName(historyItem.kind),
               input: tool?.compatibility ? tool.compatibility.toProvider(content) : content,
             }],
           });
