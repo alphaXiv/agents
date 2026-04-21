@@ -159,6 +159,41 @@ Deno.test("OpenAI Completions retry feedback is replayed as user content and res
   ]);
 });
 
+Deno.test("OpenAI Completions replays missing tool definitions with normalized names", async () => {
+  const adapter = new OpenAICompletionsAdapter({
+    model: "test-model",
+    name: "Test Provider",
+    client: createMockClient([], undefined),
+  });
+
+  const history = await adapter.getHistory(
+    [
+      { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
+      { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
+    ],
+    "Be useful",
+    [],
+    AbortSignal.abort(),
+  );
+
+  assertEquals(history, [
+    { role: "system", content: "Be useful" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: "call_1",
+        type: "function",
+        function: {
+          name: "load_project_snapshot",
+          arguments: "{}",
+        },
+      }],
+    },
+    { role: "tool", tool_call_id: "call_1", content: "ready" },
+  ]);
+});
+
 Deno.test("OpenAI Completions uses reversible OpenAI compatibility for tuple and record tool schemas", () => {
   const tupleTool = new Tool({
     name: "Tuple Tool",

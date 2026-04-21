@@ -13,6 +13,7 @@ import type { ReasoningEffort } from "openai/resources/shared";
 
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import type { ClassifiedError } from "../../errors.ts";
+import { normalizeToolName } from "../../tool.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
 import { classifyOpenAIError } from "../shared/classify_error.ts";
@@ -204,7 +205,7 @@ export class OpenResponsesAdapter<TModel extends string> extends Adapter<TModel>
             type: "function_call",
             status: "completed",
             call_id: historyItem.tool_use_id,
-            name: tool?.openResponses.name ?? historyItem.kind,
+            name: tool?.openResponses.name ?? normalizeToolName(historyItem.kind),
             arguments: serializeWrappedToolArguments(historyItem.content, tool),
           });
           break;

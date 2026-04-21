@@ -1,4 +1,5 @@
 import { ThinkingLevel as GenAiThinkingLevel } from "@google/genai";
+import { assertEquals } from "@std/assert";
 import { GeminiModel } from "../../mod.ts";
 import { GeminiAdapter } from "../../src/adapters/gemini/adapter.ts";
 import {
@@ -9,6 +10,7 @@ import {
   runBackAndForthCalculatorConversationTest,
   runStructuredOutputStreamingTest,
   runStructuredToolParameterStreamingTest,
+  runToolLessHandoffResumeTest,
 } from "./shared.ts";
 
 const HAS_GEMINI_KEY = Boolean(Deno.env.get("GEMINI_API_KEY"));
@@ -283,4 +285,57 @@ Deno.test({
       model: new GeminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
     });
   },
+});
+
+Deno.test({
+  name: "GeminiModel resumes a handoff without tools (gemini-3.1-flash-lite-preview)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runToolLessHandoffResumeTest(t, {
+      model: new GeminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+    });
+  },
+});
+
+Deno.test("GeminiAdapter replays tool calls and results without current tool definitions", async () => {
+  const adapter = new GeminiAdapter({
+    model: "gemini-3.1-flash-lite-preview",
+    apiKey: "test-key",
+    thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
+  });
+
+  const history = await adapter.getHistory(
+    [
+      { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
+      { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
+    ],
+    [],
+    AbortSignal.abort(),
+  );
+
+  assertEquals(history, [
+    {
+      role: "model",
+      parts: [{
+        functionCall: {
+          id: "call_1",
+          name: "load_project_snapshot",
+          args: undefined,
+        },
+        thoughtSignature: "context_engineering_is_the_way_to_go",
+      }],
+    },
+    {
+      role: "user",
+      parts: [{
+        functionResponse: {
+          id: "call_1",
+          name: "load_project_snapshot",
+          response: { content: "ready" },
+        },
+      }],
+    },
+  ]);
 });

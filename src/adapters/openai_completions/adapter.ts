@@ -6,6 +6,7 @@ import type {
 import type z from "zod";
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import type { ClassifiedError } from "../../errors.ts";
+import { normalizeToolName } from "../../tool.ts";
 import type { AdapterStreamIterator, ChatItem, ChatItemInputFile, ChatItemToolResultFile } from "../../types.ts";
 import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
 import { classifyOpenAIError } from "../shared/classify_error.ts";
@@ -216,7 +217,7 @@ export class OpenAICompletionsAdapter<TModel extends string> extends Adapter<TMo
               id: historyItem.tool_use_id,
               type: "function",
               function: {
-                name: tool?.openAI.function.name ?? historyItem.kind,
+                name: tool?.openAI.function.name ?? normalizeToolName(historyItem.kind),
                 arguments: serializeWrappedToolArguments(historyItem.content, tool),
               },
             }],

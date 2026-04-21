@@ -58,7 +58,7 @@ interface ToolOptions<zO, zI, TModelOutput> {
  * Make sure tool names are normalized to a consistent format (lowercase, underscores, max length) to avoid issues with different LLMs having different requirements for tool naming.
  * @example "Validate LaTeX Tool!" -> "validate_latex_tool"
  */
-function normalizeToolName(name: string): string {
+export function normalizeToolName(name: string): string {
   let normalized = name
     .toLowerCase()
     .replaceAll(" ", "_")
