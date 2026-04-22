@@ -135,3 +135,68 @@ Deno.test("addStreamItem keeps chat history dense while reordering", () => {
     { type: "output_text", content: "later again" },
   ]);
 });
+
+Deno.test("addStreamItem adds context_summary items into the chat item list", () => {
+  const chatItems: ChatItem[] = [];
+
+  addStreamItem(chatItems, {
+    type: "context_summary",
+    index: 0,
+    content: "Earlier context compacted.",
+  });
+
+  assertEquals(chatItems, [{
+    type: "context_summary",
+    content: "Earlier context compacted.",
+  }]);
+});
+
+Deno.test("addStreamItem ignores informational compaction and model switch events", () => {
+  const chatItems: ChatItem[] = [];
+
+  addStreamItem(chatItems, {
+    type: "context_summary_start",
+    index: 0,
+  });
+  addStreamItem(chatItems, {
+    type: "model_switched",
+    index: 0,
+    from: { provider: "gemini", model: "gemini-3.1-flash-lite-preview" },
+    to: { provider: "anthropic", model: "claude-sonnet-4-6" },
+  });
+
+  assertEquals(chatItems, []);
+});
+
+Deno.test("addStreamItem preserves stream ordering when a summary precedes later deltas", () => {
+  const chatItems: WithTraceId<ChatItem>[] = [];
+
+  addStreamItem(
+    chatItems,
+    {
+      type: "delta_output_text",
+      index: 1,
+      delta: "Final answer",
+      trace: "trace-output",
+    } satisfies WithTraceId<StreamItem>,
+  );
+  addStreamItem(
+    chatItems,
+    {
+      type: "context_summary",
+      index: 0,
+      content: "Compact summary",
+      trace: "trace-summary",
+    } satisfies WithTraceId<StreamItem>,
+  );
+
+  assertEquals(chatItems, [{
+    type: "context_summary",
+    content: "Compact summary",
+    trace: "trace-summary",
+  }, {
+    type: "output_text",
+    content: "Final answer",
+    trace: "trace-output",
+  }]);
+});

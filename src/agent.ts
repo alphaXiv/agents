@@ -188,13 +188,13 @@ interface CompactionResult<T> {
 async function* consumeCompactionEvents<T extends ChatItem[] | null>(
   gen: AsyncGenerator<ContextSummaryStartEvent, T>,
   previousHistory: ChatItem[],
-  historyLength: number,
+  streamIndexOffset: number,
   traceId: string,
 ): AsyncGenerator<WithTraceId<StreamItem>, CompactionResult<T>> {
   // Forward any progress events from the compaction hook to the stream
   let next = await gen.next();
   while (!next.done) {
-    yield { type: "context_summary_start", index: historyLength, trace: traceId };
+    yield { type: "context_summary_start", index: streamIndexOffset, trace: traceId };
     next = await gen.next();
   }
 
@@ -217,7 +217,7 @@ async function* consumeCompactionEvents<T extends ChatItem[] | null>(
       compactionItems.push(tracedItem);
       yield {
         type: "context_summary",
-        index: historyLength + compactionItems.length - 1,
+        index: streamIndexOffset + compactionItems.length - 1,
         content: item.content,
         trace: traceId,
       };
@@ -500,7 +500,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
                 model: currentModel,
               }),
               baseHistory,
-              history.length,
+              history.length + turnItems.length,
               agentTrace.id,
             );
 
@@ -517,7 +517,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               modelTrace,
               messageTracer,
               turnItems,
-              historyLength: history.length,
+              streamIndexOffset: history.length + turnItems.length + compactionItems.length,
             });
 
             // Only persist compaction items after the model succeeds. Using unshift ensures
@@ -546,7 +546,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
                   model: currentModel,
                 }),
                 baseHistory,
-                history.length,
+                history.length + turnItems.length,
                 agentTrace.id,
               );
 
@@ -597,7 +597,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     modelTrace: ActiveTrace<"model">;
     messageTracer: MessageTracer;
     turnItems: WithTraceId<ChatItem>[];
-    historyLength: number;
+    streamIndexOffset: number;
   }): AsyncGenerator<WithTraceId<StreamItem>, { inputTokens: number; outputTokens: number; trace: string }> {
     const { adapter, signal, pendingTools, toolSignal, agentTrace, modelTrace, messageTracer, turnItems } = options;
 
@@ -658,7 +658,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       }
 
       addStreamItem(turnItems, { ...part, trace });
-      yield { ...part, index: part.index + options.historyLength, trace };
+      yield { ...part, index: part.index + options.streamIndexOffset, trace };
     }
   }
 
