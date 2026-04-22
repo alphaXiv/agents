@@ -512,6 +512,34 @@ Deno.test("beforeModelCall compaction items appear before model output in histor
   assert(summaryIndex < outputIndex, "context_summary should appear before output_text");
 });
 
+Deno.test("stream indices stay distinct after beforeModelCall compaction", async () => {
+  const agent = new Agent({
+    model: new DeterministicTestModel(),
+    instructions: "You are a friendly assistant",
+    async *beforeModelCall(history, _context) {
+      yield { type: "context_summary_start" };
+      return [
+        { type: "context_summary", content: "Summary of prior context" },
+        ...history,
+      ];
+    },
+  });
+
+  const streamItems: StreamItem[] = [];
+
+  for await (const item of agent.stream([{ type: "input_text", content: "Hello" }])) {
+    streamItems.push(item);
+  }
+
+  const summaryItem = streamItems.find((item) => item.type === "context_summary");
+  const firstOutputItem = streamItems.find((item) => item.type === "delta_output_text");
+
+  assert(summaryItem, "Should stream a context_summary item");
+  assert(firstOutputItem, "Should stream a delta_output_text item");
+  assertEquals(summaryItem.index, 0);
+  assertEquals(firstOutputItem.index, 1);
+});
+
 Deno.test("compaction items are only added after successful model call", async () => {
   let beforeModelCallCount = 0;
 

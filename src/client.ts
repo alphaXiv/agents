@@ -67,12 +67,16 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
         kind: streamItem.kind,
         content: streamItem.content,
       };
+    case "context_summary":
+      return {
+        type: "context_summary",
+        content: streamItem.content,
+      };
     case "token_usage":
     case "context_summary_start":
-    case "context_summary":
     case "model_switched":
       throw new Error(
-        `Context summary items cannot be unambiguously converted into ChatItem. Spotted "${streamItem.type}".`,
+        `Cannot convert informational stream item "${streamItem.type}" into ChatItem.`,
       );
   }
 }
@@ -93,7 +97,6 @@ export function addStreamItem<T extends ChatItem>(
   if (
     streamItem.type === "token_usage" ||
     streamItem.type === "context_summary_start" ||
-    streamItem.type === "context_summary" ||
     streamItem.type === "model_switched"
   ) {
     return;
