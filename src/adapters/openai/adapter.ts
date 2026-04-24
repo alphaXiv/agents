@@ -1,25 +1,37 @@
-import OpenAI from "openai";
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
-import { OpenResponsesAdapter, type OpenResponsesAdapterOptions } from "../open_responses/adapter.ts";
+import {openResponsesModel, type OpenResponsesServiceTier } from "../open_responses/adapter.ts";
 import { getOpenAISupportedMimeTypes } from "./mimes.ts";
-import { getModelModalities, type OpenAIModels } from "./models.ts";
+import { getDefaultReasoningEffort, getModelModalities, openAiModelReasoningSupport, type SupportedReasoningEffort, type OpenAIModels } from "./models.ts";
+import type { Adapter } from "../adapter.ts";
+import type { OpenAIReasoningEffort } from "@alphaxiv/agents";
 
-export interface OpenAIAdapterOptions<TModel extends OpenAIModels>
-  extends Omit<OpenResponsesAdapterOptions<TModel>, "client" | "name" | "supportedMimeTypes"> {
-  apiKey?: string;
-  baseUrl?: string;
-}
+export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
+  model: TModel,
+  apiKey?: string,
+  baseUrl?: string,
+  serviceTier?: OpenResponsesServiceTier,
+  effort?: SupportedReasoningEffort<TModel>,
+  parallelToolCalls?: boolean,
+}): Adapter<zO, zI> {
+  const modelConfig = openAiModelReasoningSupport[options.model];
+  const typedOptions = options as { effort?: SupportedReasoningEffort<OpenAIModels> };
+  const effort = "schema" in modelConfig ? typedOptions.effort ?? getDefaultReasoningEffort(options.model) : undefined;
 
-export class OpenAIAdapter<TModel extends OpenAIModels> extends OpenResponsesAdapter<TModel> {
-  constructor(options: OpenAIAdapterOptions<TModel>) {
-    super({
-      ...options,
-      name: "OpenAI",
-      supportedMimeTypes: getOpenAISupportedMimeTypes(getModelModalities(options.model)),
-      client: new OpenAI({
-        apiKey: options.apiKey ?? requireEnv("OPENAI_API_KEY"),
-        baseURL: options.baseUrl ?? crossPlatformEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",
-      }),
-    });
-  }
+  return openResponsesModel({
+    provider: "OpenAI",
+    model: options.model,
+    supportedMimeTypes: getOpenAISupportedMimeTypes(getModelModalities(options.model)),
+    openAIOptions: {
+      apiKey: options.apiKey ?? requireEnv("OPENAI_API_KEY"),
+      baseURL: options.baseUrl ?? crossPlatformEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",
+    },
+    reasoning: effort
+      ? {
+        effort: effort as OpenAIReasoningEffort,
+        summary: effort === "none" ? undefined : "auto",
+      }
+      : undefined,
+    parallelToolCalls: options.parallelToolCalls,
+    serviceTier: options.serviceTier,
+  });
 }

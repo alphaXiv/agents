@@ -13,28 +13,16 @@
     "./adapters/anthropic": "./src/adapters/anthropic/adapter.ts",
     "./anthropic": "./src/adapters/anthropic/model.ts",
 
-    "./adapters/google-genai": "./src/adapters/google_genai/adapter.ts",
+    "./google-genai": "./src/adapters/google_genai/adapter.ts",
+    "./gemini": "./src/adapters/gemini/adapter.ts",
+    "./vertex-ai": "./src/adapters/vertex_ai/adapter.ts",
+    "./openai_completions": "./src/adapters/openai_completions/adapter.ts",
+    "./open_responses": "./src/adapters/open_responses/adapter.ts",
+    "./openrouter": "./src/adapters/openrouter/adapter.ts",
+    "./tributary": "./src/adapters/tributary/adapter.ts",
+    "./openai": "./src/adapters/openai/adapter.ts",
+    "./sid": "./src/adapters/sid/adapter.ts",
 
-    "./adapters/gemini": "./src/adapters/gemini/adapter.ts",
-    "./gemini": "./src/adapters/gemini/model.ts",
-
-    "./adapters/vertex-ai": "./src/adapters/vertex_ai/adapter.ts",
-    "./vertex-ai": "./src/adapters/vertex_ai/model.ts",
-
-    "./adapters/openai_completions": "./src/adapters/openai_completions/adapter.ts",
-    "./adapters/open_responses": "./src/adapters/open_responses/adapter.ts",
-
-    "./adapters/openrouter": "./src/adapters/openrouter/adapter.ts",
-    "./openrouter": "./src/adapters/openrouter/model.ts",
-
-    "./adapters/tributary": "./src/adapters/tributary/adapter.ts",
-    "./tributary": "./src/adapters/tributary/model.ts",
-
-    "./adapters/openai": "./src/adapters/openai/adapter.ts",
-    "./openai": "./src/adapters/openai/model.ts",
-
-    "./adapters/sid": "./src/adapters/sid/adapter.ts",
-    "./sid": "./src/adapters/sid/model.ts",
     "./sid/tools": "./src/adapters/sid/tools.ts"
   },
   "tasks": {

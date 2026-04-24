@@ -1,38 +1,33 @@
-import OpenAI from "openai";
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
 import {
-  OpenAICompletionsAdapter,
-  type OpenAICompletionsAdapterOptions,
-  type OpenAICompletionsClient,
+  openAICompletionsModel,
   type OpenAICompletionsPdfSupport,
 } from "../openai_completions/adapter.ts";
-import type { TributaryModels } from "./models.ts";
 import type { ReasoningEffort } from "openai/resources/shared";
+import type { Adapter } from "../adapter.ts";
 
-export interface TributaryAdapterOptions<TModel extends TributaryModels>
-  extends Omit<OpenAICompletionsAdapterOptions<TModel>, "client" | "name" | "extraRequestBody" | "pdfSupport"> {
-  apiKey?: string;
-  baseUrl?: string;
-  client?: OpenAICompletionsClient;
-  reasoningEffort?: ReasoningEffort;
-  extraRequestBody?: Record<string, unknown>;
-  pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
-}
+// TODO: Maybe make it strictly typed but will be extremely hard to keep up to date
+export type TributaryModels = string;
 
-export class TributaryAdapter<TModel extends TributaryModels> extends OpenAICompletionsAdapter<TModel> {
-  constructor(options: TributaryAdapterOptions<TModel>) {
-    super({
-      ...options,
-      name: "Tributary",
-      client: options.client ?? new OpenAI({
-        apiKey: options.apiKey ?? requireEnv("TRIBUTARY_API_KEY"),
-        baseURL: options.baseUrl ?? crossPlatformEnv("TRIBUTARY_BASE_URL") ?? "https://api.tributary.cc/openai/v1",
-      }),
-      pdfSupport: options.pdfSupport ?? { mode: "text" },
-      extraRequestBody: () => ({
-        ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
-        ...(options.extraRequestBody ?? {}),
-      }),
-    });
-  }
+export function tributaryModel<zO, zI, TModel extends TributaryModels>(options: {
+  model: TModel,
+  apiKey?: string,
+  baseUrl?: string,
+  pdfSupport?: OpenAICompletionsPdfSupport<TModel>,
+  reasoningEffort?: ReasoningEffort,
+  extraRequestBody?: Record<string, unknown>,
+}): Adapter<zO, zI> {
+  return openAICompletionsModel({
+    provider: "Tributary",
+    model: options.model,
+    openAIOptions: {
+      apiKey: options.apiKey ?? requireEnv("TRIBUTARY_API_KEY"),
+      baseURL: options.baseUrl ?? crossPlatformEnv("TRIBUTARY_BASE_URL") ?? "https://api.tributary.cc/openai/v1",
+    },
+    pdfSupport: options.pdfSupport ?? { mode: "text" },
+    extraRequestBody: () => ({
+      ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {}),
+      ...(options.extraRequestBody ?? {}),
+    }),
+  });
 }

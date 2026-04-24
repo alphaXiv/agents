@@ -1,4 +1,4 @@
-import { ThinkingLevel as GenAiThinkingLevel } from "@google/genai";
+import { ThinkingLevel as GenAiThinkingLevel, type ThinkingConfig } from "@google/genai";
 import { z } from "zod";
 import type {
   GoogleModelSupportedThinkingLevelsMap,
@@ -117,5 +117,18 @@ export function getGenAiThinkingLevel(thinkingLevel: SupportedThinkingLevel<Goog
         `Thinking level "${thinkingLevel}" does not have a direct mapping to GenAI thinking levels, defaulting to THINKING_LEVEL_UNSPECIFIED. Consider adjusting the thinking level for better performance.`,
       );
       return GenAiThinkingLevel.THINKING_LEVEL_UNSPECIFIED;
+  }
+}
+
+export function getThinkingConfig<TModel extends GoogleModels>(model: TModel, thinkingLevel?: SupportedThinkingLevel<TModel>): ThinkingConfig {
+  const resolvedThinkingLevel = thinkingLevel ?? getDefaultThinkingLevel(model);
+  const supportedThinkingLevels = googleModelSupportedThinkingLevels[model];
+  switch (supportedThinkingLevels.type) {
+    case "unsupported":
+      return { includeThoughts: false, thinkingBudget: 0 };
+    case "legacyThinkingBudget":
+      return { includeThoughts: true, thinkingBudget: getLegacyThinkingBudget(resolvedThinkingLevel) };
+    default:
+      return { includeThoughts: true, thinkingLevel: getGenAiThinkingLevel(resolvedThinkingLevel) };
   }
 }

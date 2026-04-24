@@ -1,7 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import type { Adapter } from "@alphaxiv/agents";
 import { requireEnv } from "../../util.ts";
-import { GoogleGenAiAdapter, type GoogleGenAiAdapterOptions } from "../google_genai/adapter.ts";
-import type { GoogleModels } from "../google_genai/models.ts";
+import { googleGenerateContentAPIModel } from "../google_genai/adapter.ts";
+import { getThinkingConfig, type GoogleModels, type SupportedThinkingLevel } from "../google_genai/models.ts";
 
 export type VertexAiModelPriority = "standard" | "priority" | "flex";
 
@@ -17,9 +17,10 @@ function getVertexAiPriorityHeaders(priority?: VertexAiModelPriority) {
   }
 }
 
-export interface VertexAiAdapterOptions<TModel extends GoogleModels>
-  extends Omit<GoogleGenAiAdapterOptions<TModel>, "client"> {
-  model: TModel;
+export function vertexAIModel<zO, zI, TModel extends GoogleModels>(options: {
+  model: TModel,
+  thinkingLevel?: SupportedThinkingLevel<TModel>,
+  baseUrl?: string,
 
   /**
    * The priority level for the model. This determines the availability and performance of the model.
@@ -42,24 +43,16 @@ export interface VertexAiAdapterOptions<TModel extends GoogleModels>
    * @default `GOOGLE_CLOUD_LOCATION` environment variable
    */
   location?: string;
-}
-
-export class VertexAiAdapter<TModel extends GoogleModels> extends GoogleGenAiAdapter<TModel> {
-  name = "Vertex AI";
-
-  constructor(options: VertexAiAdapterOptions<TModel>) {
-    const project = options.project ?? requireEnv("GOOGLE_CLOUD_PROJECT");
-    const location = options.location ?? requireEnv("GOOGLE_CLOUD_LOCATION");
-
-    super({
-      client: new GoogleGenAI({
-        vertexai: true,
-        project,
-        location,
-        httpOptions: { headers: getVertexAiPriorityHeaders(options.priority) },
-      }),
-      model: options.model,
-      thinkingConfig: options.thinkingConfig,
-    });
-  }
+}): Adapter<zO, zI> {
+  return googleGenerateContentAPIModel<zO, zI>({
+    provider: "Vertex AI",
+    googleGenAIOptions: {
+      vertexai: true,
+      project: options.project ?? requireEnv("GOOGLE_CLOUD_PROJECT"),
+      location: options.location ?? requireEnv("GOOGLE_CLOUD_LOCATION"),
+      httpOptions: { headers: getVertexAiPriorityHeaders(options.priority), baseUrl: options.baseUrl },
+    },
+    thinkingConfig: getThinkingConfig(options.model, options.thinkingLevel),
+    model: options.model,
+  })
 }

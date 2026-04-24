@@ -1,17 +1,15 @@
+import type { Adapter } from "./adapter.ts";
 import { AnthropicModel } from "./anthropic/model.ts";
 import type { AnthropicModels } from "./anthropic/models.ts";
-import { GeminiModel } from "./gemini/model.ts";
+import { geminiModel } from "./gemini/adapter.ts";
 import type { GoogleModels } from "./google_genai/models.ts";
-import type { Model } from "./model.ts";
-import { OpenAIModel } from "./openai/model.ts";
 import type { OpenAIModels } from "./openai/models.ts";
-import { OpenRouterModel } from "./openrouter/model.ts";
 import type { OpenRouterModels } from "./openrouter/models.ts";
-import type { SidModels } from "./sid/adapter.ts";
-import { SidModel } from "./sid/model.ts";
-import { TributaryModel } from "./tributary/model.ts";
-import type { TributaryModels } from "./tributary/models.ts";
-import { VertexAiModel } from "./vertex_ai/model.ts";
+import { sidModel, type SidModels } from "./sid/adapter.ts";
+import { tributaryModel, type TributaryModels } from "./tributary/adapter.ts";
+import { vertexAIModel } from "./vertex_ai/adapter.ts";
+import { openrouterModel } from "./openrouter/adapter.ts";
+import { openAIModel } from "./openai/adapter.ts";
 
 /**
  * A string shorthand for creating a model instance.
@@ -35,7 +33,7 @@ export type ModelString =
   | `sid:${SidModels}`;
 
 /** A model instance or a string shorthand that can be resolved into one. */
-export type ModelLike = Model | ModelString;
+export type AdapterLike = Adapter<unknown, unknown> | ModelString;
 
 /**
  * Resolve a {@link ModelLike} value into a concrete {@link Model} instance.
@@ -44,7 +42,7 @@ export type ModelLike = Model | ModelString;
  * If it is a string in the form `"provider:model-name"`, the corresponding
  * model class is instantiated with default options.
  */
-export function resolveModel(model: ModelLike): Model {
+export function resolveModel(model: AdapterLike): Adapter<unknown, unknown> {
   if (typeof model !== "string") return model;
 
   const colonIndex = model.indexOf(":");
@@ -61,17 +59,17 @@ export function resolveModel(model: ModelLike): Model {
     case "anthropic":
       return new AnthropicModel({ model: modelName as AnthropicModels });
     case "openai":
-      return new OpenAIModel({ model: modelName as OpenAIModels });
+      return openAIModel({ model: modelName as OpenAIModels });
     case "gemini":
-      return new GeminiModel({ model: modelName as GoogleModels });
+      return geminiModel({ model: modelName as GoogleModels });
     case "vertex":
-      return new VertexAiModel({ model: modelName as GoogleModels });
+      return vertexAIModel({ model: modelName as GoogleModels });
     case "openrouter":
-      return new OpenRouterModel({ model: modelName as OpenRouterModels });
+      return openrouterModel({ model: modelName as OpenRouterModels });
     case "tributary":
-      return new TributaryModel({ model: modelName as TributaryModels });
+      return tributaryModel({ model: modelName as TributaryModels });
     case "sid":
-      return new SidModel({ model: modelName as SidModels });
+      return sidModel({ model: modelName as SidModels });
     default:
       provider satisfies never;
       throw new Error(`Unknown model provider "${provider}".`);
