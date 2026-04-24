@@ -18,9 +18,9 @@ function getVertexAiPriorityHeaders(priority?: VertexAiModelPriority) {
 }
 
 export function vertexAIModel<zO, zI, TModel extends GoogleModels>(options: {
-  model: TModel,
-  thinkingLevel?: SupportedThinkingLevel<TModel>,
-  baseUrl?: string,
+  model: TModel;
+  thinkingLevel?: SupportedThinkingLevel<TModel>;
+  baseUrl?: string;
 
   /**
    * The priority level for the model. This determines the availability and performance of the model.
@@ -54,5 +54,5 @@ export function vertexAIModel<zO, zI, TModel extends GoogleModels>(options: {
     },
     thinkingConfig: getThinkingConfig(options.model, options.thinkingLevel),
     model: options.model,
-  })
+  });
 }

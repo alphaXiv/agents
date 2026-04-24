@@ -142,9 +142,9 @@ async function getOpenResponsesFileInput(
 
 /** Generic adapter over an Open Responses compatible API */
 export function openResponsesModel<zO, zI>(options: {
-  model: string,
-  provider?: string,
-  openAIOptions?: ClientOptions
+  model: string;
+  provider?: string;
+  openAIOptions?: ClientOptions;
   reasoning?: OpenResponsesReasoningConfig;
   serviceTier?: OpenResponsesServiceTier;
   parallelToolCalls?: boolean;
@@ -374,5 +374,5 @@ export function openResponsesModel<zO, zI>(options: {
       };
     },
     classifyError: classifyOpenAIError,
-  }
+  };
 }

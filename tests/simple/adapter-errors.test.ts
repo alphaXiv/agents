@@ -71,7 +71,7 @@ const openAICompletionsAdapter = new OpenAICompletionsAdapter({
 
 interface AdapterErrorTestCase {
   name: string;
-  adapter: Adapter<string>;
+  adapter: Adapter<unknown, unknown>;
   error: unknown;
   expectedKind: ErrorKind;
   expectedStatus?: number;

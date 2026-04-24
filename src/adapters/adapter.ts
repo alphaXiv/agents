@@ -27,9 +27,9 @@ export type Adapter<zO, zI> = {
   /** Name of the provider */
   provider: string;
   /** Name of the model on the provider */
-  model: string,
+  model: string;
   /** Function to actually stream the results */
-  stream: (options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator,
+  stream: (options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator;
   /**
    * Classify an error using provider-specific error types.
    * Override this in adapter implementations to provide precise error classification.

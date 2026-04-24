@@ -1,10 +1,10 @@
 import {
-  GoogleGenAI,
   type Content,
   type DeleteFileResponse,
   type GenerateContentResponseUsageMetadata,
-  type ThinkingConfig,
+  GoogleGenAI,
   type GoogleGenAIOptions,
+  type ThinkingConfig,
 } from "@google/genai";
 import { assert } from "@std/assert";
 import { normalizeToolName } from "../../tool.ts";
@@ -41,9 +41,9 @@ function getGoogleFileBaseUrl(url: string) {
 }
 
 export interface GoogleGenerateContentAPIModelOptions {
-  googleGenAIOptions?: GoogleGenAIOptions,
-  thinkingConfig?: ThinkingConfig,
-  model: string,
+  googleGenAIOptions?: GoogleGenAIOptions;
+  thinkingConfig?: ThinkingConfig;
+  model: string;
   provider?: string;
 }
 
@@ -204,7 +204,7 @@ export function googleGenerateContentAPIModel<zO, zI>(options: GoogleGenerateCon
   return {
     provider: options.provider ?? "GoogleGenerateContentAPI",
     model: options.model,
-    stream: async function *stream<zO, zI>({
+    stream: async function* stream<zO, zI>({
       history,
       instructions,
       tools,
@@ -292,6 +292,6 @@ export function googleGenerateContentAPIModel<zO, zI>(options: GoogleGenerateCon
           ? usageMetadata.totalTokenCount - usageMetadata.promptTokenCount
           : null,
       };
-    }
-  }
+    },
+  };
 }

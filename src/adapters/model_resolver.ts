@@ -1,5 +1,5 @@
 import type { Adapter } from "./adapter.ts";
-import { AnthropicModel } from "./anthropic/model.ts";
+import { anthropicModel } from "./anthropic/adapter.ts";
 import type { AnthropicModels } from "./anthropic/models.ts";
 import { geminiModel } from "./gemini/adapter.ts";
 import type { GoogleModels } from "./google_genai/models.ts";
@@ -57,7 +57,7 @@ export function resolveModel(model: AdapterLike): Adapter<unknown, unknown> {
 
   switch (provider) {
     case "anthropic":
-      return new AnthropicModel({ model: modelName as AnthropicModels });
+      return anthropicModel({ model: modelName as AnthropicModels });
     case "openai":
       return openAIModel({ model: modelName as OpenAIModels });
     case "gemini":

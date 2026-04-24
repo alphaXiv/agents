@@ -1,8 +1,5 @@
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
-import {
-  openAICompletionsModel,
-  type OpenAICompletionsPdfSupport,
-} from "../openai_completions/adapter.ts";
+import { openAICompletionsModel, type OpenAICompletionsPdfSupport } from "../openai_completions/adapter.ts";
 import type { ReasoningEffort } from "openai/resources/shared";
 import type { Adapter } from "../adapter.ts";
 
@@ -10,12 +7,12 @@ import type { Adapter } from "../adapter.ts";
 export type TributaryModels = string;
 
 export function tributaryModel<zO, zI, TModel extends TributaryModels>(options: {
-  model: TModel,
-  apiKey?: string,
-  baseUrl?: string,
-  pdfSupport?: OpenAICompletionsPdfSupport<TModel>,
-  reasoningEffort?: ReasoningEffort,
-  extraRequestBody?: Record<string, unknown>,
+  model: TModel;
+  apiKey?: string;
+  baseUrl?: string;
+  pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
+  reasoningEffort?: ReasoningEffort;
+  extraRequestBody?: Record<string, unknown>;
 }): Adapter<zO, zI> {
   return openAICompletionsModel({
     provider: "Tributary",

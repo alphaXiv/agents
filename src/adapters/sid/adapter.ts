@@ -1,14 +1,14 @@
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
-import { openAICompletionsModel, } from "../openai_completions/adapter.ts";
+import { openAICompletionsModel } from "../openai_completions/adapter.ts";
 import type { Adapter } from "../adapter.ts";
 
 export type SidModels = "sid-1";
 
 export function sidModel<zO, zI, TModel extends SidModels>(options: {
-  model: TModel,
-  apiKey?: string,
-  baseUrl?: string,
-  extraRequestBody?: Record<string, unknown>,
+  model: TModel;
+  apiKey?: string;
+  baseUrl?: string;
+  extraRequestBody?: Record<string, unknown>;
 }): Adapter<zO, zI> {
   return openAICompletionsModel({
     provider: "SID",

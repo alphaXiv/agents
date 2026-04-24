@@ -148,14 +148,14 @@ async function getOpenAICompletionsFileMessage<TModel extends string>(
 
 /** Generic adapter over an OpenAI Chat Completions compatible API */
 export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
-  model: TModel,
-  supportedMimeTypes?: string[],
-  pdfSupport?: OpenAICompletionsPdfSupport<TModel>,
-  parallelToolCalls?: boolean,
-  provider?: string,
-  extraRequestBody?: OpenAICompletionsExtraRequestBody<TModel>,
-  openAIOptions?: ClientOptions
-}): Adapter<zO, zI>  {
+  model: TModel;
+  supportedMimeTypes?: string[];
+  pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
+  parallelToolCalls?: boolean;
+  provider?: string;
+  extraRequestBody?: OpenAICompletionsExtraRequestBody<TModel>;
+  openAIOptions?: ClientOptions;
+}): Adapter<zO, zI> {
   const supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
   if (options.pdfSupport && !supportsMimeType("application/pdf", supportedMimeTypes)) {
     throw new Error("pdfSupport requires application/pdf to be included in supportedMimeTypes");
@@ -413,5 +413,5 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
       };
     },
     classifyError: classifyOpenAIError,
-  }
+  };
 }

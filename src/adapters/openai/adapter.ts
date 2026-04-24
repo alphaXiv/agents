@@ -1,17 +1,23 @@
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
-import {openResponsesModel, type OpenResponsesServiceTier } from "../open_responses/adapter.ts";
+import { openResponsesModel, type OpenResponsesServiceTier } from "../open_responses/adapter.ts";
 import { getOpenAISupportedMimeTypes } from "./mimes.ts";
-import { getDefaultReasoningEffort, getModelModalities, openAiModelReasoningSupport, type SupportedReasoningEffort, type OpenAIModels } from "./models.ts";
+import {
+  getDefaultReasoningEffort,
+  getModelModalities,
+  openAiModelReasoningSupport,
+  type OpenAIModels,
+  type SupportedReasoningEffort,
+} from "./models.ts";
 import type { Adapter } from "../adapter.ts";
 import type { OpenAIReasoningEffort } from "@alphaxiv/agents";
 
 export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
-  model: TModel,
-  apiKey?: string,
-  baseUrl?: string,
-  serviceTier?: OpenResponsesServiceTier,
-  effort?: SupportedReasoningEffort<TModel>,
-  parallelToolCalls?: boolean,
+  model: TModel;
+  apiKey?: string;
+  baseUrl?: string;
+  serviceTier?: OpenResponsesServiceTier;
+  effort?: SupportedReasoningEffort<TModel>;
+  parallelToolCalls?: boolean;
 }): Adapter<zO, zI> {
   const modelConfig = openAiModelReasoningSupport[options.model];
   const typedOptions = options as { effort?: SupportedReasoningEffort<OpenAIModels> };

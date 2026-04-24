@@ -1,8 +1,8 @@
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
 import type { Adapter } from "../adapter.ts";
 import {
-openAICompletionsModel,
   type OpenAICompletionsClient,
+  openAICompletionsModel,
   type OpenAICompletionsPdfSupport,
 } from "../openai_completions/adapter.ts";
 import type { OpenRouterModels, OpenRouterReasoningEffort } from "./models.ts";
@@ -34,7 +34,7 @@ function getOpenRouterHeaders(options: {
 }
 
 export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options: {
-  model: TModel,
+  model: TModel;
   apiKey?: string;
   baseUrl?: string;
   client?: OpenAICompletionsClient;
@@ -58,7 +58,8 @@ export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options
       defaultHeaders: getOpenRouterHeaders(options),
     },
     pdfSupport: options.pdfSupport ??
-      ((model) => getOpenRouterNativePdfSupport(model) ? { mode: "native", maxSize: 4 * 1024 * 1024 } : { mode: "text" }),
+      ((model) =>
+        getOpenRouterNativePdfSupport(model) ? { mode: "native", maxSize: 4 * 1024 * 1024 } : { mode: "text" }),
     extraRequestBody: () => ({
       ...(options.reasoning ? { reasoning: options.reasoning } : {}),
       ...(options.plugins?.length ? { plugins: options.plugins } : {}),

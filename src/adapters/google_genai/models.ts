@@ -1,4 +1,4 @@
-import { ThinkingLevel as GenAiThinkingLevel, type ThinkingConfig } from "@google/genai";
+import { type ThinkingConfig, ThinkingLevel as GenAiThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import type {
   GoogleModelSupportedThinkingLevelsMap,
@@ -120,7 +120,10 @@ export function getGenAiThinkingLevel(thinkingLevel: SupportedThinkingLevel<Goog
   }
 }
 
-export function getThinkingConfig<TModel extends GoogleModels>(model: TModel, thinkingLevel?: SupportedThinkingLevel<TModel>): ThinkingConfig {
+export function getThinkingConfig<TModel extends GoogleModels>(
+  model: TModel,
+  thinkingLevel?: SupportedThinkingLevel<TModel>,
+): ThinkingConfig {
   const resolvedThinkingLevel = thinkingLevel ?? getDefaultThinkingLevel(model);
   const supportedThinkingLevels = googleModelSupportedThinkingLevels[model];
   switch (supportedThinkingLevels.type) {

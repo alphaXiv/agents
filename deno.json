@@ -10,9 +10,7 @@
     "./cli": "./src/cli.ts",
     "./client": "./src/client.ts",
 
-    "./adapters/anthropic": "./src/adapters/anthropic/adapter.ts",
-    "./anthropic": "./src/adapters/anthropic/model.ts",
-
+    "./anthropic": "./src/adapters/anthropic/adapter.ts",
     "./google-genai": "./src/adapters/google_genai/adapter.ts",
     "./gemini": "./src/adapters/gemini/adapter.ts",
     "./vertex-ai": "./src/adapters/vertex_ai/adapter.ts",
