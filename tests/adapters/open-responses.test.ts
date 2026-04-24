@@ -1,9 +1,9 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import type OpenAI from "openai";
 import z from "zod";
-import { OpenResponsesAdapter } from "../../src/adapters/open_responses/adapter.ts";
+import { openResponsesModel } from "../../src/adapters/open_responses/adapter.ts";
 import { normalizeOpenResponsesTools } from "../../src/adapters/open_responses/tools.ts";
-import { OpenAIModel } from "../../src/adapters/openai/model.ts";
+import { openAIModel } from "../../src/adapters/openai/adapter.ts";
 import { Tool } from "../../src/tool.ts";
 
 function createMockClient(

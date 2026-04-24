@@ -1,7 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import z from "zod";
 import { Agent, type AgentRunResult, Tool } from "../../mod.ts";
-import type { Model } from "../../src/adapters/model.ts";
+import type { Adapter } from "../../src/adapters/adapter.ts";
 import type {
   AdapterStreamIterator,
   AgentStreamIterator,
@@ -418,7 +418,7 @@ export async function runAdapterToolStreamingTest(
 export async function runAgentToolStreamingTest(
   t: Deno.TestContext,
   options: {
-    model: Model;
+    model: Adapter<unknown, unknown>;
   },
 ) {
   const fixtures = createToolFixtures();
@@ -509,7 +509,7 @@ export async function runAgentToolStreamingTest(
 export async function runStructuredOutputStreamingTest(
   t: Deno.TestContext,
   options: {
-    model: Model;
+    model: Adapter<unknown, unknown>;
   },
 ) {
   const fixtures = createStructuredOutputFixtures();
@@ -539,7 +539,7 @@ export async function runStructuredOutputStreamingTest(
 export async function runStructuredToolParameterStreamingTest(
   t: Deno.TestContext,
   options: {
-    model: Model;
+    model: Adapter<unknown, unknown>;
   },
 ) {
   const fixtures = createStructuredToolParameterFixtures();
@@ -614,7 +614,7 @@ export async function runStructuredToolParameterStreamingTest(
   });
 }
 
-export async function runBackAndForthCalculatorConversationTest(t: Deno.TestContext, options: { model: Model }) {
+export async function runBackAndForthCalculatorConversationTest(t: Deno.TestContext, options: { model: Adapter<unknown, unknown> }) {
   const fixtures = createCalculatorFixtures();
   const agent = new Agent({
     model: options.model,
@@ -730,7 +730,7 @@ Keep answers terse and follow the exact requested format.`,
   });
 }
 
-export async function runToolLessHandoffResumeTest(t: Deno.TestContext, options: { model: Model }) {
+export async function runToolLessHandoffResumeTest(t: Deno.TestContext, options: { model: Adapter<unknown, unknown> }) {
   const loadProjectSnapshot = new Tool({
     name: "load_project_snapshot",
     description: "Load the current project snapshot. You must call this before answering.",
