@@ -614,7 +614,10 @@ export async function runStructuredToolParameterStreamingTest(
   });
 }
 
-export async function runBackAndForthCalculatorConversationTest(t: Deno.TestContext, options: { model: Adapter<unknown, unknown> }) {
+export async function runBackAndForthCalculatorConversationTest(
+  t: Deno.TestContext,
+  options: { model: Adapter<unknown, unknown> },
+) {
   const fixtures = createCalculatorFixtures();
   const agent = new Agent({
     model: options.model,

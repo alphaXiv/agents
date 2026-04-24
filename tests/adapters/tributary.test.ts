@@ -1,5 +1,4 @@
-import { TributaryModel } from "../../mod.ts";
-import { TributaryAdapter } from "../../src/adapters/tributary/adapter.ts";
+import { tributaryModel } from "../../src/adapters/tributary/adapter.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -18,7 +17,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new TributaryAdapter({
+    const adapter = tributaryModel({
       model: "openai:gpt-5.4-mini",
       reasoningEffort: "low",
     });
@@ -46,7 +45,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new TributaryModel({ model: "openai:gpt-5.4-mini", effort: "low" }),
+      model: tributaryModel({ model: "openai:gpt-5.4-mini", reasoningEffort: "low" }),
     });
   },
 });
@@ -58,7 +57,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new TributaryModel({ model: "anthropic:claude-sonnet-4.5", effort: "low" }),
+      model: tributaryModel({ model: "anthropic:claude-sonnet-4.5", reasoningEffort: "low" }),
     });
   },
 });
@@ -70,7 +69,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new TributaryModel({ model: "openai:gpt-5.4-mini", effort: "low" }),
+      model: tributaryModel({ model: "openai:gpt-5.4-mini", reasoningEffort: "low" }),
     });
   },
 });
@@ -82,7 +81,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: new TributaryModel({ model: "openai:gpt-4.1-nano" }),
+      model: tributaryModel({ model: "openai:gpt-4.1-nano" }),
     });
   },
 });

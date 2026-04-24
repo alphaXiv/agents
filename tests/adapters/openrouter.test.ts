@@ -1,5 +1,4 @@
-import { OpenRouterModel } from "../../mod.ts";
-import { OpenRouterAdapter } from "../../src/adapters/openrouter/adapter.ts";
+import { openrouterModel } from "../../src/adapters/openrouter/adapter.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -19,7 +18,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new OpenRouterAdapter({
+    const adapter = openrouterModel({
       model: "openai/gpt-5.4-mini",
       reasoning: { enabled: true, effort: "medium" },
     });
@@ -47,7 +46,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
+      model: openrouterModel({ model: "openai/gpt-5-mini", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -59,7 +58,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new OpenRouterModel({ model: "anthropic/claude-sonnet-4.5", effort: "medium" }),
+      model: openrouterModel({ model: "anthropic/claude-sonnet-4.5", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -71,7 +70,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredToolParameterStreamingTest(t, {
-      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
+      model: openrouterModel({ model: "openai/gpt-5-mini", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -83,7 +82,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
+      model: openrouterModel({ model: "openai/gpt-5-mini", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -95,7 +94,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: new OpenRouterModel({ model: "minimax/minimax-m2.7" }),
+      model: openrouterModel({ model: "minimax/minimax-m2.7" }),
     });
   },
 });

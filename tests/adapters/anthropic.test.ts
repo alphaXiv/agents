@@ -28,7 +28,7 @@ Deno.test({
     const fixtures = createToolFixtures();
     const adapter = anthropicModel({
       model: "claude-opus-4-7",
-      effort: "high"
+      effort: "high",
     });
 
     await runAdapterToolStreamingTest(t, {
