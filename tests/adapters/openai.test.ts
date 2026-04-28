@@ -1,5 +1,4 @@
-import { OpenAIModel } from "../../mod.ts";
-import { OpenAIAdapter } from "../../src/adapters/openai/adapter.ts";
+import { openAIModel } from "../../src/adapters/openai/adapter.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -19,9 +18,9 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new OpenAIAdapter({
+    const adapter = openAIModel({
       model: "gpt-5.4-mini",
-      reasoning: { effort: "medium", summary: "auto" },
+      effort: "medium",
     });
 
     await runAdapterToolStreamingTest(t, {
@@ -47,7 +46,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new OpenAIModel({ model: "gpt-5.4", effort: "low" }),
+      model: openAIModel({ model: "gpt-5.4", effort: "low" }),
     });
   },
 });
@@ -59,7 +58,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new OpenAIModel({ model: "gpt-5.4-mini", effort: "low" }),
+      model: openAIModel({ model: "gpt-5.4-mini", effort: "low" }),
     });
   },
 });
@@ -71,7 +70,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredToolParameterStreamingTest(t, {
-      model: new OpenAIModel({ model: "gpt-5.4-mini" }),
+      model: openAIModel({ model: "gpt-5.4-mini" }),
     });
   },
 });
@@ -83,7 +82,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new OpenAIModel({ model: "gpt-5.4-mini", effort: "low" }),
+      model: openAIModel({ model: "gpt-5.4-mini", effort: "low" }),
     });
   },
 });
@@ -95,7 +94,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: new OpenAIModel({ model: "gpt-5.4-nano" }),
+      model: openAIModel({ model: "gpt-5.4-nano" }),
     });
   },
 });

@@ -4,16 +4,16 @@ import { delay } from "@std/async/delay";
 import z from "zod";
 import { Agent, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
 import {
-  ContextWindowTestModel,
-  DeterministicTestModel,
-  FailingTestModel,
-  HistoryRecordingTestModel,
+  contextWindowTestModel,
+  deterministicTestModel,
+  failingTestModel,
+  historyRecordingTestModel,
   testingTracker,
 } from "./testing-model.ts";
 
 Deno.test("Basic input out of agents works", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant",
   });
   const run = await agent.run("Hello!");
@@ -26,7 +26,7 @@ Deno.test("Basic input out of agents works", async () => {
 
 Deno.test("History input out of agents works", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant",
   });
   const run = await agent.run([{
@@ -42,7 +42,7 @@ Deno.test("History input out of agents works", async () => {
 
 Deno.test("Structured output works", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant who can spit out a temperature guesstimate",
     output: z.number(),
   });
@@ -56,7 +56,7 @@ Deno.test("Structured output works", async () => {
 
 Deno.test("Structured output 2 works", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant who can name cats",
     output: z.object({
       name: z.string().describe("The cat's name"),
@@ -83,7 +83,7 @@ Deno.test("Tool calls can work", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -105,7 +105,7 @@ Deno.test("Dubious calls without retry will fail", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -135,7 +135,7 @@ Deno.test("Dubious calls will work with retry", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -161,7 +161,7 @@ Deno.test("Abort signal can work", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -225,7 +225,7 @@ Deno.test("Tool timeout can work", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -270,7 +270,7 @@ Deno.test("Tool signal can work", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -293,7 +293,7 @@ Deno.test("Agent LLM retries 3 times by default", async () => {
   });
 
   const agent = new Agent({
-    model: new FailingTestModel(),
+    model: failingTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
   });
@@ -320,7 +320,7 @@ Deno.test("Disable retrying of an agent", async () => {
   });
 
   const agent = new Agent({
-    model: new FailingTestModel(),
+    model: failingTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [search],
     retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
@@ -341,7 +341,7 @@ Deno.test("handleModelError recovers from context window errors", async () => {
   let recoveryCalls = 0;
 
   const agent = new Agent({
-    model: new ContextWindowTestModel(3),
+    model: contextWindowTestModel(3),
     instructions: "You are a friendly assistant",
     async *handleModelError(error, history, context) {
       assertEquals(error.kind, "context_overflow");
@@ -377,7 +377,7 @@ Deno.test("beforeModelCall receives current model in context", async () => {
     | undefined;
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "Test agent",
     // deno-lint-ignore require-yield
     async *beforeModelCall(history, context) {
@@ -403,7 +403,7 @@ Deno.test("handleModelError returning null falls through to normal retry", async
   let handleCalls = 0;
 
   const agent = new Agent({
-    model: new FailingTestModel(),
+    model: failingTestModel(),
     instructions: "You are a friendly assistant.",
     // deno-lint-ignore require-yield
     async *handleModelError(_error, _history, _context) {
@@ -421,7 +421,7 @@ Deno.test("handleModelError returning null falls through to normal retry", async
 });
 
 Deno.test("model receives history filtered from last context_summary", async () => {
-  const model = new HistoryRecordingTestModel("response");
+  const model = historyRecordingTestModel("response");
 
   // Simulate a history with a context_summary in the middle
   const historyWithSummary: ChatItem[] = [
@@ -453,7 +453,7 @@ Deno.test("model receives history filtered from last context_summary", async () 
 });
 
 Deno.test("model receives history filtered from LATEST context_summary when multiple exist", async () => {
-  const model = new HistoryRecordingTestModel("response");
+  const model = historyRecordingTestModel("response");
 
   // History with multiple context_summaries:
   // [conversationA, compactionA, conversationB, compactionB, conversationC]
@@ -486,7 +486,7 @@ Deno.test("model receives history filtered from LATEST context_summary when mult
 });
 
 Deno.test("beforeModelCall compaction items appear before model output in history", async () => {
-  const model = new HistoryRecordingTestModel("model response");
+  const model = historyRecordingTestModel("model response");
 
   const agent = new Agent({
     model,
@@ -514,7 +514,7 @@ Deno.test("beforeModelCall compaction items appear before model output in histor
 
 Deno.test("stream indices stay distinct after beforeModelCall compaction", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant",
     async *beforeModelCall(history, _context) {
       yield { type: "context_summary_start" };
@@ -544,7 +544,7 @@ Deno.test("compaction items are only added after successful model call", async (
   let beforeModelCallCount = 0;
 
   const agent = new Agent({
-    model: new FailingTestModel(),
+    model: failingTestModel(),
     instructions: "Test agent",
     retryStrategy: { modelCycles: 2, sameModelRetries: 0 },
     async *beforeModelCall(history, _context) {
@@ -566,7 +566,7 @@ Deno.test("compaction items are only added after successful model call", async (
 
 Deno.test("model_switched event is emitted when falling back to another model", async () => {
   const agent = new Agent({
-    model: [new FailingTestModel(), new DeterministicTestModel()],
+    model: [failingTestModel(), deterministicTestModel()],
     instructions: "You are a friendly assistant",
     retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
   });
@@ -591,7 +591,7 @@ Deno.test("model_switched event is emitted when falling back to another model", 
 
 Deno.test("token_usage event is emitted after a successful model call", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant",
   });
 

@@ -2,8 +2,7 @@ import { assert, assertEquals, assertExists } from "@std/assert";
 import { generate } from "@std/uuid/v7";
 import z from "zod";
 import { Agent, Tool } from "../../mod.ts";
-import { Adapter, type AdapterStreamOptions } from "../../src/adapters/adapter.ts";
-import { Model } from "../../src/adapters/model.ts";
+import type { Adapter, AdapterStreamOptions } from "../../src/adapters/adapter.ts";
 import { convertChatItemsToStream } from "../../src/client.ts";
 import {
   newTrace,
@@ -14,44 +13,20 @@ import {
 } from "../../src/tracing.ts";
 import type { AdapterStreamIterator } from "../../src/types.ts";
 
-class TraceTestAdapter<SupportedModels extends string> extends Adapter<SupportedModels> {
+function traceTestModel<SupportedModels extends string>({
+  name,
+  model,
+  stream,
+}: {
   name: string;
-  #streamImpl: <zO, zI>(options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator;
-
-  constructor({
-    name,
+  model: SupportedModels;
+  stream: (options: AdapterStreamOptions<unknown, unknown>) => AdapterStreamIterator;
+}): Adapter<unknown, unknown> {
+  return {
+    provider: name,
     model,
     stream,
-  }: {
-    name: string;
-    model: SupportedModels;
-    stream: <zO, zI>(options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator;
-  }) {
-    super({ model });
-    this.name = name;
-    this.#streamImpl = stream;
-  }
-
-  stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
-    return this.#streamImpl(options);
-  }
-}
-
-class TraceTestModel<SupportedModels extends string> extends Model<SupportedModels> {
-  adapter: TraceTestAdapter<SupportedModels>;
-
-  constructor({
-    name,
-    model,
-    stream,
-  }: {
-    name: string;
-    model: SupportedModels;
-    stream: <zO, zI>(options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator;
-  }) {
-    super({ model });
-    this.adapter = new TraceTestAdapter({ name, model, stream });
-  }
+  };
 }
 
 function createRecorder() {
@@ -104,7 +79,7 @@ Deno.test("global tracer captures tool turns, message spans, and token counts", 
     execute: (param) => `results for ${param}`,
   });
 
-  const model = new TraceTestModel({
+  const model = traceTestModel({
     name: "trace-test",
     model: "tool-model",
     stream: ({ history, tools }) => {
@@ -203,7 +178,7 @@ Deno.test("global tracer captures tool turns, message spans, and token counts", 
 Deno.test("local tracer captures sub-agent spans and tags history items with the correct traces", async () => {
   const { starts, events, tracer } = createRecorder();
 
-  const subModel = new TraceTestModel({
+  const subModel = traceTestModel({
     name: "inner",
     model: "inner-model",
     stream: () => {
@@ -215,7 +190,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
     },
   });
 
-  const outerModel = new TraceTestModel({
+  const outerModel = traceTestModel({
     name: "outer",
     model: "outer-model",
     stream: ({ history, tools }) => {
@@ -421,7 +396,7 @@ Deno.test("tool_use_start hints create message spans without changing tool trace
     execute: () => "pong",
   });
 
-  const model = new TraceTestModel({
+  const model = traceTestModel({
     name: "hint",
     model: "hint-model",
     stream: async function* ({ history, tools }) {
@@ -492,7 +467,7 @@ Deno.test("tool failures are traced as errors while the agent run still complete
     },
   });
 
-  const model = new TraceTestModel({
+  const model = traceTestModel({
     name: "trace-test",
     model: "tool-failure-model",
     stream: ({ history, tools }) => {
@@ -552,7 +527,7 @@ Deno.test("provider retries after partial output keep failed message spans", asy
   const { starts, events, tracer } = createRecorder();
   let calls = 0;
 
-  const model = new TraceTestModel({
+  const model = traceTestModel({
     name: "retry",
     model: "retry-model",
     stream: async function* () {
@@ -607,7 +582,7 @@ Deno.test("regression: all provider retry traces are annotated as 'retry-provide
   const { events, tracer } = createRecorder();
   let calls = 0;
 
-  const model = new TraceTestModel({
+  const model = traceTestModel({
     name: "flaky",
     model: "flaky-model",
     stream: async function* () {
@@ -648,7 +623,7 @@ Deno.test("malformed structured output emits a log span and retries cleanly", as
   const { starts, events, tracer } = createRecorder();
   let calls = 0;
 
-  const model = new TraceTestModel({
+  const model = traceTestModel({
     name: "structured",
     model: "structured-model",
     stream: () => {

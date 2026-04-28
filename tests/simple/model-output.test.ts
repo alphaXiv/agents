@@ -4,7 +4,7 @@ import z from "zod";
 import { Agent, ModelOutput, Tool } from "../../mod.ts";
 import { addStreamItem } from "../../src/client.ts";
 import type { ChatItem, StreamItem, WithTraceId } from "../../src/types.ts";
-import { DeterministicTestModel } from "./testing-model.ts";
+import { deterministicTestModel } from "./testing-model.ts";
 
 Deno.test("ModelOutput from a tool terminates agent run and returns the value", async () => {
   const outputTool = new Tool({
@@ -15,7 +15,7 @@ Deno.test("ModelOutput from a tool terminates agent run and returns the value", 
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [outputTool],
   });
@@ -34,7 +34,7 @@ Deno.test("ModelOutput outputText is JSON-stringified for non-string values", as
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [outputTool],
   });
@@ -54,7 +54,7 @@ Deno.test("ModelOutput with a string value uses it directly as outputText", asyn
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [outputTool],
   });
@@ -79,7 +79,7 @@ Deno.test("ModelOutput is not retried even if tool has retries configured", asyn
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [outputTool],
   });
@@ -106,7 +106,7 @@ Deno.test("ModelOutput terminates even when called alongside a regular tool", as
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [searchTool, outputTool],
   });
@@ -125,7 +125,7 @@ Deno.test("ModelOutput terminates streaming", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "Model output stream test",
     tools: [outputTool],
   });
@@ -145,7 +145,7 @@ Deno.test("ModelOutput terminates streaming", async () => {
 
 Deno.test("Structured output retry streams apology text and rebuilds history", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "Structured output retry stream test",
     output: z.object({ name: z.string() }),
   });
@@ -224,7 +224,7 @@ Deno.test("ModelOutput output type is a union across multiple output tools", asy
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [regularTool, toolA, toolB],
   });
@@ -244,7 +244,7 @@ Deno.test("Structured output ORs with ModelOutput types", async () => {
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     output: z.object({ temperature: z.number() }),
     tools: [outputTool],
@@ -264,7 +264,7 @@ Deno.test("ModelOutput carries history up to the point of termination", async ()
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "You are a friendly assistant.",
     tools: [outputTool],
   });

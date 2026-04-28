@@ -20,53 +20,31 @@ import {
   RateLimitError as OpenAIRateLimitError,
 } from "openai";
 import type { Adapter } from "../../src/adapters/adapter.ts";
-import { AnthropicAdapter } from "../../src/adapters/anthropic/adapter.ts";
-import { OpenResponsesAdapter } from "../../src/adapters/open_responses/adapter.ts";
-import { OpenAICompletionsAdapter } from "../../src/adapters/openai_completions/adapter.ts";
+import { anthropicModel } from "../../src/adapters/anthropic/adapter.ts";
+import { openResponsesModel } from "../../src/adapters/open_responses/adapter.ts";
+import { openAICompletionsModel } from "../../src/adapters/openai_completions/adapter.ts";
 import { type ClassifiedError, classifyError, type ErrorKind } from "../../src/errors.ts";
 
 // Mirrors the real pipeline in agent.ts: adapter-specific classification first, heuristic fallback second
-function classify(adapter: Adapter<string>, error: unknown): ClassifiedError {
+function classify(adapter: Adapter<unknown, unknown>, error: unknown): ClassifiedError {
   return adapter.classifyError?.(error) ?? classifyError(error);
 }
 
-function createMockAnthropicClient() {
-  return {
-    messages: {
-      create: () => Promise.reject(new Error("Not implemented")),
-    },
-  } as never;
-}
-
-function createMockOpenAIClient() {
-  return {
-    responses: {
-      create: () => Promise.reject(new Error("Not implemented")),
-    },
-    chat: {
-      completions: {
-        create: () => Promise.reject(new Error("Not implemented")),
-      },
-    },
-  } as never;
-}
-
-const anthropicAdapter = new AnthropicAdapter({
+const anthropicAdapter = anthropicModel({
   model: "claude-sonnet-4-20250514",
-  client: createMockAnthropicClient(),
-  streamConfig: {},
+  apiKey: "test-api-key",
 });
 
-const openResponsesAdapter = new OpenResponsesAdapter({
+const openResponsesAdapter = openResponsesModel({
   model: "gpt-4o",
-  name: "OpenAI",
-  client: createMockOpenAIClient(),
+  provider: "OpenAI",
+  openAIOptions: { apiKey: "test-api-key" },
 });
 
-const openAICompletionsAdapter = new OpenAICompletionsAdapter({
+const openAICompletionsAdapter = openAICompletionsModel({
   model: "gpt-4o",
-  name: "OpenAI",
-  client: createMockOpenAIClient(),
+  provider: "OpenAI",
+  openAIOptions: { apiKey: "test-api-key" },
 });
 
 interface AdapterErrorTestCase {

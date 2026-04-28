@@ -5,11 +5,11 @@ import z from "zod";
 import { Agent, Tool } from "../../mod.ts";
 import { addStreamItem } from "../../src/client.ts";
 import type { ChatItem, StreamItem } from "../../src/types.ts";
-import { DeterministicTestModel } from "./testing-model.ts";
+import { deterministicTestModel } from "./testing-model.ts";
 
 Deno.test("Basic streaming test", async () => {
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "Basic test",
   });
   const run = agent.stream("<nothing>");
@@ -38,7 +38,7 @@ Deno.test("tool_use_start is emitted before tool_use for each tool call", async 
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "Parallel tool test",
     tools: [myTool],
   });
@@ -84,7 +84,7 @@ Deno.test("Parallel tool calls are streamed one by one in settlement order", asy
   });
 
   const agent = new Agent({
-    model: new DeterministicTestModel(),
+    model: deterministicTestModel(),
     instructions: "Parallel tool test",
     tools: [slowTool, fastTool],
   });

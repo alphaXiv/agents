@@ -1,10 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
-import { normalizeToolName } from "../../tool.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import type { Adapter, AdapterStreamOptions } from "../adapter.ts";
 import type { SchemaCompatibility } from "../shared/schema_compatibility.ts";
+import { getAnthropicHistory, rememberAnthropicReasoningSignature } from "./history.ts";
 import {
   type AnthropicModels,
   anthropicModelStructuredOutputSupport,
@@ -17,14 +16,8 @@ import {
   type ThinkingDisplay,
   type ThinkingLevel,
 } from "./models.ts";
-import { type AnthropicToolMap, createAnthropicCompatibleSchema, normalizeAnthropicTools } from "./utils.ts";
+import { createAnthropicCompatibleSchema, normalizeAnthropicTools } from "./utils.ts";
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
-
-// TODO: drop signature after 10 minutes or whatever
-// Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
-const signatureMap = new Map<string, string>();
-
-const supportedImageMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
 
 /**
  * Extracts JSON from model output that may contain prose before/after a code block.
@@ -65,6 +58,7 @@ export function anthropicModel<zO, zI, TModel extends AnthropicModels>(options: 
   thinkingDisplay?: ThinkingDisplay;
   baseUrl?: string;
   apiKey?: string;
+  client?: Anthropic;
 }): Adapter<zO, zI> {
   const modelConfig = anthropicModelThinkingSupport[options.model];
   // I know, terrifying, someone should fix this tbh it's super super scary
@@ -86,159 +80,11 @@ export function anthropicModel<zO, zI, TModel extends AnthropicModels>(options: 
     interleaved: interleaved,
   });
   // scaryness over
-  const client = new Anthropic({
-    apiKey: options.apiKey ?? requireEnv("ANTHROPIC_API_KEY"),
-    baseURL: options.baseUrl ?? crossPlatformEnv("ANTHROPIC_BASE_URL") ?? "https://api.anthropic.com",
-  });
-
-  async function getHistory(
-    history: ChatItem[],
-    normalizedTools: AnthropicToolMap[],
-    signal: AbortSignal,
-  ): Promise<Anthropic.Messages.MessageParam[]> {
-    const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
-    let anthropicToolFileBuffer: Anthropic.Messages.MessageParam[] = [];
-
-    // Put all of the history in place
-    for (const historyItem of history) {
-      switch (historyItem.type) {
-        case "input_text": {
-          // first, flush tool buffer
-          anthropicHistory.push(...anthropicToolFileBuffer);
-          anthropicToolFileBuffer = [];
-
-          // next, append message
-          anthropicHistory.push({
-            role: "user",
-            content: [{ type: "text", text: historyItem.content }],
-          });
-          break;
-        }
-        case "output_text": {
-          // first, flush tool buffer
-          anthropicHistory.push(...anthropicToolFileBuffer);
-          anthropicToolFileBuffer = [];
-
-          // next, append message
-          anthropicHistory.push({
-            role: isStructuredOutputRetryFeedback(historyItem.content) ? "user" : "assistant",
-            content: [{ type: "text", text: historyItem.content }],
-          });
-          break;
-        }
-        case "context_summary": {
-          anthropicHistory.push(...anthropicToolFileBuffer);
-          anthropicToolFileBuffer = [];
-
-          anthropicHistory.push({
-            role: "user",
-            content: [{ type: "text", text: historyItem.content }],
-          });
-          break;
-        }
-        case "tool_use": {
-          const tool = normalizedTools.find((tool) => tool.original.name === historyItem.kind);
-          const content = historyItem.content ? JSON.parse(historyItem.content) : {};
-          anthropicHistory.push({
-            role: "assistant",
-            content: [{
-              type: "tool_use",
-              id: historyItem.tool_use_id,
-              name: tool?.anthropic.name ?? normalizeToolName(historyItem.kind),
-              input: tool?.compatibility ? tool.compatibility.toProvider(content) : content,
-            }],
-          });
-          break;
-        }
-        case "tool_result_text": {
-          anthropicHistory.push({
-            role: "user",
-            content: [{
-              type: "tool_result",
-              tool_use_id: historyItem.tool_use_id,
-              content: historyItem.content,
-              is_error: historyItem.content.startsWith("Error: "),
-            }],
-          });
-          break;
-        }
-        case "output_reasoning": {
-          // first, flush tool buffer
-          anthropicHistory.push(...anthropicToolFileBuffer);
-          anthropicToolFileBuffer = [];
-
-          // next append reasoning
-          const signature = signatureMap.get(historyItem.content);
-          if (signature) {
-            anthropicHistory.push({
-              role: "assistant",
-              content: [{
-                type: "thinking",
-                thinking: historyItem.content,
-                signature,
-              }],
-            });
-          } else {
-            // no-op :( nothing we can do
-          }
-          break;
-        }
-        case "input_file":
-        case "tool_result_file": {
-          const pushBuffer = historyItem.type === "input_file" ? anthropicHistory : anthropicToolFileBuffer;
-          if (supportedImageMimeTypes.includes(historyItem.kind)) {
-            pushBuffer.push({
-              role: "user",
-              content: [{
-                type: "image",
-                source: {
-                  type: "url",
-                  url: historyItem.content,
-                },
-              }],
-            });
-          } else if (historyItem.kind === "application/pdf") {
-            pushBuffer.push({
-              role: "user",
-              content: [
-                {
-                  type: "document",
-                  source: {
-                    type: "url",
-                    url: historyItem.content,
-                  },
-                },
-              ],
-            });
-          } else if (historyItem.kind.startsWith("text/")) {
-            const req = await fetch(historyItem.content, { signal });
-            const text = await req.text();
-
-            pushBuffer.push({
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `<ant-file>${text}</ant-file>`,
-                },
-              ],
-            });
-          } else {
-            throw new Error(`Anthropic models don't support the following media type: ${historyItem.kind}`);
-          }
-          break;
-        }
-        default:
-          historyItem satisfies never;
-      }
-    }
-
-    // Flush remaining toolFileBuffer
-    anthropicHistory.push(...anthropicToolFileBuffer);
-    anthropicToolFileBuffer = [];
-
-    return anthropicHistory;
-  }
+  const client = options.client ??
+    new Anthropic({
+      apiKey: options.apiKey ?? requireEnv("ANTHROPIC_API_KEY"),
+      baseURL: options.baseUrl ?? crossPlatformEnv("ANTHROPIC_BASE_URL") ?? "https://api.anthropic.com",
+    });
 
   function getSystemPrompt(instructions: string, structuredOutput?: SchemaCompatibility): string {
     if (!structuredOutput) {
@@ -275,7 +121,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
       { history, instructions, tools, signal, output }: AdapterStreamOptions<zO, zI>,
     ): AdapterStreamIterator {
       const normalizedTools = normalizeAnthropicTools(tools);
-      const anthropicHistory = await getHistory(history, normalizedTools, signal);
+      const anthropicHistory = await getAnthropicHistory({ history, normalizedTools, signal });
 
       const structuredOutput = output && createAnthropicCompatibleSchema(output, {
         kind: "output",
@@ -374,7 +220,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
           if (endingPart?.type === "output_reasoning") {
             const signature = reasoningSignatures.get(part.index);
             if (signature && endingPart.content) {
-              signatureMap.set(endingPart.content, signature);
+              rememberAnthropicReasoningSignature(endingPart.content, signature);
             }
             reasoningSignatures.delete(part.index);
           } else if (endingPart.type === "tool_use") {

@@ -1,5 +1,10 @@
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
-import { openResponsesModel, type OpenResponsesServiceTier } from "../open_responses/adapter.ts";
+import {
+  type OpenResponsesClient,
+  openResponsesModel,
+  type OpenResponsesServiceTier,
+} from "../open_responses/adapter.ts";
+import type { Adapter } from "../adapter.ts";
 import { getOpenAISupportedMimeTypes } from "./mimes.ts";
 import {
   getDefaultReasoningEffort,
@@ -8,7 +13,6 @@ import {
   type OpenAIModels,
   type SupportedReasoningEffort,
 } from "./models.ts";
-import type { Adapter } from "../adapter.ts";
 import type { OpenAIReasoningEffort } from "@alphaxiv/agents";
 
 export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
@@ -18,6 +22,7 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
   serviceTier?: OpenResponsesServiceTier;
   effort?: SupportedReasoningEffort<TModel>;
   parallelToolCalls?: boolean;
+  client?: OpenResponsesClient;
 }): Adapter<zO, zI> {
   const modelConfig = openAiModelReasoningSupport[options.model];
   const typedOptions = options as { effort?: SupportedReasoningEffort<OpenAIModels> };
@@ -27,6 +32,7 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
     provider: "OpenAI",
     model: options.model,
     supportedMimeTypes: getOpenAISupportedMimeTypes(getModelModalities(options.model)),
+    client: options.client,
     openAIOptions: {
       apiKey: options.apiKey ?? requireEnv("OPENAI_API_KEY"),
       baseURL: options.baseUrl ?? crossPlatformEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",

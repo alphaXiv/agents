@@ -1,7 +1,8 @@
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import type OpenAI from "openai";
 import z from "zod";
-import { OpenAICompletionsAdapter } from "../../src/adapters/openai_completions/adapter.ts";
+import { openAICompletionsModel } from "../../src/adapters/openai_completions/adapter.ts";
+import { getOpenAICompletionsHistory } from "../../src/adapters/openai_completions/history.ts";
 import { normalizeOpenAICompletionsTools } from "../../src/adapters/openai_completions/tools.ts";
 import { RETRY_RESUMABILITY_PROMPT } from "../../src/constants.ts";
 import { Tool } from "../../src/tool.ts";
@@ -41,13 +42,6 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
     execute: () => "unused",
   });
 
-  const adapter = new OpenAICompletionsAdapter({
-    model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], undefined),
-    pdfSupport: { mode: "native" },
-  });
-
   const originalFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -59,8 +53,10 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
   }) as typeof fetch;
 
   try {
-    const history = await adapter.getHistory(
-      [
+    const history = await getOpenAICompletionsHistory({
+      model: "test-model",
+      pdfSupport: { mode: "native" },
+      history: [
         { type: "input_text", content: "hello" },
         { type: "output_text", content: "hi there" },
         { type: "output_reasoning", content: "I should search first." },
@@ -69,10 +65,10 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
         { type: "tool_result_file", tool_use_id: "call_1", kind: "text/csv", content: "https://example.com/cats.csv" },
         { type: "input_file", kind: "application/pdf", content: "https://example.com/cats.pdf" },
       ],
-      "Be useful",
-      normalizeOpenAICompletionsTools([searchTool]),
-      AbortSignal.abort(),
-    );
+      instructions: "Be useful",
+      normalizedTools: normalizeOpenAICompletionsTools([searchTool]),
+      signal: AbortSignal.abort(),
+    });
 
     assertEquals(history, [
       { role: "system", content: "Be useful" },
@@ -115,14 +111,9 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
 });
 
 Deno.test("OpenAI Completions retry feedback is replayed as user content and resumability uses system role", async () => {
-  const adapter = new OpenAICompletionsAdapter({
+  const retryHistory = await getOpenAICompletionsHistory({
     model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], undefined),
-  });
-
-  const retryHistory = await adapter.getHistory(
-    [
+    history: [
       { type: "output_text", content: '{"broken": true}' },
       {
         type: "output_text",
@@ -130,10 +121,10 @@ Deno.test("OpenAI Completions retry feedback is replayed as user content and res
           "Sorry, my output has an error:\nboom\nI will try again to produce a JSON response that conforms to the expected schema.",
       },
     ],
-    "Be useful",
-    [],
-    AbortSignal.abort(),
-  );
+    instructions: "Be useful",
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(retryHistory, [
     { role: "system", content: "Be useful" },
@@ -145,12 +136,13 @@ Deno.test("OpenAI Completions retry feedback is replayed as user content and res
     },
   ]);
 
-  const resumableHistory = await adapter.getHistory(
-    [{ type: "output_text", content: "partial response" }],
-    "Be useful",
-    [],
-    AbortSignal.abort(),
-  );
+  const resumableHistory = await getOpenAICompletionsHistory({
+    model: "test-model",
+    history: [{ type: "output_text", content: "partial response" }],
+    instructions: "Be useful",
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(resumableHistory, [
     { role: "system", content: "Be useful" },
@@ -160,21 +152,16 @@ Deno.test("OpenAI Completions retry feedback is replayed as user content and res
 });
 
 Deno.test("OpenAI Completions replays missing tool definitions with normalized names", async () => {
-  const adapter = new OpenAICompletionsAdapter({
+  const history = await getOpenAICompletionsHistory({
     model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], undefined),
-  });
-
-  const history = await adapter.getHistory(
-    [
+    history: [
       { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
       { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
     ],
-    "Be useful",
-    [],
-    AbortSignal.abort(),
-  );
+    instructions: "Be useful",
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     { role: "system", content: "Be useful" },
@@ -268,9 +255,9 @@ Deno.test("OpenAI Completions uses reversible OpenAI compatibility for tuple and
 Deno.test("OpenAI Completions restores structured output from OpenAI-compatible surrogate shapes", async () => {
   let capturedRequest: unknown;
 
-  const adapter = new OpenAICompletionsAdapter({
+  const adapter = openAICompletionsModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient(
       [
         {
@@ -329,9 +316,9 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
     execute: () => "unused",
   });
 
-  const adapter = new OpenAICompletionsAdapter({
+  const adapter = openAICompletionsModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient([
       {
         choices: [{
@@ -465,9 +452,9 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
 Deno.test("OpenAI Completions validates pdf support against supported mime types", () => {
   assertThrows(
     () =>
-      new OpenAICompletionsAdapter({
+      openAICompletionsModel({
         model: "test-model",
-        name: "Test Provider",
+        provider: "Test Provider",
         client: createMockClient([], undefined),
         supportedMimeTypes: ["text/plain"],
         pdfSupport: { mode: "native" },
