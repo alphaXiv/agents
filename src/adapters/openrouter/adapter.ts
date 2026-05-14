@@ -52,7 +52,8 @@ export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options
   return openAICompletionsModel({
     provider: "OpenRouter",
     model: options.model,
-    openAIOptions: {
+    client: options.client,
+    openAIOptions: options.client ? undefined : {
       apiKey: options.apiKey ?? requireEnv("OPENROUTER_API_KEY"),
       baseURL: options.baseUrl ?? crossPlatformEnv("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1",
       defaultHeaders: getOpenRouterHeaders(options),

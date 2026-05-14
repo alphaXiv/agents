@@ -33,7 +33,7 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
     model: options.model,
     supportedMimeTypes: getOpenAISupportedMimeTypes(getModelModalities(options.model)),
     client: options.client,
-    openAIOptions: {
+    openAIOptions: options.client ? undefined : {
       apiKey: options.apiKey ?? requireEnv("OPENAI_API_KEY"),
       baseURL: options.baseUrl ?? crossPlatformEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",
     },

@@ -26,12 +26,13 @@ Models and Adapters for these providers are shipped out of the box:
 As well as adapters for commonly supported [Open Responses](https://www.openresponses.org/) and
 [OpenAI Completions](https://developers.openai.com/api/docs/guides/completions) API's so you can easily BYO models.
 
-Provider model constructors accept options like `apiKey` and `baseUrl`. If you do not pass an API key explicitly,
+Provider model factories accept options like `apiKey` and `baseUrl`. If you do not pass an API key explicitly,
 provider-specific environment variables are used where supported.
 
 ```ts
 import z from "npm:zod";
-import { Agent, OpenAIModel, Tool } from "jsr:@alphaxiv/agents";
+import { Agent, Tool } from "jsr:@alphaxiv/agents";
+import { openAIModel } from "jsr:@alphaxiv/agents/openai";
 
 const calculator = new Tool({
   name: "calculator",
@@ -50,7 +51,7 @@ const calculator = new Tool({
 });
 
 const agent = new Agent({
-  model: new OpenAIModel({ model: "gpt-4.1-mini" }), // Or via shorthand "openai:gpt-4.1-mini"
+  model: openAIModel({ model: "gpt-4.1-mini" }), // Or via shorthand "openai:gpt-4.1-mini"
   instructions: "You are a helpful assistant. Use the calculator when math is needed.",
   tools: [calculator],
 });
@@ -77,10 +78,11 @@ If you provide an `output` Zod schema, the agent guarantees that the output will
 
 ```ts
 import z from "npm:zod";
-import { Agent, GeminiModel } from "jsr:@alphaxiv/agents";
+import { Agent } from "jsr:@alphaxiv/agents";
+import { geminiModel } from "jsr:@alphaxiv/agents/gemini";
 
 const paperExtractor = new Agent({
-  model: new GeminiModel({ model: "gemini-2.0-flash" }),
+  model: geminiModel({ model: "gemini-2.0-flash" }),
   instructions: "Extract the paper title and abstract from the raw text.",
   output: z.object({
     title: z.string(),
@@ -111,7 +113,8 @@ Tool names are normalized internally so provider-specific restrictions do not le
 
 ```ts
 import z from "npm:zod";
-import { Agent, AnthropicModel, Tool } from "jsr:@alphaxiv/agents";
+import { Agent, Tool } from "jsr:@alphaxiv/agents";
+import { anthropicModel } from "jsr:@alphaxiv/agents/anthropic";
 
 const getImage = new Tool({
   name: "get_image",
@@ -131,7 +134,7 @@ const getImage = new Tool({
 });
 
 const agent = new Agent({
-  model: new AnthropicModel({ model: "claude-haiku-4-5" }),
+  model: anthropicModel({ model: "claude-haiku-4-5" }),
   instructions: "You are a helpful assistant.",
   tools: [getImage],
 });
@@ -143,7 +146,8 @@ If a tool already knows the final answer, return `new ModelOutput(...)` to end t
 
 ```ts
 import z from "npm:zod";
-import { Agent, ModelOutput, OpenAIModel, Tool } from "jsr:@alphaxiv/agents";
+import { Agent, ModelOutput, Tool } from "jsr:@alphaxiv/agents";
+import { openAIModel } from "jsr:@alphaxiv/agents/openai";
 
 const reportHelpfulIds = new Tool({
   name: "report_helpful_ids",
@@ -155,7 +159,7 @@ const reportHelpfulIds = new Tool({
 });
 
 const agent = new Agent({
-  model: new OpenAIModel({ model: "gpt-4.1-mini" }),
+  model: openAIModel({ model: "gpt-4.1-mini" }),
   instructions: "Find relevant ids, then call report_helpful_ids.",
   tools: [reportHelpfulIds],
 });
@@ -173,12 +177,14 @@ type that occured and will automatically determine whether to retry, fallback to
 differently.
 
 ```ts
-import { Agent, AnthropicModel, OpenAIModel } from "jsr:@alphaxiv/agents";
+import { Agent } from "jsr:@alphaxiv/agents";
+import { anthropicModel } from "jsr:@alphaxiv/agents/anthropic";
+import { openAIModel } from "jsr:@alphaxiv/agents/openai";
 
 const agent = new Agent({
   model: [
-    new OpenAIModel({ model: "gpt-4.1-mini" }),
-    new AnthropicModel({ model: "claude-haiku-4-5" }),
+    openAIModel({ model: "gpt-4.1-mini" }),
+    anthropicModel({ model: "claude-haiku-4-5" }),
   ],
   instructions: "You are a reliable assistant.",
 });
@@ -191,8 +197,8 @@ You can customize the retry strategy to match your needs:
 ```ts
 const agent = new Agent({
   model: [
-    new OpenAIModel({ model: "gpt-5.4-mini" }),
-    new AnthropicModel({ model: "claude-haiku-4-5" }),
+    openAIModel({ model: "gpt-5.4-mini" }),
+    anthropicModel({ model: "claude-haiku-4-5" }),
   ],
   instructions: "You are a helpful assistant.",
   retryStrategy: {
@@ -237,10 +243,11 @@ Use `agent.stream(...)` when you want token-by-token output, reasoning deltas, a
 
 ```ts
 import process from "node:process";
-import { Agent, OpenAIModel } from "jsr:@alphaxiv/agents";
+import { Agent } from "jsr:@alphaxiv/agents";
+import { openAIModel } from "jsr:@alphaxiv/agents/openai";
 
 const agent = new Agent({
-  model: new OpenAIModel({ model: "gpt-5.4-mini" }),
+  model: openAIModel({ model: "gpt-5.4-mini" }),
   instructions: "You are a helpful assistant.",
 });
 
@@ -268,7 +275,8 @@ Built-in way to convert agents into a CLI app.
 
 ```ts
 import z from "npm:zod";
-import { Agent, cli, OpenAIModel, Tool } from "jsr:@alphaxiv/agents";
+import { Agent, cli, Tool } from "jsr:@alphaxiv/agents";
+import { openAIModel } from "jsr:@alphaxiv/agents/openai";
 
 const echo = new Tool({
   name: "echo",
@@ -278,7 +286,7 @@ const echo = new Tool({
 });
 
 const agent = new Agent({
-  model: new OpenAIModel({ model: "gpt-4.1-mini" }),
+  model: openAIModel({ model: "gpt-4.1-mini" }),
   instructions: "You are a helpful assistant.",
   tools: [echo],
 });
@@ -299,10 +307,11 @@ The built-in CLI supports:
 Pass files directly as chat items.
 
 ```ts
-import { Agent, OpenRouterModel } from "jsr:@alphaxiv/agents";
+import { Agent } from "jsr:@alphaxiv/agents";
+import { openrouterModel } from "jsr:@alphaxiv/agents/openrouter";
 
 const agent = new Agent({
-  model: new OpenRouterModel({ model: "openrouter:meta-llama/llama-4-maverick" }),
+  model: openrouterModel({ model: "meta-llama/llama-4-maverick" }),
   instructions: "You are a helpful assistant.",
 });
 

@@ -1,3 +1,5 @@
+import { assertEquals } from "@std/assert";
+import type { OpenAICompletionsClient } from "../../src/adapters/openai_completions/adapter.ts";
 import { openrouterModel } from "../../src/adapters/openrouter/adapter.ts";
 import {
   createToolFixtures,
@@ -10,6 +12,44 @@ import {
 } from "./shared.ts";
 
 const HAS_OPENROUTER_KEY = Boolean(Deno.env.get("OPENROUTER_API_KEY"));
+
+function createMockClient(captureRequest: (request: unknown) => void): OpenAICompletionsClient {
+  return {
+    chat: {
+      completions: {
+        stream(request: unknown) {
+          captureRequest(request);
+          return {
+            async *[Symbol.asyncIterator]() {},
+            totalUsage() {
+              return { prompt_tokens: 0, completion_tokens: 0 };
+            },
+          };
+        },
+      },
+    },
+  } as unknown as OpenAICompletionsClient;
+}
+
+Deno.test("OpenRouterModel uses the provided completions client", async () => {
+  let capturedRequest: unknown;
+  const adapter = openrouterModel({
+    model: "openai/gpt-5-mini",
+    client: createMockClient((request) => capturedRequest = request),
+    reasoning: { enabled: true, effort: "medium" },
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "test",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals((capturedRequest as { model?: unknown; reasoning?: unknown }).model, "openai/gpt-5-mini");
+  assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { enabled: true, effort: "medium" });
+});
 
 Deno.test({
   name: "OpenRouterAdapter streams a parameterized tool call (openai/gpt-5.4-mini)",

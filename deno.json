@@ -1,6 +1,6 @@
 {
   "name": "@alphaxiv/agents",
-  "version": "0.5.11",
+  "version": "0.6.0-beta",
   "license": "MIT",
   "fmt": {
     "lineWidth": 120
@@ -41,5 +41,14 @@
     "@std/uuid": "jsr:@std/uuid@^1.1.0",
     "openai": "npm:openai@^6.33.0",
     "zod": "npm:zod@^4.3.6"
+  },
+  "publish": {
+    "include": [
+      "LICENSE",
+      "README.md",
+      "mod.ts",
+      "src/**/*.ts",
+      "tests/**/*.ts"
+    ]
   }
 }

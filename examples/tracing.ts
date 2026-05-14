@@ -10,15 +10,15 @@ import process from "node:process";
 import z from "zod";
 import {
   Agent,
-  AnthropicModel,
   type ChatItem,
-  OpenAIModel,
   type PartialTraceEvent,
   registerGlobalTracer,
   Tool,
   type TraceEvent,
   withTrace,
 } from "../mod.ts";
+import { anthropicModel } from "@alphaxiv/agents/anthropic";
+import { openAIModel } from "@alphaxiv/agents/openai";
 
 const snackMenu = [
   { name: "miso ramen cup", calories: 420, prepMinutes: 6, price: 8 },
@@ -70,8 +70,8 @@ async function main() {
   const subagent = new Agent({
     name: "Snack Specialist",
     model: [
-      new OpenAIModel({ model: "gpt-5.4-nano" }),
-      new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
+      openAIModel({ model: "gpt-5.4-nano" }),
+      anthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
     ],
     instructions: [
       "You are the snack specialist.",
@@ -101,7 +101,7 @@ async function main() {
 
   const agent = new Agent({
     name: "Main Agent",
-    model: new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
+    model: anthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "adaptive" }),
     instructions: [
       "You coordinate requests for a snack specialist.",
       "Always call delegate_specialist exactly once before answering.",
