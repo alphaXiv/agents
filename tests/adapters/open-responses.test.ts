@@ -1,9 +1,12 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import type OpenAI from "openai";
 import z from "zod";
-import { OpenResponsesAdapter } from "../../src/adapters/open_responses/adapter.ts";
+import { openResponsesModel } from "../../src/adapters/open_responses/adapter.ts";
+import { getOpenResponsesHistory } from "../../src/adapters/open_responses/history.ts";
 import { normalizeOpenResponsesTools } from "../../src/adapters/open_responses/tools.ts";
-import { OpenAIModel } from "../../src/adapters/openai/model.ts";
+import { openAIModel } from "../../src/adapters/openai/adapter.ts";
+import { getOpenAISupportedMimeTypes } from "../../src/adapters/openai/mimes.ts";
+import { getModelModalities } from "../../src/adapters/openai/models.ts";
 import { Tool } from "../../src/tool.ts";
 
 function createMockClient(
@@ -43,12 +46,6 @@ Deno.test("Open Responses history normalizes assistant, reasoning, tool, and fil
     execute: () => "unused",
   });
 
-  const adapter = new OpenResponsesAdapter({
-    model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }),
-  });
-
   const originalFetch = globalThis.fetch;
   globalThis.fetch = ((input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -56,8 +53,9 @@ Deno.test("Open Responses history normalizes assistant, reasoning, tool, and fil
   }) as typeof fetch;
 
   try {
-    const history = await adapter.getHistory(
-      [
+    const history = await getOpenResponsesHistory({
+      model: "test-model",
+      history: [
         { type: "input_text", content: "hello" },
         { type: "output_text", content: "hi there" },
         { type: "output_reasoning", content: "I should search first." },
@@ -66,9 +64,9 @@ Deno.test("Open Responses history normalizes assistant, reasoning, tool, and fil
         { type: "tool_result_file", tool_use_id: "call_1", kind: "text/csv", content: "https://example.com/cats.csv" },
         { type: "input_file", kind: "application/pdf", content: "https://example.com/cats.pdf" },
       ],
-      normalizeOpenResponsesTools([searchTool]),
-      AbortSignal.abort(),
-    );
+      normalizedTools: normalizeOpenResponsesTools([searchTool]),
+      signal: AbortSignal.abort(),
+    });
 
     assertEquals(history, [
       {
@@ -119,14 +117,9 @@ Deno.test("Open Responses history normalizes assistant, reasoning, tool, and fil
 });
 
 Deno.test("Open Responses retry feedback is replayed as a user message", async () => {
-  const adapter = new OpenResponsesAdapter({
+  const history = await getOpenResponsesHistory({
     model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }),
-  });
-
-  const history = await adapter.getHistory(
-    [
+    history: [
       { type: "output_text", content: '{"broken": true}' },
       {
         type: "output_text",
@@ -134,9 +127,9 @@ Deno.test("Open Responses retry feedback is replayed as a user message", async (
           "Sorry, my output has an error:\nboom\nI will try again to produce a JSON response that conforms to the expected schema.",
       },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     {
@@ -160,20 +153,15 @@ Deno.test("Open Responses retry feedback is replayed as a user message", async (
 });
 
 Deno.test("Open Responses replays missing tool definitions with normalized names", async () => {
-  const adapter = new OpenResponsesAdapter({
+  const history = await getOpenResponsesHistory({
     model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }),
-  });
-
-  const history = await adapter.getHistory(
-    [
+    history: [
       { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
       { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     {
@@ -268,9 +256,9 @@ Deno.test("Open Responses uses reversible OpenAI compatibility for tuple and rec
 Deno.test("Open Responses restores structured output from OpenAI-compatible surrogate shapes", async () => {
   let capturedRequest: unknown;
 
-  const adapter = new OpenResponsesAdapter({
+  const adapter = openResponsesModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient(
       [
         {
@@ -325,9 +313,9 @@ Deno.test("Open Responses stream unwraps primitive tool arguments when the done 
     execute: () => "unused",
   });
 
-  const adapter = new OpenResponsesAdapter({
+  const adapter = openResponsesModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient([
       {
         type: "response.output_item.added",
@@ -382,9 +370,9 @@ Deno.test("Open Responses synthesizes tool_use_start when arguments.done arrives
     execute: () => "unused",
   });
 
-  const adapter = new OpenResponsesAdapter({
+  const adapter = openResponsesModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient([
       {
         type: "response.function_call_arguments.done",
@@ -429,9 +417,9 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
     execute: () => "unused",
   });
 
-  const adapter = new OpenResponsesAdapter({
+  const adapter = openResponsesModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient([
       {
         type: "response.output_item.added",
@@ -580,69 +568,96 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
   });
 });
 
-Deno.test("OpenAIModel defaults effort for reasoning models", () => {
-  const model = new OpenAIModel({
+Deno.test("OpenAIModel defaults effort for reasoning models", async () => {
+  let capturedRequest: unknown;
+  const model = openAIModel({
     model: "gpt-5.4",
     apiKey: "test-key",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+      capturedRequest = request;
+    }),
   });
 
-  assertEquals(model.effort, "medium");
+  const stream = model.stream({
+    history: [],
+    instructions: "test",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
 });
 
-Deno.test("OpenAIModel omits reasoning for non-reasoning models", () => {
-  const model = new OpenAIModel({
+Deno.test("OpenAIModel omits reasoning for non-reasoning models", async () => {
+  let capturedRequest: unknown;
+  const model = openAIModel({
     model: "gpt-4.1-mini",
     apiKey: "test-key",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+      capturedRequest = request;
+    }),
   });
 
-  assertEquals(model.effort, undefined);
+  const stream = model.stream({
+    history: [],
+    instructions: "test",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, undefined);
 });
 
-Deno.test("OpenAIModel stores configured service tier", () => {
-  const model = new OpenAIModel({
+Deno.test("OpenAIModel stores configured service tier", async () => {
+  let capturedRequest: unknown;
+  const model = openAIModel({
     model: "gpt-5.4-nano",
     apiKey: "test-key",
     serviceTier: "flex",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+      capturedRequest = request;
+    }),
   });
 
-  assertEquals(model.serviceTier, "flex");
+  const stream = model.stream({
+    history: [],
+    instructions: "test",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals((capturedRequest as { service_tier?: unknown }).service_tier, "flex");
 });
 
 Deno.test("Open Responses respects explicitly configured supported mime types", async () => {
-  const adapter = new OpenResponsesAdapter({
-    model: "test-model",
-    name: "Test Provider",
-    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }),
-    supportedMimeTypes: ["text/plain"],
-  });
-
   await assertRejects(
     () =>
-      adapter.getHistory(
-        [{ type: "input_file", kind: "image/png", content: "https://example.com/cat.png" }],
-        [],
-        AbortSignal.abort(),
-      ),
+      getOpenResponsesHistory({
+        model: "test-model",
+        supportedMimeTypes: ["text/plain"],
+        history: [{ type: "input_file", kind: "image/png", content: "https://example.com/cat.png" }],
+        normalizedTools: [],
+        signal: AbortSignal.abort(),
+      }),
     Error,
     "does not support media type",
   );
 });
 
 Deno.test("OpenAIModel infers supported mime types from model modalities", async () => {
-  const multimodalModel = new OpenAIModel({
-    model: "gpt-5.4-nano",
-    apiKey: "test-key",
-  });
-  const textOnlyModel = new OpenAIModel({
-    model: "gpt-oss-20b",
-    apiKey: "test-key",
-  });
+  const multimodalTypes = getOpenAISupportedMimeTypes(getModelModalities("gpt-5.4-nano"));
+  const textOnlyTypes = getOpenAISupportedMimeTypes(getModelModalities("gpt-oss-20b"));
 
-  const multimodalHistory = await multimodalModel.adapter.getHistory(
-    [{ type: "input_file", kind: "image/png", content: "https://example.com/cat.png" }],
-    [],
-    AbortSignal.abort(),
-  );
+  const multimodalHistory = await getOpenResponsesHistory({
+    model: "gpt-5.4-nano",
+    supportedMimeTypes: multimodalTypes,
+    history: [{ type: "input_file", kind: "image/png", content: "https://example.com/cat.png" }],
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(multimodalHistory, [{
     type: "message",
@@ -657,20 +672,24 @@ Deno.test("OpenAIModel infers supported mime types from model modalities", async
 
   await assertRejects(
     () =>
-      textOnlyModel.adapter.getHistory(
-        [{ type: "input_file", kind: "image/png", content: "https://example.com/cat.png" }],
-        [],
-        AbortSignal.abort(),
-      ),
+      getOpenResponsesHistory({
+        model: "gpt-oss-20b",
+        supportedMimeTypes: textOnlyTypes,
+        history: [{ type: "input_file", kind: "image/png", content: "https://example.com/cat.png" }],
+        normalizedTools: [],
+        signal: AbortSignal.abort(),
+      }),
     Error,
     "does not support media type",
   );
 
-  const documentHistory = await multimodalModel.adapter.getHistory(
-    [{ type: "input_file", kind: "application/msword", content: "https://example.com/doc.doc" }],
-    [],
-    AbortSignal.abort(),
-  );
+  const documentHistory = await getOpenResponsesHistory({
+    model: "gpt-5.4-nano",
+    supportedMimeTypes: multimodalTypes,
+    history: [{ type: "input_file", kind: "application/msword", content: "https://example.com/doc.doc" }],
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(documentHistory, [{
     type: "message",
@@ -694,9 +713,9 @@ Deno.test("Open Responses respects parallelToolCalls option", async () => {
     execute: () => "unused",
   });
 
-  const adapter = new OpenResponsesAdapter({
+  const adapter = openResponsesModel({
     model: "test-model",
-    name: "Test Provider",
+    provider: "Test Provider",
     client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
       capturedRequest = request;
     }),

@@ -1,71 +1,39 @@
-import type {
-  Content,
-  DeleteFileResponse,
-  GenerateContentResponseUsageMetadata,
+import {
+  type DeleteFileResponse,
+  type GenerateContentResponseUsageMetadata,
   GoogleGenAI,
-  ThinkingConfig,
+  type GoogleGenAIOptions,
+  type ThinkingConfig,
 } from "@google/genai";
 import { assert } from "@std/assert";
-import { normalizeToolName } from "../../tool.ts";
-import type { AdapterStreamIterator, ChatItem, ChatItemToolUse } from "../../types.ts";
+import type { AdapterStreamIterator } from "../../types.ts";
 import { hashString } from "../../util.ts";
-import { Adapter, type AdapterStreamOptions } from "../adapter.ts";
-import { serializeWrappedToolArguments } from "../shared/tools.ts";
-import type { GoogleModels } from "./models.ts";
-import { type GoogleToolMap, normalizeGoogleTools } from "./tools.ts";
+import type { Adapter, AdapterStreamOptions } from "../adapter.ts";
+import { getGoogleGenerateContentAPIHistory, rememberGoogleThoughtSignature } from "./history.ts";
+import { normalizeGoogleTools } from "./tools.ts";
 
-// TODO: drop signature after 10 minutes or whatever
-// Mapping between function call and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
-const signatureMap = new Map<string, string>();
-
-/**
- * Google requires functionCall.args to be an object-like Struct, so replayed
- * primitive tool inputs need wrapping when we no longer have the original schema.
- */
-function normalizeGoogleFunctionCallArgs(content: string | undefined, tool: GoogleToolMap | undefined) {
-  if (!content) return undefined;
-
-  try {
-    const parsed = JSON.parse(serializeWrappedToolArguments(content, tool));
-    if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-      return parsed;
-    }
-    return { content: parsed };
-  } catch {
-    return { content };
-  }
+export interface GoogleGenerateContentAPIModelOptions {
+  googleGenAIOptions?: GoogleGenAIOptions;
+  thinkingConfig?: ThinkingConfig;
+  model: string;
+  provider?: string;
 }
 
-function getGoogleFileBaseUrl(url: string) {
-  return new URL("v1beta/files/", url.endsWith("/") ? url : `${url}/`).toString();
-}
+/** Generic adapter over a google GenerateContentStream compatible API */
+export function googleGenerateContentAPIModel<zO, zI>(
+  options: GoogleGenerateContentAPIModelOptions,
+): Adapter<zO, zI> {
+  const client = new GoogleGenAI(options?.googleGenAIOptions ?? {});
+  const baseUrl = options.googleGenAIOptions?.httpOptions?.baseUrl ?? "https://generativelanguage.googleapis.com";
+  const thinkingConfig = options.thinkingConfig;
 
-export interface GoogleGenAiAdapterOptions<TModel extends GoogleModels> {
-  model: TModel;
-  thinkingConfig: ThinkingConfig;
-  baseUrl?: string;
-  client: GoogleGenAI;
-}
-
-export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Adapter<TModel> {
-  #client: GoogleGenAI;
-  #baseUrl: string;
-  #thinkingConfig: ThinkingConfig;
-
-  constructor(options: GoogleGenAiAdapterOptions<TModel>) {
-    super(options);
-    this.#client = options.client;
-    this.#baseUrl = options.baseUrl ?? "https://generativelanguage.googleapis.com";
-    this.#thinkingConfig = options.thinkingConfig;
-  }
-
-  async ensureFileUploaded(url: string, mimeType: string, abortSignal: AbortSignal): Promise<string> {
+  async function ensureFileUploaded(url: string, mimeType: string, abortSignal: AbortSignal): Promise<string> {
     // Create a safe filename by hashing the URL
     const safeFileName = (await hashString(url)).slice(0, 40);
 
     // Try to get the file first to see if it exists
     try {
-      await this.#client.files.get({
+      await client.files.get({
         name: safeFileName,
         config: { abortSignal },
       });
@@ -81,7 +49,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
       const response = await fetch(url);
       const blob = await response.blob();
 
-      await this.#client.files.upload({
+      await client.files.upload({
         file: blob,
         config: {
           name: `files/${safeFileName}`,
@@ -100,7 +68,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
       }
 
       // We've run out of file storage as cache. Delete some files, then try uploading again.
-      const fileList = await this.#client.files.list({
+      const fileList = await client.files.list({
         config: { pageSize: 100, abortSignal },
       });
 
@@ -111,7 +79,7 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
         if (file.name && (!file.createTime || new Date(file.createTime).getTime() < Date.now() - (30 * 60 * 1000))) {
           // If so, delete it
           deletionPromises.push(
-            this.#client.files.delete({
+            client.files.delete({
               name: file.name,
               config: { abortSignal },
             }),
@@ -120,180 +88,109 @@ export abstract class GoogleGenAiAdapter<TModel extends GoogleModels> extends Ad
         }
       }
       await Promise.all(deletionPromises);
-      return await this.ensureFileUploaded(url, mimeType, abortSignal);
+      return await ensureFileUploaded(url, mimeType, abortSignal);
     }
 
     return safeFileName;
   }
 
-  async getHistory(history: ChatItem[], toolMap: GoogleToolMap[], signal: AbortSignal): Promise<Content[]> {
-    const googleHistory: Content[] = [];
-    for (const item of history) {
-      switch (item.type) {
-        case "input_text":
-          googleHistory.push({ role: "user", parts: [{ text: item.content }] });
-          break;
-        case "output_text":
-          googleHistory.push({ role: "model", parts: [{ text: item.content }] });
-          break;
-        case "context_summary":
-          googleHistory.push({ role: "user", parts: [{ text: item.content }] });
-          break;
-        case "tool_use": {
-          const tool = toolMap.find((tool) => tool.original.name === item.kind);
-          // Magic word comes from https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#migrating_from_other_models
-          const thoughtSignature = signatureMap.get(item.tool_use_id) ?? "context_engineering_is_the_way_to_go";
+  return {
+    provider: options.provider ?? "GoogleGenerateContentAPI",
+    model: options.model,
+    stream: async function* stream<zO, zI>({
+      history,
+      instructions,
+      tools,
+      signal,
+      output,
+    }: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
+      const normalizedTools = normalizeGoogleTools(tools);
+      const googleHistory = await getGoogleGenerateContentAPIHistory({
+        history,
+        toolMap: normalizedTools,
+        signal,
+        baseUrl,
+        ensureFileUploaded,
+      });
 
-          googleHistory.push({
-            role: "model",
-            parts: [{
-              functionCall: {
-                id: item.tool_use_id,
-                name: tool?.google.name ?? normalizeToolName(item.kind),
-                args: normalizeGoogleFunctionCallArgs(item.content, tool),
-              },
-              thoughtSignature,
-            }],
-          });
-          break;
+      const stream = await client.models.generateContentStream({
+        model: options.model,
+        contents: googleHistory,
+        config: {
+          systemInstruction: instructions,
+          thinkingConfig,
+          tools: normalizedTools.length > 0
+            ? [{ functionDeclarations: normalizedTools.map((tool) => tool.google) }]
+            : undefined,
+          responseMimeType: output && "application/json",
+          responseJsonSchema: output && output.toJSONSchema(),
+          abortSignal: signal,
+        },
+      });
+
+      let lastIndex = -1;
+      let lastType = "";
+      const advanceIndex = (type: string) => {
+        if (lastType !== type) {
+          lastType = type;
+          lastIndex++;
         }
-        case "tool_result_text": {
-          const toolCall = history.find((candidate): candidate is ChatItemToolUse =>
-            candidate.type === "tool_use" &&
-            candidate.tool_use_id === item.tool_use_id
-          );
-          assert(toolCall, "Tool result is present in the history without initial tool call");
+        return lastIndex;
+      };
 
-          // We don't actually assert the definition's existence. Chat history might get reused without previously existing tool calls,
-          //  e.g. for context compaction, or when user wants to implement custom tool selection system.
-          // The kind is enough to normalize to the original function name.
-          const definition = toolMap.find((tool) => tool.original.name === toolCall.kind);
+      let usageMetadata: GenerateContentResponseUsageMetadata | undefined;
+      for await (const item of stream) {
+        usageMetadata = item.usageMetadata;
 
-          googleHistory.push({
-            role: "user",
-            parts: [{
-              functionResponse: {
-                id: item.tool_use_id,
-                name: definition?.google.name ?? normalizeToolName(toolCall.kind),
-                response: { content: item.content },
-              },
-            }],
-          });
-          break;
-        }
-        case "input_file":
-        case "tool_result_file": {
-          // TODO: make this strategy configurable
-          const fileName = await this.ensureFileUploaded(item.content, item.kind, signal);
-          googleHistory.push({
-            role: "user",
-            parts: [{
-              fileData: {
-                fileUri: new URL(fileName, getGoogleFileBaseUrl(this.#baseUrl)).toString(),
-                mimeType: item.kind,
-              },
-            }],
-          });
-          break;
-        }
-        case "output_reasoning":
-          // no-op, don't propagate reasoning
-          break;
-        default:
-          item satisfies never;
-      }
-    }
+        const parts = item?.candidates?.[0]?.content?.parts;
+        if (!parts?.length) continue;
 
-    return googleHistory;
-  }
+        for (const part of parts) {
+          if (part.text) {
+            const isReasoning = !!part.thought;
+            yield {
+              type: isReasoning ? "delta_output_reasoning" : "delta_output_text",
+              delta: part.text,
+              index: advanceIndex(isReasoning ? "reasoning" : "text"),
+            };
+          } else if (part.functionCall) {
+            const func = part.functionCall;
+            const funcId = func.id ?? crypto.randomUUID();
+            assert(func.name, "Function calls must have a name");
+            const tool = normalizedTools.find((tool) => tool.google.name === func.name);
 
-  async *stream<zO, zI>({
-    history,
-    instructions,
-    tools,
-    signal,
-    output,
-  }: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
-    const normalizedTools = normalizeGoogleTools(tools);
-    const googleHistory = await this.getHistory(history, normalizedTools, signal);
+            if (part.thoughtSignature) {
+              rememberGoogleThoughtSignature(funcId, part.thoughtSignature);
+            }
 
-    const stream = await this.#client.models.generateContentStream({
-      model: this.model,
-      contents: googleHistory,
-      config: {
-        systemInstruction: instructions,
-        thinkingConfig: this.#thinkingConfig,
-        tools: normalizedTools.length > 0
-          ? [{ functionDeclarations: normalizedTools.map((tool) => tool.google) }]
-          : undefined,
-        responseMimeType: output && "application/json",
-        responseJsonSchema: output && output.toJSONSchema(),
-        abortSignal: signal,
-      },
-    });
+            const index = advanceIndex(funcId);
 
-    let lastIndex = -1;
-    let lastType = "";
-    const advanceIndex = (type: string) => {
-      if (lastType !== type) {
-        lastType = type;
-        lastIndex++;
-      }
-      return lastIndex;
-    };
-
-    let usageMetadata: GenerateContentResponseUsageMetadata | undefined;
-    for await (const item of stream) {
-      usageMetadata = item.usageMetadata;
-
-      const parts = item?.candidates?.[0]?.content?.parts;
-      if (!parts?.length) continue;
-
-      for (const part of parts) {
-        if (part.text) {
-          const isReasoning = !!part.thought;
-          yield {
-            type: isReasoning ? "delta_output_reasoning" : "delta_output_text",
-            delta: part.text,
-            index: advanceIndex(isReasoning ? "reasoning" : "text"),
-          };
-        } else if (part.functionCall) {
-          const func = part.functionCall;
-          const funcId = func.id ?? crypto.randomUUID();
-          assert(func.name, "Function calls must have a name");
-          const tool = normalizedTools.find((tool) => tool.google.name === func.name);
-
-          if (part.thoughtSignature) {
-            signatureMap.set(funcId, part.thoughtSignature);
+            // TODO: investigate if we can get this earlier
+            yield {
+              type: "tool_use_start",
+              index,
+              kind: tool?.original.name ?? func.name,
+              tool_use_id: funcId,
+            };
+            yield {
+              type: "tool_use",
+              tool_use_id: funcId,
+              kind: tool?.original.name ?? func.name,
+              content: tool?.isVoid ? undefined : JSON.stringify(
+                tool?.wrapperObject ? func.args?.content : func.args,
+              ),
+              index,
+            };
           }
-
-          const index = advanceIndex(funcId);
-
-          // TODO: investigate if we can get this earlier
-          yield {
-            type: "tool_use_start",
-            index,
-            kind: tool?.original.name ?? func.name,
-            tool_use_id: funcId,
-          };
-          yield {
-            type: "tool_use",
-            tool_use_id: funcId,
-            kind: tool?.original.name ?? func.name,
-            content: tool?.isVoid ? undefined : JSON.stringify(
-              tool?.wrapperObject ? func.args?.content : func.args,
-            ),
-            index,
-          };
         }
       }
-    }
 
-    return {
-      inputTokens: usageMetadata?.promptTokenCount ?? null,
-      outputTokens: usageMetadata?.totalTokenCount != null && usageMetadata?.promptTokenCount != null
-        ? usageMetadata.totalTokenCount - usageMetadata.promptTokenCount
-        : null,
-    };
-  }
+      return {
+        inputTokens: usageMetadata?.promptTokenCount ?? null,
+        outputTokens: usageMetadata?.totalTokenCount != null && usageMetadata?.promptTokenCount != null
+          ? usageMetadata.totalTokenCount - usageMetadata.promptTokenCount
+          : null,
+      };
+    },
+  };
 }

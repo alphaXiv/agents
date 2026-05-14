@@ -23,16 +23,13 @@ export interface AdapterStreamOptions<zO, zI> {
   signal: AbortSignal;
 }
 
-export abstract class Adapter<SupportedModels extends string> {
-  abstract name: string;
-  model: SupportedModels;
-
-  constructor(options: AdapterOptions<SupportedModels>) {
-    this.model = options.model;
-  }
-
-  abstract stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator;
-
+export type Adapter<zO, zI> = {
+  /** Name of the provider */
+  provider: string;
+  /** Name of the model on the provider */
+  model: string;
+  /** Function to actually stream the results */
+  stream: (options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator;
   /**
    * Classify an error using provider-specific error types.
    * Override this in adapter implementations to provide precise error classification.
@@ -41,5 +38,5 @@ export abstract class Adapter<SupportedModels extends string> {
    * @param error The error thrown during a model call
    * @returns ClassifiedError if the adapter can classify it, null to fall back to heuristics
    */
-  classifyError?(error: unknown): ClassifiedError | null;
-}
+  classifyError?: (error: unknown) => ClassifiedError | null;
+};

@@ -1,9 +1,8 @@
-import OpenAI from "openai";
 import { crossPlatformEnv, requireEnv } from "../../util.ts";
+import type { Adapter } from "../adapter.ts";
 import {
-  OpenAICompletionsAdapter,
-  type OpenAICompletionsAdapterOptions,
   type OpenAICompletionsClient,
+  openAICompletionsModel,
   type OpenAICompletionsPdfSupport,
 } from "../openai_completions/adapter.ts";
 import type { OpenRouterModels, OpenRouterReasoningEffort } from "./models.ts";
@@ -34,8 +33,8 @@ function getOpenRouterHeaders(options: {
   };
 }
 
-export interface OpenRouterAdapterOptions<TModel extends OpenRouterModels>
-  extends Omit<OpenAICompletionsAdapterOptions<TModel>, "client" | "name" | "extraRequestBody" | "pdfSupport"> {
+export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options: {
+  model: TModel;
   apiKey?: string;
   baseUrl?: string;
   client?: OpenAICompletionsClient;
@@ -49,29 +48,26 @@ export interface OpenRouterAdapterOptions<TModel extends OpenRouterModels>
   appName?: string;
   extraRequestBody?: Record<string, unknown>;
   pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
-}
-
-export class OpenRouterAdapter<TModel extends OpenRouterModels> extends OpenAICompletionsAdapter<TModel> {
-  constructor(options: OpenRouterAdapterOptions<TModel>) {
-    super({
-      ...options,
-      name: "OpenRouter",
-      client: options.client ?? new OpenAI({
-        apiKey: options.apiKey ?? requireEnv("OPENROUTER_API_KEY"),
-        baseURL: options.baseUrl ?? crossPlatformEnv("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1",
-        defaultHeaders: getOpenRouterHeaders(options),
-      }),
-      pdfSupport: options.pdfSupport ??
-        ((model) =>
-          getOpenRouterNativePdfSupport(model) ? { mode: "native", maxSize: 4 * 1024 * 1024 } : { mode: "text" }),
-      extraRequestBody: () => ({
-        ...(options.reasoning ? { reasoning: options.reasoning } : {}),
-        ...(options.plugins?.length ? { plugins: options.plugins } : {}),
-        ...(options.provider ? { provider: options.provider } : {}),
-        ...(options.models?.length ? { models: options.models } : {}),
-        ...(options.route ? { route: options.route } : {}),
-        ...(options.extraRequestBody ?? {}),
-      }),
-    });
-  }
+}): Adapter<zO, zI> {
+  return openAICompletionsModel({
+    provider: "OpenRouter",
+    model: options.model,
+    client: options.client,
+    openAIOptions: options.client ? undefined : {
+      apiKey: options.apiKey ?? requireEnv("OPENROUTER_API_KEY"),
+      baseURL: options.baseUrl ?? crossPlatformEnv("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1",
+      defaultHeaders: getOpenRouterHeaders(options),
+    },
+    pdfSupport: options.pdfSupport ??
+      ((model) =>
+        getOpenRouterNativePdfSupport(model) ? { mode: "native", maxSize: 4 * 1024 * 1024 } : { mode: "text" }),
+    extraRequestBody: () => ({
+      ...(options.reasoning ? { reasoning: options.reasoning } : {}),
+      ...(options.plugins?.length ? { plugins: options.plugins } : {}),
+      ...(options.provider ? { provider: options.provider } : {}),
+      ...(options.models?.length ? { models: options.models } : {}),
+      ...(options.route ? { route: options.route } : {}),
+      ...(options.extraRequestBody ?? {}),
+    }),
+  });
 }

@@ -1,7 +1,8 @@
 import { ThinkingLevel as GenAiThinkingLevel } from "@google/genai";
 import { assertEquals } from "@std/assert";
-import { GeminiModel } from "../../mod.ts";
-import { GeminiAdapter } from "../../src/adapters/gemini/adapter.ts";
+import { geminiModel } from "../../src/adapters/gemini/adapter.ts";
+import { googleGenerateContentAPIModel } from "../../src/adapters/google_genai/adapter.ts";
+import { getGoogleGenerateContentAPIHistory } from "../../src/adapters/google_genai/history.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -22,7 +23,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new GeminiAdapter({
+    const adapter = googleGenerateContentAPIModel({
       model: "gemini-3.1-pro-preview",
       thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
     });
@@ -50,7 +51,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new GeminiAdapter({
+    const adapter = googleGenerateContentAPIModel({
       model: "gemini-3.1-flash-lite-preview",
       thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
     });
@@ -78,7 +79,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new GeminiAdapter({
+    const adapter = googleGenerateContentAPIModel({
       model: "gemini-3-flash-preview",
       thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
     });
@@ -106,7 +107,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new GeminiAdapter({
+    const adapter = googleGenerateContentAPIModel({
       model: "gemini-2.5-pro",
       thinkingConfig: { includeThoughts: true, thinkingBudget: 1024 },
     });
@@ -134,7 +135,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new GeminiAdapter({
+    const adapter = googleGenerateContentAPIModel({
       model: "gemini-2.0-flash-lite",
       thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
     });
@@ -162,7 +163,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-3.1-pro-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-pro-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -174,7 +175,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -186,7 +187,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-3-flash-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3-flash-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -198,7 +199,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-2.5-flash", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-2.5-flash", thinkingLevel: "low" }),
     });
   },
 });
@@ -210,7 +211,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-2.0-flash-lite" }),
+      model: geminiModel({ model: "gemini-2.0-flash-lite" }),
     });
   },
 });
@@ -222,7 +223,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredToolParameterStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-2.5-flash", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-2.5-flash", thinkingLevel: "low" }),
     });
   },
 });
@@ -234,7 +235,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-3.1-pro-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-pro-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -246,7 +247,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -258,7 +259,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-3-flash-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3-flash-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -270,7 +271,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new GeminiModel({ model: "gemini-2.5-pro", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-2.5-pro", thinkingLevel: "low" }),
     });
   },
 });
@@ -282,7 +283,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: new GeminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
     });
   },
 });
@@ -294,26 +295,20 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runToolLessHandoffResumeTest(t, {
-      model: new GeminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
     });
   },
 });
 
 Deno.test("GeminiAdapter replays tool calls and results without current tool definitions", async () => {
-  const adapter = new GeminiAdapter({
-    model: "gemini-3.1-flash-lite-preview",
-    apiKey: "test-key",
-    thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
-  });
-
-  const history = await adapter.getHistory(
-    [
+  const history = await getGoogleGenerateContentAPIHistory({
+    history: [
       { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
       { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    toolMap: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     {
@@ -341,14 +336,8 @@ Deno.test("GeminiAdapter replays tool calls and results without current tool def
 });
 
 Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without current tool definitions", async () => {
-  const adapter = new GeminiAdapter({
-    model: "gemini-3.1-flash-lite-preview",
-    apiKey: "test-key",
-    thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
-  });
-
-  const history = await adapter.getHistory(
-    [
+  const history = await getGoogleGenerateContentAPIHistory({
+    history: [
       {
         type: "tool_use",
         tool_use_id: "call_1",
@@ -356,9 +345,9 @@ Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without c
         content: JSON.stringify("DeepSeek-V3 arXiv link"),
       },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    toolMap: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     {
@@ -376,14 +365,8 @@ Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without c
 });
 
 Deno.test("GeminiAdapter replays mixed tool history for a tool-less handoff", async () => {
-  const adapter = new GeminiAdapter({
-    model: "gemini-3.1-flash-lite-preview",
-    apiKey: "test-key",
-    thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
-  });
-
-  const history = await adapter.getHistory(
-    [
+  const history = await getGoogleGenerateContentAPIHistory({
+    history: [
       {
         type: "tool_use",
         tool_use_id: "embed_1",
@@ -424,9 +407,9 @@ Deno.test("GeminiAdapter replays mixed tool history for a tool-less handoff", as
         content: "Summarize the prior history without using any tools.",
       },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    toolMap: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     {

@@ -1,8 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { assert, assertEquals } from "@std/assert";
 import z from "zod";
-import { addStreamItem, Agent, AnthropicModel, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
-import { AnthropicAdapter } from "../../src/adapters/anthropic/adapter.ts";
+import { addStreamItem, Agent, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
+import { anthropicModel } from "../../src/adapters/anthropic/adapter.ts";
+import { getAnthropicHistory } from "../../src/adapters/anthropic/history.ts";
 import { getAnthropicMessagesStreamConfig } from "../../src/adapters/anthropic/models.ts";
 import { createAnthropicCompatibleSchema, normalizeAnthropicTools } from "../../src/adapters/anthropic/utils.ts";
 import {
@@ -15,15 +16,9 @@ import {
   runStructuredOutputStreamingTest,
   runStructuredToolParameterStreamingTest,
 } from "./shared.ts";
+import type { Adapter } from "../../src/adapters/adapter.ts";
 
 const HAS_ANTHROPIC_KEY = Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
-
-function createAnthropicClient() {
-  return new Anthropic({
-    apiKey: Deno.env.get("ANTHROPIC_API_KEY")!,
-    baseURL: Deno.env.get("ANTHROPIC_BASE_URL") ?? "https://api.anthropic.com",
-  });
-}
 
 Deno.test({
   name: "AnthropicAdapter streams a parameterized tool call (claude-opus-4-7, adaptive)",
@@ -32,13 +27,9 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new AnthropicAdapter({
+    const adapter = anthropicModel({
       model: "claude-opus-4-7",
-      client: createAnthropicClient(),
-      streamConfig: getAnthropicMessagesStreamConfig({
-        model: "claude-opus-4-7",
-        effort: "high",
-      }),
+      effort: "high",
     });
 
     await runAdapterToolStreamingTest(t, {
@@ -64,13 +55,9 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new AnthropicAdapter({
+    const adapter = anthropicModel({
       model: "claude-opus-4-6",
-      client: createAnthropicClient(),
-      streamConfig: getAnthropicMessagesStreamConfig({
-        model: "claude-opus-4-6",
-        effort: "low",
-      }),
+      effort: "low",
     });
 
     await runAdapterToolStreamingTest(t, {
@@ -96,7 +83,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-opus-4-7", effort: "low" }),
+      model: anthropicModel({ model: "claude-opus-4-7", effort: "low" }),
     });
   },
 });
@@ -108,7 +95,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-opus-4-6", effort: "low" }),
+      model: anthropicModel({ model: "claude-opus-4-6", effort: "low" }),
     });
   },
 });
@@ -152,7 +139,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-sonnet-4-5", thinkingLevel: "low", interleaved: true }),
+      model: anthropicModel({ model: "claude-sonnet-4-5", thinkingLevel: "low", interleaved: true }),
     });
   },
 });
@@ -164,7 +151,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-haiku-4-5", thinkingLevel: "low", interleaved: true }),
+      model: anthropicModel({ model: "claude-haiku-4-5", thinkingLevel: "low", interleaved: true }),
     });
   },
 });
@@ -176,7 +163,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-opus-4-5", thinkingLevel: "low", effort: "low", interleaved: true }),
+      model: anthropicModel({ model: "claude-opus-4-5", thinkingLevel: "low", effort: "low", interleaved: true }),
     });
   },
 });
@@ -188,7 +175,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
+      model: anthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
     });
   },
 });
@@ -200,7 +187,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "low", interleaved: true }),
+      model: anthropicModel({ model: "claude-sonnet-4-6", thinkingLevel: "low", interleaved: true }),
     });
   },
 });
@@ -212,7 +199,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredToolParameterStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
+      model: anthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
     });
   },
 });
@@ -224,7 +211,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
+      model: anthropicModel({ model: "claude-sonnet-4-6", effort: "low" }),
     });
   },
 });
@@ -236,7 +223,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new AnthropicModel({ model: "claude-opus-4-1", thinkingLevel: "low", interleaved: true }),
+      model: anthropicModel({ model: "claude-opus-4-1", thinkingLevel: "low", interleaved: true }),
     });
   },
 });
@@ -248,7 +235,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: new AnthropicModel({ model: "claude-haiku-4-5", thinkingLevel: "minimal", interleaved: true }),
+      model: anthropicModel({ model: "claude-haiku-4-5", thinkingLevel: "minimal", interleaved: true }),
     });
   },
 });
@@ -332,14 +319,8 @@ Deno.test("tool schemas can be wrapped to satisfy Anthropic top-level object req
 });
 
 Deno.test("Anthropic retry feedback is replayed as a user message", async () => {
-  const adapter = new AnthropicAdapter({
-    model: "claude-sonnet-4-5",
-    client: {} as Anthropic,
-    streamConfig: {},
-  });
-
-  const history = await adapter.getHistory(
-    [
+  const history = await getAnthropicHistory({
+    history: [
       { type: "output_text", content: '{"broken": true}' },
       {
         type: "output_text",
@@ -347,9 +328,9 @@ Deno.test("Anthropic retry feedback is replayed as a user message", async () => 
           "Sorry, my output has an error:\nboom\nI will try again to produce a JSON response that conforms to the expected schema.",
       },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     { role: "assistant", content: [{ type: "text", text: '{"broken": true}' }] },
@@ -365,11 +346,6 @@ Deno.test("Anthropic retry feedback is replayed as a user message", async () => 
 });
 
 Deno.test("Anthropic tool history re-wraps normalized string tool inputs as objects", async () => {
-  const adapter = new AnthropicAdapter({
-    model: "claude-sonnet-4-5",
-    client: {} as Anthropic,
-    streamConfig: {},
-  });
   const searchTool = new Tool({
     name: "Searching the internet...",
     description: "Use when you want to search the internet",
@@ -377,16 +353,16 @@ Deno.test("Anthropic tool history re-wraps normalized string tool inputs as obje
     execute: () => "unused",
   });
 
-  const history = await adapter.getHistory(
-    [{
+  const history = await getAnthropicHistory({
+    history: [{
       type: "tool_use",
       tool_use_id: "call_1",
       kind: searchTool.name,
       content: '"cats"',
     }],
-    normalizeAnthropicTools([searchTool]),
-    AbortSignal.abort(),
-  );
+    normalizedTools: normalizeAnthropicTools([searchTool]),
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [{
     role: "assistant",
@@ -400,20 +376,14 @@ Deno.test("Anthropic tool history re-wraps normalized string tool inputs as obje
 });
 
 Deno.test("Anthropic replays missing tool definitions with normalized names", async () => {
-  const adapter = new AnthropicAdapter({
-    model: "claude-sonnet-4-5",
-    client: {} as Anthropic,
-    streamConfig: {},
-  });
-
-  const history = await adapter.getHistory(
-    [
+  const history = await getAnthropicHistory({
+    history: [
       { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
       { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
     ],
-    [],
-    AbortSignal.abort(),
-  );
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
 
   assertEquals(history, [
     {
@@ -463,10 +433,9 @@ Deno.test("Anthropic structured output streamed as text is restored before emiss
     },
   } as unknown as Anthropic;
 
-  const adapter = new AnthropicAdapter({
+  const adapter = anthropicModel({
     model: "claude-sonnet-4-5",
     client,
-    streamConfig: {},
   });
 
   const output = z.object({
@@ -534,14 +503,11 @@ Deno.test("Anthropic ignores signature deltas when thinking display omits reason
     },
   } as unknown as Anthropic;
 
-  const adapter = new AnthropicAdapter({
+  const adapter = anthropicModel({
     model: "claude-opus-4-7",
     client,
-    streamConfig: getAnthropicMessagesStreamConfig({
-      model: "claude-opus-4-7",
-      effort: "high",
-      thinkingDisplay: "omitted",
-    }),
+    effort: "high",
+    thinkingDisplay: "omitted",
   });
 
   const { items, metadata } = await collectAdapterStream(adapter.stream({
@@ -588,14 +554,11 @@ Deno.test("Anthropic attaches signatures after reasoning block completion", asyn
     },
   } as unknown as Anthropic;
 
-  const adapter = new AnthropicAdapter({
+  const adapter = anthropicModel({
     model: "claude-opus-4-7",
     client,
-    streamConfig: getAnthropicMessagesStreamConfig({
-      model: "claude-opus-4-7",
-      effort: "high",
-      thinkingDisplay: "summarized",
-    }),
+    effort: "high",
+    thinkingDisplay: "summarized",
   });
 
   const stream = adapter.stream({
@@ -624,7 +587,11 @@ Deno.test("Anthropic attaches signatures after reasoning block completion", asyn
     content: "Let me think.",
   }]);
 
-  const history = await adapter.getHistory(rebuiltHistory, [], AbortSignal.abort());
+  const history = await getAnthropicHistory({
+    history: rebuiltHistory,
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
   assertEquals(history, [{
     role: "assistant",
     content: [{
@@ -635,7 +602,7 @@ Deno.test("Anthropic attaches signatures after reasoning block completion", asyn
   }]);
 });
 
-async function checkReasoning(model: AnthropicModel, options: { shouldStreamReasoning: boolean }) {
+async function checkReasoning(model: Adapter<unknown, unknown>, options: { shouldStreamReasoning: boolean }) {
   const agent = new Agent({
     model,
     instructions: "You are a puzzle solver.",
@@ -664,7 +631,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
-  await checkReasoning(new AnthropicModel({ model: "claude-sonnet-4-5", thinkingLevel: "medium" }), {
+  await checkReasoning(anthropicModel({ model: "claude-sonnet-4-5", thinkingLevel: "medium" }), {
     shouldStreamReasoning: true,
   });
 });
@@ -675,7 +642,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
-  await checkReasoning(new AnthropicModel({ model: "claude-sonnet-4-6", effort: "medium" }), {
+  await checkReasoning(anthropicModel({ model: "claude-sonnet-4-6", effort: "medium" }), {
     shouldStreamReasoning: true,
   });
 });
@@ -686,7 +653,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
-  await checkReasoning(new AnthropicModel({ model: "claude-opus-4-5", effort: "medium" }), {
+  await checkReasoning(anthropicModel({ model: "claude-opus-4-5", effort: "medium" }), {
     shouldStreamReasoning: true,
   });
 });
@@ -697,7 +664,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
-  await checkReasoning(new AnthropicModel({ model: "claude-opus-4-6", effort: "medium" }), {
+  await checkReasoning(anthropicModel({ model: "claude-opus-4-6", effort: "medium" }), {
     shouldStreamReasoning: true,
   });
 });
@@ -707,7 +674,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
-  await checkReasoning(new AnthropicModel({ model: "claude-opus-4-7", effort: "max" }), {
+  await checkReasoning(anthropicModel({ model: "claude-opus-4-7", effort: "max" }), {
     shouldStreamReasoning: true,
   });
 });
@@ -718,7 +685,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
-  await checkReasoning(new AnthropicModel({ model: "claude-opus-4-7", effort: "max", thinkingDisplay: "omitted" }), {
+  await checkReasoning(anthropicModel({ model: "claude-opus-4-7", effort: "max", thinkingDisplay: "omitted" }), {
     shouldStreamReasoning: false,
   });
 });

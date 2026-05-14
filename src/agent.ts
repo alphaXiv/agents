@@ -2,8 +2,7 @@ import { assert } from "@std/assert/assert";
 import { generate } from "@std/uuid/v7";
 import z from "zod";
 import type { Adapter } from "./adapters/adapter.ts";
-import type { Model } from "./adapters/model.ts";
-import { type ModelLike, resolveModel } from "./adapters/model_resolver.ts";
+import { type AdapterLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
 import { type ClassifiedError, classifyError } from "./errors.ts";
@@ -110,7 +109,7 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
    * If multiple models are provided, the agent will use them in order, falling
    * back to the next model if the previous one fails or is unavailable.
    */
-  model: ModelLike | [ModelLike, ...ModelLike[]];
+  model: AdapterLike | [AdapterLike, ...AdapterLike[]];
   /** What this is agent intended to do. Equivalent to a "system prompt". */
   instructions: string;
   /** Enable tool calls, which are automatically executed */
@@ -248,7 +247,7 @@ function filterHistoryFromLastSummary(history: ChatItem[]): ChatItem[] {
 
 export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = []> {
   #name?: string;
-  #models: Model[];
+  #models: Adapter<zO, zI>[];
   #instructions: string;
   #tools: Tools;
   #output?: z.ZodType<zO, zI>;
@@ -456,12 +455,11 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       sameModelRetries = 0;
 
       modelLoop: while (currentModelIndex < this.#models.length) {
-        const model = this.#models[currentModelIndex];
-        const adapter = model.adapter;
-        const currentModel: ModelInfo = { provider: adapter.name, model: adapter.model };
+        const adapter = this.#models[currentModelIndex];
+        const currentModel: ModelInfo = { provider: adapter.provider, model: adapter.model };
 
         // Emit model_switched event when switching to a different model after a failure
-        if (previousModel && (previousModel.provider !== adapter.name || previousModel.model !== adapter.model)) {
+        if (previousModel && (previousModel.provider !== adapter.provider || previousModel.model !== adapter.model)) {
           yield {
             type: "model_switched",
             index: history.length,
@@ -481,7 +479,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             parent: agentTrace,
             content: {
               reason: modelCallReason,
-              provider: adapter.name,
+              provider: adapter.provider,
               model: adapter.model,
               inputTokens: null,
               outputTokens: null,
@@ -532,7 +530,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
             // Classify the error - try adapter's classifier first, fall back to heuristics
             const classified = adapter.classifyError?.(error) ?? classifyError(error);
-            agentTrace.log(`Model ${adapter.name} failed (${classified.kind}): ${errMessage(error)}`, error);
+            agentTrace.log(`Model ${adapter.model} failed (${classified.kind}): ${errMessage(error)}`, error);
 
             const behavior = determineRetryBehavior(classified, this.#retryStrategy, sameModelRetries);
 
@@ -572,7 +570,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
             // switch-model: break out of recovery loop, fall through to next model
             lastSwitchCause = { error, classified };
-            previousModel = { provider: adapter.name, model: adapter.model };
+            previousModel = { provider: adapter.provider, model: adapter.model };
             modelCallReason = "retry-model-switch";
             break;
           }
@@ -588,7 +586,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
   /** Stream a single model call, yielding traced stream items and dispatching tool calls eagerly. */
   async *#streamModelCall(options: {
-    adapter: Adapter<string>;
+    adapter: Adapter<zO, zI>;
     history: ChatItem[];
     signal: AbortSignal;
     pendingTools: Map<string, Promise<RunToolResult>>;
@@ -629,7 +627,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       if (part.type === "tool_use") {
         assert(
           !pendingTools.has(part.tool_use_id),
-          `Provider ${adapter.name} did not use unique tool use id: ${part.tool_use_id}`,
+          `Provider ${adapter.provider} did not use unique tool use id: ${part.tool_use_id}`,
         );
         trace = generate();
         pendingTools.set(

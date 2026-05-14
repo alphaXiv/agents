@@ -1,36 +1,22 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import z from "zod";
 import { Agent, Tool } from "../../mod.ts";
-import { Adapter, type AdapterStreamOptions } from "../../src/adapters/adapter.ts";
-import { Model } from "../../src/adapters/model.ts";
+import type { Adapter, AdapterStreamOptions } from "../../src/adapters/adapter.ts";
 import { convertChatItemsToStream } from "../../src/client.ts";
 import type { AdapterStreamIterator } from "../../src/types.ts";
 
-class ToolSignalTestAdapter extends Adapter<"tool-signal-model"> {
-  name = "tool-signal-test";
-  #streamImpl: <zO, zI>(options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator;
-
-  constructor(stream: <zO, zI>(options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator) {
-    super({ model: "tool-signal-model" });
-    this.#streamImpl = stream;
-  }
-
-  stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
-    return this.#streamImpl(options);
-  }
-}
-
-class ToolSignalTestModel extends Model<"tool-signal-model"> {
-  adapter: ToolSignalTestAdapter;
-
-  constructor(stream: <zO, zI>(options: AdapterStreamOptions<zO, zI>) => AdapterStreamIterator) {
-    super({ model: "tool-signal-model" });
-    this.adapter = new ToolSignalTestAdapter(stream);
-  }
+function toolSignalTestModel(
+  stream: (options: AdapterStreamOptions<unknown, unknown>) => AdapterStreamIterator,
+): Adapter<unknown, unknown> {
+  return {
+    provider: "tool-signal-test",
+    model: "tool-signal-model",
+    stream,
+  };
 }
 
 function createToolLoopModel() {
-  return new ToolSignalTestModel(({ history, tools }) => {
+  return toolSignalTestModel(({ history, tools }) => {
     const last = history.at(-1);
     if (!last || last.type === "input_text") {
       const tool = tools[0];

@@ -1,5 +1,6 @@
-import { OpenRouterModel } from "../../mod.ts";
-import { OpenRouterAdapter } from "../../src/adapters/openrouter/adapter.ts";
+import { assertEquals } from "@std/assert";
+import type { OpenAICompletionsClient } from "../../src/adapters/openai_completions/adapter.ts";
+import { openrouterModel } from "../../src/adapters/openrouter/adapter.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -12,6 +13,44 @@ import {
 
 const HAS_OPENROUTER_KEY = Boolean(Deno.env.get("OPENROUTER_API_KEY"));
 
+function createMockClient(captureRequest: (request: unknown) => void): OpenAICompletionsClient {
+  return {
+    chat: {
+      completions: {
+        stream(request: unknown) {
+          captureRequest(request);
+          return {
+            async *[Symbol.asyncIterator]() {},
+            totalUsage() {
+              return { prompt_tokens: 0, completion_tokens: 0 };
+            },
+          };
+        },
+      },
+    },
+  } as unknown as OpenAICompletionsClient;
+}
+
+Deno.test("OpenRouterModel uses the provided completions client", async () => {
+  let capturedRequest: unknown;
+  const adapter = openrouterModel({
+    model: "openai/gpt-5-mini",
+    client: createMockClient((request) => capturedRequest = request),
+    reasoning: { enabled: true, effort: "medium" },
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "test",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals((capturedRequest as { model?: unknown; reasoning?: unknown }).model, "openai/gpt-5-mini");
+  assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { enabled: true, effort: "medium" });
+});
+
 Deno.test({
   name: "OpenRouterAdapter streams a parameterized tool call (openai/gpt-5.4-mini)",
   ignore: !HAS_OPENROUTER_KEY,
@@ -19,7 +58,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
-    const adapter = new OpenRouterAdapter({
+    const adapter = openrouterModel({
       model: "openai/gpt-5.4-mini",
       reasoning: { enabled: true, effort: "medium" },
     });
@@ -47,7 +86,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
+      model: openrouterModel({ model: "openai/gpt-5-mini", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -59,7 +98,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: new OpenRouterModel({ model: "anthropic/claude-sonnet-4.5", effort: "medium" }),
+      model: openrouterModel({ model: "anthropic/claude-sonnet-4.5", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -71,7 +110,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredToolParameterStreamingTest(t, {
-      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
+      model: openrouterModel({ model: "openai/gpt-5-mini", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -83,7 +122,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: new OpenRouterModel({ model: "openai/gpt-5-mini", effort: "medium" }),
+      model: openrouterModel({ model: "openai/gpt-5-mini", reasoning: { enabled: true, effort: "medium" } }),
     });
   },
 });
@@ -95,7 +134,7 @@ Deno.test({
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: new OpenRouterModel({ model: "minimax/minimax-m2.7" }),
+      model: openrouterModel({ model: "minimax/minimax-m2.7" }),
     });
   },
 });

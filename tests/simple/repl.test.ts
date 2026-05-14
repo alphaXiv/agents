@@ -1,8 +1,7 @@
 import { assertEquals } from "@std/assert";
 import z from "zod";
 import { Agent, cli, type CliIo, Tool } from "../../mod.ts";
-import { Adapter, type AdapterStreamOptions } from "../../src/adapters/adapter.ts";
-import { Model } from "../../src/adapters/model.ts";
+import type { Adapter, AdapterStreamOptions } from "../../src/adapters/adapter.ts";
 import { convertChatItemsToStream } from "../../src/client.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../src/types.ts";
 
@@ -52,100 +51,86 @@ class FakeIo implements CliIo {
   }
 }
 
-class ReplTestAdapter extends Adapter<"repl-test"> {
-  name = "repl-test";
-
-  stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
-    const userInputs = options.history.filter((item): item is Extract<ChatItem, { type: "input_text" }> =>
-      item.type === "input_text"
-    );
-    const lastInput = userInputs.at(-1);
-    if (!lastInput) {
-      throw new Error("Expected at least one input_text item");
-    }
-
-    return convertChatItemsToStream({
-      items: [{
-        type: "output_text",
-        content: `turn ${userInputs.length}: ${lastInput.content}`,
-      }],
-      inputTokens: 0,
-      outputTokens: 0,
-    });
-  }
-}
-
-class ReplTestModel extends Model<"repl-test"> {
-  adapter: ReplTestAdapter;
-
-  constructor() {
-    super({ model: "repl-test" });
-    this.adapter = new ReplTestAdapter({ model: "repl-test" });
-  }
-}
-
-class StatusReplAdapter extends Adapter<"repl-status-test"> {
-  name = "repl-status-test";
-
-  async *stream<zO, zI>(options: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
-    const lastItem = options.history.at(-1);
-    if (!lastItem) {
-      throw new Error("Expected conversation history");
-    }
-
-    if (lastItem.type === "input_text") {
-      const lookupTool = options.tools[0];
-      if (!lookupTool) {
-        throw new Error("Expected at least one tool");
+function replTestModel(): Adapter<unknown, unknown> {
+  return {
+    provider: "repl-test",
+    model: "repl-test",
+    stream(options: AdapterStreamOptions<unknown, unknown>): AdapterStreamIterator {
+      const userInputs = options.history.filter((item): item is Extract<ChatItem, { type: "input_text" }> =>
+        item.type === "input_text"
+      );
+      const lastInput = userInputs.at(-1);
+      if (!lastInput) {
+        throw new Error("Expected at least one input_text item");
       }
 
-      yield {
-        type: "delta_output_reasoning",
-        delta: "Let me look that up.",
-        index: 0,
-      };
-      yield {
-        type: "tool_use_start",
-        tool_use_id: "tool-1",
-        kind: lookupTool.name,
-        index: 1,
-      };
-      yield {
-        type: "tool_use",
-        tool_use_id: "tool-1",
-        kind: lookupTool.name,
-        content: '"hello"',
-        index: 1,
-      };
-      return { inputTokens: 0, outputTokens: 0 };
-    }
-
-    if (lastItem.type === "tool_result_text") {
-      yield {
-        type: "delta_output_text",
-        delta: `final: ${lastItem.content}`,
-        index: 0,
-      };
-      return { inputTokens: 0, outputTokens: 0 };
-    }
-
-    throw new Error(`Unexpected history item: ${lastItem.type}`);
-  }
+      return convertChatItemsToStream({
+        items: [{
+          type: "output_text",
+          content: `turn ${userInputs.length}: ${lastInput.content}`,
+        }],
+        inputTokens: 0,
+        outputTokens: 0,
+      });
+    },
+  };
 }
 
-class StatusReplModel extends Model<"repl-status-test"> {
-  adapter: StatusReplAdapter;
+function statusReplModel(): Adapter<unknown, unknown> {
+  return {
+    provider: "repl-status-test",
+    model: "repl-status-test",
+    async *stream(options: AdapterStreamOptions<unknown, unknown>): AdapterStreamIterator {
+      const lastItem = options.history.at(-1);
+      if (!lastItem) {
+        throw new Error("Expected conversation history");
+      }
 
-  constructor() {
-    super({ model: "repl-status-test" });
-    this.adapter = new StatusReplAdapter({ model: "repl-status-test" });
-  }
+      if (lastItem.type === "input_text") {
+        const lookupTool = options.tools[0];
+        if (!lookupTool) {
+          throw new Error("Expected at least one tool");
+        }
+
+        yield {
+          type: "delta_output_reasoning",
+          delta: "Let me look that up.",
+          index: 0,
+        };
+        yield {
+          type: "tool_use_start",
+          tool_use_id: "tool-1",
+          kind: lookupTool.name,
+          index: 1,
+        };
+        yield {
+          type: "tool_use",
+          tool_use_id: "tool-1",
+          kind: lookupTool.name,
+          content: '"hello"',
+          index: 1,
+        };
+        return { inputTokens: 0, outputTokens: 0 };
+      }
+
+      if (lastItem.type === "tool_result_text") {
+        yield {
+          type: "delta_output_text",
+          delta: `final: ${lastItem.content}`,
+          index: 0,
+        };
+        return { inputTokens: 0, outputTokens: 0 };
+      }
+
+      throw new Error(`Unexpected history item: ${lastItem.type}`);
+    },
+  };
 }
 
 Deno.test("cli streams agent responses and exits on command", async () => {
   const io = new FakeIo(["hello", "/exit"]);
   const agent = new Agent({
-    model: new ReplTestModel(),
+    model: replTestModel(),
     instructions: "Reply deterministically.",
   });
 
@@ -161,7 +146,7 @@ Deno.test("cli streams agent responses and exits on command", async () => {
 Deno.test("cli reset clears conversation history", async () => {
   const io = new FakeIo(["first", "second", "/reset", "third", "/exit"]);
   const agent = new Agent({
-    model: new ReplTestModel(),
+    model: replTestModel(),
     instructions: "Reply deterministically.",
   });
 
@@ -187,7 +172,7 @@ Deno.test("cli shows thinking, tool, and responding indicators", async () => {
     execute: (param) => `result for ${param}`,
   });
   const agent = new Agent({
-    model: new StatusReplModel(),
+    model: statusReplModel(),
     instructions: "Reply deterministically.",
     tools: [lookupTool],
   });
@@ -206,7 +191,7 @@ Deno.test("cli shows thinking, tool, and responding indicators", async () => {
 Deno.test("cli exits cleanly on ctrl+c while waiting for input", async () => {
   const io = new FakeIo([]);
   const agent = new Agent({
-    model: new ReplTestModel(),
+    model: replTestModel(),
     instructions: "Reply deterministically.",
   });
 
