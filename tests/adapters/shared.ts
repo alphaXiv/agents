@@ -741,7 +741,7 @@ export async function runToolLessHandoffResumeTest(t: Deno.TestContext, options:
     execute: () => {
       return JSON.stringify({
         repository: "alphaXiv/agents",
-        activeModel: "gemini-3.1-flash-lite-preview",
+        activeModel: "gemini-3.1-flash-lite",
         handoffCode: "FLASH-LITE-314",
       });
     },

@@ -19,7 +19,8 @@ export interface GoogleThinkingLevelSupport<T extends string> {
 }
 
 export interface GoogleModelSupportedThinkingLevelsMap {
-  "gemini-3.1-flash-lite-preview": GoogleThinkingLevelSupport<"minimal" | "low" | "medium" | "high">;
+  "gemini-3.5-flash": GoogleThinkingLevelSupport<"minimal" | "low" | "medium" | "high">;
+  "gemini-3.1-flash-lite": GoogleThinkingLevelSupport<"minimal" | "low" | "medium" | "high">;
   "gemini-3.1-flash-image-preview": GoogleThinkingLevelSupport<"minimal" | "high">;
   "gemini-3.1-pro-preview": GoogleThinkingLevelSupport<"low" | "medium" | "high">;
   "gemini-3-pro-image-preview": UnsupportedGoogleThinkingSupport;

@@ -161,7 +161,7 @@ Deno.test("addStreamItem ignores informational compaction and model switch event
   addStreamItem(chatItems, {
     type: "model_switched",
     index: 0,
-    from: { provider: "gemini", model: "gemini-3.1-flash-lite-preview" },
+    from: { provider: "gemini", model: "gemini-3.1-flash-lite" },
     to: { provider: "anthropic", model: "claude-sonnet-4-6" },
   });
 

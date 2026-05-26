@@ -45,14 +45,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiAdapter streams a parameterized tool call (gemini-3.1-flash-lite-preview, thinking-level)",
+  name: "GeminiAdapter streams a parameterized tool call (gemini-3.1-flash-lite, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
     const adapter = googleGenerateContentAPIModel({
-      model: "gemini-3.1-flash-lite-preview",
+      model: "gemini-3.1-flash-lite",
       thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
     });
 
@@ -169,13 +169,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiModel streams tools and results (gemini-3.1-flash-lite-preview, thinking-level)",
+  name: "GeminiModel streams tools and results (gemini-3.1-flash-lite, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite", thinkingLevel: "low" }),
     });
   },
 });
@@ -241,13 +241,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiModel streams structured output (gemini-3.1-flash-lite-preview, thinking-level)",
+  name: "GeminiModel streams structured output (gemini-3.1-flash-lite, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite", thinkingLevel: "low" }),
     });
   },
 });
@@ -277,25 +277,25 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiModel keeps a 5-turn calculator conversation (gemini-3.1-flash-lite-preview)",
+  name: "GeminiModel keeps a 5-turn calculator conversation (gemini-3.1-flash-lite)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite", thinkingLevel: "low" }),
     });
   },
 });
 
 Deno.test({
-  name: "GeminiModel resumes a handoff without tools (gemini-3.1-flash-lite-preview)",
+  name: "GeminiModel resumes a handoff without tools (gemini-3.1-flash-lite)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runToolLessHandoffResumeTest(t, {
-      model: geminiModel({ model: "gemini-3.1-flash-lite-preview", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.1-flash-lite", thinkingLevel: "low" }),
     });
   },
 });
