@@ -40,6 +40,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "OpenAIModel streams tools and results (gpt-5.5, reasoning)",
+  ignore: !HAS_OPENAI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runAgentToolStreamingTest(t, {
+      model: openAIModel({ model: "gpt-5.5", effort: "low" }),
+    });
+  },
+});
+
+Deno.test({
   name: "OpenAIModel streams tools and results (gpt-5.4, reasoning)",
   ignore: !HAS_OPENAI_KEY,
   sanitizeOps: false,
