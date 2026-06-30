@@ -1,6 +1,6 @@
 {
   "name": "@alphaxiv/agents",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "license": "MIT",
   "fmt": {
     "lineWidth": 120

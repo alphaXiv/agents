@@ -169,6 +169,20 @@ Deno.test({
 });
 
 Deno.test({
+  name: "claude-sonnet-5 works with",
+  fn() {
+    assertEquals(
+      getAnthropicMessagesStreamConfig({ model: "claude-sonnet-5", effort: "xhigh" }),
+      {
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "xhigh" },
+        betas: undefined,
+      },
+    );
+  },
+});
+
+Deno.test({
   name: "claude-opus-4-7 supports omitted thinking display",
   fn() {
     assertEquals(

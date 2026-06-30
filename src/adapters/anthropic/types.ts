@@ -35,6 +35,7 @@ export interface AnthropicModelThinkingSupportMap {
   "claude-opus-4-8": AdaptiveThinkingSupport<"low" | "medium" | "high" | "xhigh" | "max">;
   "claude-opus-4-7": AdaptiveThinkingSupport<"low" | "medium" | "high" | "xhigh" | "max">;
   "claude-opus-4-6": AdaptiveThinkingSupport<"low" | "medium" | "high" | "max">;
+  "claude-sonnet-5": AdaptiveThinkingSupport<"low" | "medium" | "high" | "xhigh" | "max">;
   "claude-sonnet-4-6": AdaptiveOrExtendedThinkingSupport<
     "adaptive" | "low" | "medium" | "high",
     "low" | "medium" | "high"

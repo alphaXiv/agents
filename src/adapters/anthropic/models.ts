@@ -82,6 +82,10 @@ const anthropicModelThinkingSupportDefinition = {
     levels: ["low", "medium", "high", "max"],
     default: "high",
   }),
+  "claude-sonnet-5": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
 
   // Both adaptive thinking (default) and extended thinking (opt-in via thinkingLevel)
   "claude-sonnet-4-6": adaptiveOrExtended({
@@ -178,6 +182,7 @@ export const anthropicModelStructuredOutputSupport = {
   "claude-opus-4-8": true,
   "claude-opus-4-7": true,
   "claude-opus-4-6": true,
+  "claude-sonnet-5": true,
   "claude-sonnet-4-6": true,
 
   "claude-opus-4-5": true,
