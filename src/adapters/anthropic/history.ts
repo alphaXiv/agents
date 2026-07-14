@@ -14,6 +14,23 @@ export function rememberAnthropicReasoningSignature(content: string, signature: 
   signatureMap.set(content, signature);
 }
 
+/**
+ * Marks the tail of the conversation as a cache breakpoint, so the next call in
+ * an agent turn reads this turn's prefix instead of reprocessing it. Caching is a
+ * prefix match, so this must be the final mutation of the history.
+ */
+export function applyAnthropicCacheBreakpoint(
+  history: Anthropic.Messages.MessageParam[],
+  cacheControl: Anthropic.Messages.CacheControlEphemeral,
+) {
+  const content = history.at(-1)?.content;
+  if (!content || typeof content === "string") return;
+  const block = content.at(-1);
+  // Thinking blocks reject a breakpoint; the system/tools prefix still caches without one here.
+  if (!block || block.type === "thinking" || block.type === "redacted_thinking") return;
+  block.cache_control = cacheControl;
+}
+
 export async function getAnthropicHistory(options: {
   history: ChatItem[];
   normalizedTools: AnthropicToolMap[];

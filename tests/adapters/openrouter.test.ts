@@ -21,8 +21,9 @@ function createMockClient(captureRequest: (request: unknown) => void): OpenAICom
           captureRequest(request);
           return {
             async *[Symbol.asyncIterator]() {},
-            totalUsage() {
-              return { prompt_tokens: 0, completion_tokens: 0 };
+            // deno-lint-ignore require-await
+            async finalChatCompletion() {
+              return { usage: { prompt_tokens: 0, completion_tokens: 0 } };
             },
           };
         },
@@ -46,7 +47,10 @@ Deno.test("OpenRouterModel uses the provided completions client", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals(await stream.next(), {
+    done: true,
+    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
+  });
   assertEquals((capturedRequest as { model?: unknown; reasoning?: unknown }).model, "openai/gpt-5-mini");
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { enabled: true, effort: "medium" });
 });

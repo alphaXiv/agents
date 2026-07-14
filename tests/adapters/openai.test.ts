@@ -1,4 +1,5 @@
 import { openAIModel } from "../../src/adapters/openai/adapter.ts";
+import type { OpenResponsesClient } from "../../src/adapters/open_responses/adapter.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -107,6 +108,33 @@ Deno.test({
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
       model: openAIModel({ model: "gpt-5.4-nano" }),
+    });
+  },
+});
+
+Deno.test("gpt-5.6 exposes the max effort level that arrived with the generation", () => {
+  const client = { responses: { stream: () => ({}) } } as unknown as OpenResponsesClient;
+
+  // `gpt-5.6` is the alias that routes to Sol; the named variants take the same efforts.
+  openAIModel({ model: "gpt-5.6", effort: "max", client });
+  openAIModel({ model: "gpt-5.6-sol", effort: "max", client });
+  openAIModel({ model: "gpt-5.6-terra", effort: "xhigh", client });
+  openAIModel({ model: "gpt-5.6-luna", effort: "none", client });
+
+  // @ts-expect-error `minimal` was dropped after the gpt-5 generation.
+  openAIModel({ model: "gpt-5.6", effort: "minimal", client });
+  // @ts-expect-error `max` does not exist on the previous generation.
+  openAIModel({ model: "gpt-5.5", effort: "max", client });
+});
+
+Deno.test({
+  name: "OpenAIModel streams tools and results (gpt-5.6, reasoning)",
+  ignore: !HAS_OPENAI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runAgentToolStreamingTest(t, {
+      model: openAIModel({ model: "gpt-5.6", effort: "low" }),
     });
   },
 });

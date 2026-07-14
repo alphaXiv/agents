@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { NonReasoningModelSupport, OpenAiModelsMap, ReasoningModelSupport } from "./types.ts";
 
-export type OpenAIReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type OpenAIReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type OpenAIModelModality = "text" | "image" | "audio" | "video";
 
 type ModelModalitiesOptions = {
@@ -34,6 +34,30 @@ function reasoning<const T extends readonly [OpenAIReasoningEffort, ...OpenAIRea
 
 const openAiModelsDefinition = {
   // Frontier
+  // `gpt-5.6` is an alias that routes to Sol. Terra trades capability for cost, Luna is the
+  // fast, high-volume tier. `max` arrived with this generation and is reserved for the
+  // hardest quality-first work.
+  "gpt-5.6": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-5.6-sol": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-5.6-terra": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-5.6-luna": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+
   "gpt-5.5": reasoning({
     levels: ["none", "low", "medium", "high", "xhigh"],
     default: "medium",

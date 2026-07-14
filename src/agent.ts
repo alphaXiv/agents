@@ -67,6 +67,9 @@ export interface AgentRunOptions {
   signal?: AbortSignal;
 }
 
+/** Token counts attributable to a single model call, normalized to 0 when the provider omits them. */
+type ModelCallTokens = Pick<TokenUsage, "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens">;
+
 export type ModelCallReason =
   | "init"
   | "tool"
@@ -116,6 +119,16 @@ export interface AgentOptions<zO, zI, Tools extends AnyTool[]> {
   tools?: Tools;
   /** Optionally specify a schema for the final output. If not provided, the agent will return the final model response as a string. */
   output?: z.ZodType<zO, zI>;
+  /**
+   * Enable or disable default prompt caching. To configure TTL, see the specific provider's options.
+   *
+   * Applies only to providers that take cache instructions on the request, which today is
+   * Anthropic. OpenAI and Gemini cache automatically with no opt out, so this cannot turn
+   * their caching off. A `cache` passed to the model itself wins over this.
+   *
+   * @default true if model supports it and you've passed any tools.
+   */
+  cache?: boolean;
   /**
    * Maximum number of agentic turns (model call -> tool execution cycles).
    * @experimental Might be removed or have its behaviour modified without any notice
@@ -251,6 +264,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   #instructions: string;
   #tools: Tools;
   #output?: z.ZodType<zO, zI>;
+  #cache?: boolean;
   #maxTurns: number;
   #retryStrategy: ResolvedRetryStrategy;
   #maxRecoveryAttempts: number;
@@ -263,6 +277,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     this.#instructions = options.instructions;
     this.#tools = (options.tools?.slice() ?? []) as Tools;
     this.#output = options.output;
+    this.#cache = options.cache;
     this.#maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
     this.#retryStrategy = resolveRetryStrategy(options.retryStrategy);
     this.#maxRecoveryAttempts = options.maxRecoveryAttempts ?? DEFAULT_MAX_RECOVERY_ATTEMPTS;
@@ -317,8 +332,12 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     const usage: TokenUsage = {
       inputTokens: 0,
       outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       totalInputTokens: 0,
       totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheWriteTokens: 0,
     };
 
     try {
@@ -333,22 +352,27 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         signal.throwIfAborted();
 
         // Phase 1: Stream from a model (dispatches tool calls eagerly)
-        const { turnItems, inputTokens, outputTokens, trace } = yield* this.#invokeModel({
-          signal,
-          initialHistory,
-          history,
-          pendingTools,
-          toolSignal: toolController.signal,
-          agentTrace,
-          modelCallReason,
-          turn,
-          usage,
-        });
+        const { turnItems, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, trace } = yield* this
+          .#invokeModel({
+            signal,
+            initialHistory,
+            history,
+            pendingTools,
+            toolSignal: toolController.signal,
+            agentTrace,
+            modelCallReason,
+            turn,
+            usage,
+          });
 
         usage.totalInputTokens += inputTokens;
         usage.totalOutputTokens += outputTokens;
+        usage.totalCacheReadTokens += cacheReadTokens;
+        usage.totalCacheWriteTokens += cacheWriteTokens;
         usage.inputTokens = inputTokens;
         usage.outputTokens = outputTokens;
+        usage.cacheReadTokens = cacheReadTokens;
+        usage.cacheWriteTokens = cacheWriteTokens;
 
         const usageEvent: WithTraceId<StreamItem> = {
           type: "token_usage",
@@ -430,7 +454,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     usage: TokenUsage;
   }): AsyncGenerator<
     WithTraceId<StreamItem>,
-    { turnItems: WithTraceId<ChatItem>[]; inputTokens: number; outputTokens: number; trace: string }
+    ModelCallTokens & { turnItems: WithTraceId<ChatItem>[]; trace: string }
   > {
     const { signal, history, pendingTools, toolSignal, agentTrace, turn } = options;
     let { modelCallReason } = options;
@@ -483,6 +507,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               model: adapter.model,
               inputTokens: null,
               outputTokens: null,
+              cacheReadTokens: null,
+              cacheWriteTokens: null,
             },
           });
           using messageTracer = new MessageTracer(modelTrace);
@@ -596,13 +622,14 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     messageTracer: MessageTracer;
     turnItems: WithTraceId<ChatItem>[];
     streamIndexOffset: number;
-  }): AsyncGenerator<WithTraceId<StreamItem>, { inputTokens: number; outputTokens: number; trace: string }> {
+  }): AsyncGenerator<WithTraceId<StreamItem>, ModelCallTokens & { trace: string }> {
     const { adapter, signal, pendingTools, toolSignal, agentTrace, modelTrace, messageTracer, turnItems } = options;
 
     const adapterStream = adapter.stream({
       instructions: this.#instructions,
       tools: this.#tools,
       output: this.#output,
+      cache: this.#cache,
       history: options.history,
       signal,
     });
@@ -614,10 +641,14 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         modelTrace.success({
           inputTokens: part.inputTokens,
           outputTokens: part.outputTokens,
+          cacheReadTokens: part.cacheReadTokens ?? null,
+          cacheWriteTokens: part.cacheWriteTokens ?? null,
         });
         return {
           inputTokens: part.inputTokens ?? 0,
           outputTokens: part.outputTokens ?? 0,
+          cacheReadTokens: part.cacheReadTokens ?? 0,
+          cacheWriteTokens: part.cacheWriteTokens ?? 0,
           trace: modelTrace.id,
         };
       }

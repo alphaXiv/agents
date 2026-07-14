@@ -9,6 +9,7 @@ import { assert } from "@std/assert";
 import type { AdapterStreamIterator } from "../../types.ts";
 import { hashString } from "../../util.ts";
 import type { Adapter, AdapterStreamOptions } from "../adapter.ts";
+import { splitCacheInclusiveUsage } from "../shared/usage.ts";
 import { getGoogleGenerateContentAPIHistory, rememberGoogleThoughtSignature } from "./history.ts";
 import { normalizeGoogleTools } from "./tools.ts";
 
@@ -194,7 +195,8 @@ export function googleGenerateContentAPIModel<zO, zI>(
       }
 
       return {
-        inputTokens: usageMetadata?.promptTokenCount ?? null,
+        ...splitCacheInclusiveUsage(usageMetadata?.promptTokenCount, usageMetadata?.cachedContentTokenCount),
+        // promptTokenCount is cache-inclusive, so this stays the correct output count.
         outputTokens: usageMetadata?.totalTokenCount != null && usageMetadata?.promptTokenCount != null
           ? usageMetadata.totalTokenCount - usageMetadata.promptTokenCount
           : null,

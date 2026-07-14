@@ -3,7 +3,7 @@ import { type ClassifiedError, createClassifiedError } from "../../errors.ts";
 import type { AdapterStreamIterator, ChatItem } from "../../types.ts";
 import type { Adapter, AdapterStreamOptions } from "../adapter.ts";
 import type { SchemaCompatibility } from "../shared/schema_compatibility.ts";
-import { getAnthropicHistory, rememberAnthropicReasoningSignature } from "./history.ts";
+import { applyAnthropicCacheBreakpoint, getAnthropicHistory, rememberAnthropicReasoningSignature } from "./history.ts";
 import {
   type AnthropicModels,
   anthropicModelStructuredOutputSupport,
@@ -50,12 +50,37 @@ type EffortOption<TModel extends AnthropicModels> = SupportedEffortLevel<TModel>
 type InterleavedOption<TModel extends AnthropicModels> = SupportsInterleaved<TModel> extends true ? boolean
   : undefined;
 
+/**
+ * Prompt caching configuration. `true` uses the 5 minute cache; `{ ttl: "1h" }`
+ * survives longer gaps between calls at double the write cost.
+ */
+export type AnthropicCacheOptions = {
+  ttl?: "5m" | "1h";
+};
+
 export function anthropicModel<zO, zI, TModel extends AnthropicModels>(options: {
   model: TModel;
   effort?: EffortOption<TModel>;
   thinkingLevel?: ThinkingLevelOption<TModel>;
   interleaved?: InterleavedOption<TModel>;
   thinkingDisplay?: ThinkingDisplay;
+  /**
+   * Cache the instructions, tools and conversation prefix across calls.
+   *
+   * Defaults to the 5 minute cache when the agent has tools, and to off when it
+   * has none: cached tokens are billed at ~0.1x but writes at 1.25x (2x for
+   * `ttl: "1h"`), so caching pays off from the second call sharing a prefix
+   * onward, and tools are the signal that a second call is coming. Pass `true`
+   * to cache a toolless agent anyway (worth it if you rerun the same
+   * instructions), or `false` to opt out entirely. Set here, this outranks the
+   * `cache` on the agent using the model.
+   *
+   * Anthropic silently declines to cache prefixes below the model's minimum,
+   * which is per-model and ranges from 1024 tokens (Sonnet 4.5 and older) to
+   * 4096 (Opus, Haiku 4.5), so read `usage.cacheReadTokens` rather than
+   * assuming a hit.
+   */
+  cache?: boolean | AnthropicCacheOptions;
   baseUrl?: string;
   apiKey?: string;
   client?: Anthropic;
@@ -118,10 +143,18 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
     provider: "Anthropic",
     model: options.model,
     stream: async function* stream<zO, zI>(
-      { history, instructions, tools, signal, output }: AdapterStreamOptions<zO, zI>,
+      { history, instructions, tools, signal, output, cache: cacheDefault }: AdapterStreamOptions<zO, zI>,
     ): AdapterStreamIterator {
       const normalizedTools = normalizeAnthropicTools(tools);
       const anthropicHistory = await getAnthropicHistory({ history, normalizedTools, signal });
+
+      // Tools mean an agent loop, which rereads its prefix every turn and profits from caching.
+      // Without them a run is usually a single call, which would only pay the write premium.
+      // A cache configured on the model outranks the caller's default, so an explicit ttl survives it.
+      const cache = options.cache ?? cacheDefault ?? tools.length > 0;
+      const cacheControl: Anthropic.Messages.CacheControlEphemeral | undefined = cache
+        ? { type: "ephemeral", ttl: typeof cache === "object" ? cache.ttl : undefined }
+        : undefined;
 
       const structuredOutput = output && createAnthropicCompatibleSchema(output, {
         kind: "output",
@@ -130,9 +163,16 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
 
       const systemPrompt = getSystemPrompt(instructions, structuredOutput);
 
+      // Render order is tools -> system -> messages, so a breakpoint on the system block
+      // caches the tools with it, and one on the conversation tail caches the turn so far.
+      if (cacheControl) applyAnthropicCacheBreakpoint(anthropicHistory, cacheControl);
+
       const response = client.beta.messages.stream({
         model: options.model,
-        system: systemPrompt,
+        // An empty text block is rejected, so a blank prompt stays a bare string (and has nothing to cache).
+        system: cacheControl && systemPrompt
+          ? [{ type: "text", text: systemPrompt, cache_control: cacheControl }]
+          : systemPrompt,
         messages: anthropicHistory,
         tools: normalizedTools.map(({ anthropic }) => anthropic),
 
@@ -267,6 +307,8 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
       return {
         outputTokens: final.usage.output_tokens,
         inputTokens: final.usage.input_tokens,
+        cacheReadTokens: final.usage.cache_read_input_tokens ?? null,
+        cacheWriteTokens: final.usage.cache_creation_input_tokens ?? null,
       };
     },
     classifyError(error: unknown): ClassifiedError | null {

@@ -60,7 +60,7 @@ const result = await agent.run("What is 144 divided by 12?");
 
 console.log(result.outputText);
 console.log(result.history);
-console.log(result.inputTokens, result.outputTokens);
+console.log(result.usage.inputTokens, result.usage.outputTokens);
 ```
 
 `agent.run(...)` accepts either a plain string or a `ChatItem[]` history.
@@ -70,7 +70,7 @@ The returned object includes:
 - `output`: the structured result if you configured one, otherwise `undefined` unless a tool returns `ModelOutput`
 - `outputText`: a convenient string form of the final answer
 - `history`: flat chat history items that are easy to store
-- `inputTokens` and `outputTokens`
+- `usage`: token counts for the run (see [Prompt caching](#prompt-caching))
 
 ## Structured output
 
@@ -169,6 +169,35 @@ const agent = new Agent({
 
 - Tools support per-tool retries, timeouts and signal cancellation
 - Agent-level aborts propagate into running tools
+
+## Prompt caching
+
+Prompt caching reuses the cost of the tokens a call shares with an earlier one. Since providers are different about
+their caching systems, configuring how the cache works must be done on the model factory. For example, you can opt into
+the expensive 1-hour cache in `anthropicModel`
+
+```tsx
+const agent = new Agent({
+  model: anthropicModel({
+    model: "claude-opus-4-8",
+    cache: { ttl: "1h" },
+  }),
+  instructions: "You are a helpful assistant",
+});
+```
+
+By default, caches are opted into if any tools are provided, since this almost always is a cost save. You can disable
+this behavior either by setting `cache: false` on the model factory, or the same on the `Agent`.
+
+```tsx
+const agent = new Agent({
+  model: "anthropic:claude-opus-4-8"
+  instructions:
+    `My prompt is generated and only run once: ${Math.random()}, `
+    + `so caching doesn't help me!`,
+  cache: false,
+});
+```
 
 ## Fallback models and retry strategy
 
