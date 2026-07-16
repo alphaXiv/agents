@@ -12,6 +12,11 @@ import type { Adapter, AdapterStreamOptions } from "../adapter.ts";
 import { getGoogleGenerateContentAPIHistory, rememberGoogleThoughtSignature } from "./history.ts";
 import { normalizeGoogleTools } from "./tools.ts";
 
+// Re-exported so wrappers building their own googleGenerateContentAPIModel
+// (e.g. a Vertex fallback with inline credentials) can map thinking levels
+// the same way geminiModel and vertexAIModel do.
+export { getThinkingConfig, type GoogleModels, type SupportedThinkingLevel } from "./models.ts";
+
 export interface GoogleGenerateContentAPIModelOptions {
   googleGenAIOptions?: GoogleGenAIOptions;
   thinkingConfig?: ThinkingConfig;
