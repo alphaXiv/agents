@@ -59,7 +59,8 @@ export function googleGenerateContentAPIModel<zO, zI>(
       });
     } catch (error) {
       if (
-        !(error instanceof Error) || (
+        !(error instanceof Error) ||
+        !(
           error.message.includes("generativelanguage.googleapis.com/file_storage_bytes") &&
           error.message.includes("429")
         )
@@ -111,6 +112,8 @@ export function googleGenerateContentAPIModel<zO, zI>(
         signal,
         baseUrl,
         ensureFileUploaded,
+        // Vertex AI does not support the Files API, so file history is sent as inline data.
+        inlineFiles: options.googleGenAIOptions?.vertexai === true,
       });
 
       const stream = await client.models.generateContentStream({
