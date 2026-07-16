@@ -1,5 +1,6 @@
 import type { Content } from "@google/genai";
 import { assert } from "@std/assert";
+import { encodeBase64 } from "@std/encoding";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem, ChatItemToolUse } from "../../types.ts";
 import { serializeWrappedToolArguments } from "../shared/tools.ts";
@@ -41,6 +42,8 @@ export async function getGoogleGenerateContentAPIHistory(options: {
   signal: AbortSignal;
   baseUrl?: string;
   ensureFileUploaded?: EnsureFileUploaded;
+  /** Replay file history as inlineData parts instead of the Files API (unsupported on Vertex AI). */
+  inlineFiles?: boolean;
 }): Promise<Content[]> {
   const googleHistory: Content[] = [];
   for (const item of options.history) {
@@ -98,6 +101,22 @@ export async function getGoogleGenerateContentAPIHistory(options: {
       }
       case "input_file":
       case "tool_result_file": {
+        if (options.inlineFiles) {
+          const response = await fetch(item.content, { signal: options.signal });
+          if (!response.ok) {
+            throw new Error(`Failed to fetch file for inline replay: ${response.status} ${item.content}`);
+          }
+          googleHistory.push({
+            role: "user",
+            parts: [{
+              inlineData: {
+                data: encodeBase64(await response.arrayBuffer()),
+                mimeType: item.kind,
+              },
+            }],
+          });
+          break;
+        }
         if (!options.ensureFileUploaded) {
           throw new Error("Google history file replay requires an upload handler");
         }

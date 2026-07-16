@@ -12,6 +12,11 @@ import type { Adapter, AdapterStreamOptions } from "../adapter.ts";
 import { getGoogleGenerateContentAPIHistory, rememberGoogleThoughtSignature } from "./history.ts";
 import { normalizeGoogleTools } from "./tools.ts";
 
+// Re-exported so wrappers building their own googleGenerateContentAPIModel
+// (e.g. a Vertex fallback with inline credentials) can map thinking levels
+// the same way geminiModel and vertexAIModel do.
+export { getThinkingConfig, type GoogleModels, type SupportedThinkingLevel } from "./models.ts";
+
 export interface GoogleGenerateContentAPIModelOptions {
   googleGenAIOptions?: GoogleGenAIOptions;
   thinkingConfig?: ThinkingConfig;
@@ -59,7 +64,8 @@ export function googleGenerateContentAPIModel<zO, zI>(
       });
     } catch (error) {
       if (
-        !(error instanceof Error) || (
+        !(error instanceof Error) ||
+        !(
           error.message.includes("generativelanguage.googleapis.com/file_storage_bytes") &&
           error.message.includes("429")
         )
@@ -111,6 +117,8 @@ export function googleGenerateContentAPIModel<zO, zI>(
         signal,
         baseUrl,
         ensureFileUploaded,
+        // Vertex AI does not support the Files API, so file history is sent as inline data.
+        inlineFiles: options.googleGenAIOptions?.vertexai === true,
       });
 
       const stream = await client.models.generateContentStream({

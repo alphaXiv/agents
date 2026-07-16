@@ -1,7 +1,8 @@
 import { ThinkingLevel as GenAiThinkingLevel } from "@google/genai";
 import { assertEquals } from "@std/assert";
+import { encodeBase64 } from "@std/encoding";
 import { geminiModel } from "../../src/adapters/gemini/adapter.ts";
-import { googleGenerateContentAPIModel } from "../../src/adapters/google_genai/adapter.ts";
+import { getThinkingConfig, googleGenerateContentAPIModel } from "../../src/adapters/google_genai/adapter.ts";
 import { getGoogleGenerateContentAPIHistory } from "../../src/adapters/google_genai/history.ts";
 import {
   createToolFixtures,
@@ -480,4 +481,43 @@ Deno.test("GeminiAdapter replays mixed tool history for a tool-less handoff", as
       parts: [{ text: "Summarize the prior history without using any tools." }],
     },
   ]);
+});
+
+Deno.test("GeminiAdapter inlines file history instead of using the Files API", async () => {
+  const bytes = new TextEncoder().encode("%PDF-1.4 fake body");
+  const server = Deno.serve({ port: 0, onListen: () => {} }, () => new Response(bytes));
+  try {
+    const history = await getGoogleGenerateContentAPIHistory({
+      history: [{
+        type: "input_file",
+        kind: "application/pdf",
+        content: `http://localhost:${server.addr.port}/file.pdf`,
+      }],
+      toolMap: [],
+      signal: new AbortController().signal,
+      inlineFiles: true,
+    });
+
+    assertEquals(history, [{
+      role: "user",
+      parts: [{
+        inlineData: { data: encodeBase64(bytes), mimeType: "application/pdf" },
+      }],
+    }]);
+  } finally {
+    await server.shutdown();
+  }
+});
+
+Deno.test("getThinkingConfig maps levels for legacy-budget and unsupported models", () => {
+  assertEquals(getThinkingConfig("gemini-2.5-flash", "minimal"), {
+    includeThoughts: true,
+    thinkingBudget: 512,
+  });
+  // Vertex AI rejects includeThoughts when thinking is disabled, so the
+  // unsupported branch must keep emitting includeThoughts: false.
+  assertEquals(getThinkingConfig("gemini-2.0-flash-lite"), {
+    includeThoughts: false,
+    thinkingBudget: 0,
+  });
 });
