@@ -128,6 +128,7 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
         const delta = choice.delta as {
           content?: string | null;
           reasoning?: string | null;
+          reasoning_content?: string | null;
           tool_calls?: Array<{
             index?: number;
             id?: string;
@@ -135,7 +136,9 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
           }>;
         };
 
-        if (delta.reasoning) {
+        // DeepSeek names the field `reasoning_content`; OpenRouter uses `reasoning`.
+        const reasoning = delta.reasoning_content || delta.reasoning;
+        if (reasoning) {
           if (lastType !== "reasoning") {
             lastType = "reasoning";
             lastIndex++;
@@ -144,7 +147,7 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
           yield {
             type: "delta_output_reasoning",
             index: lastIndex,
-            delta: delta.reasoning,
+            delta: reasoning,
           };
         }
 

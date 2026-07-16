@@ -1,5 +1,6 @@
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import type OpenAI from "openai";
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import z from "zod";
 import { openAICompletionsModel } from "../../src/adapters/openai_completions/adapter.ts";
 import { getOpenAICompletionsHistory } from "../../src/adapters/openai_completions/history.ts";
@@ -77,6 +78,7 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
       {
         role: "assistant",
         content: null,
+        reasoning_content: "I should search first.",
         tool_calls: [{
           id: "call_1",
           type: "function",
@@ -85,7 +87,7 @@ Deno.test("OpenAI Completions history normalizes assistant, retry, tools, and fi
             arguments: '{"content":"cats"}',
           },
         }],
-      },
+      } as ChatCompletionMessageParam,
       { role: "tool", tool_call_id: "call_1", content: "found 2 results" },
       {
         role: "user",
@@ -168,6 +170,7 @@ Deno.test("OpenAI Completions replays missing tool definitions with normalized n
     {
       role: "assistant",
       content: null,
+      reasoning_content: "",
       tool_calls: [{
         id: "call_1",
         type: "function",
@@ -176,7 +179,7 @@ Deno.test("OpenAI Completions replays missing tool definitions with normalized n
           arguments: "{}",
         },
       }],
-    },
+    } as ChatCompletionMessageParam,
     { role: "tool", tool_call_id: "call_1", content: "ready" },
   ]);
 });

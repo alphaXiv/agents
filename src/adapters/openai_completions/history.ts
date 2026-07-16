@@ -1,4 +1,4 @@
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type { ChatCompletionMessageParam, ChatCompletionMessageToolCall } from "openai/resources/chat/completions";
 import { isStructuredOutputRetryFeedback, RETRY_RESUMABILITY_PROMPT } from "../../constants.ts";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem, ChatItemInputFile, ChatItemToolResultFile } from "../../types.ts";
@@ -116,53 +116,120 @@ export async function getOpenAICompletionsHistory<TModel extends string>(options
     content: options.instructions,
   }];
 
+  // DeepSeek rejects a replayed assistant turn that omits `reasoning_content`, so the
+  // reasoning is buffered and re-attached to the assistant message the turn produced.
+  // Providers that don't model reasoning this way ignore the extra field.
+  let turnReasoning = "";
+
+  // An assistant message carrying `tool_calls` must be followed by exactly one tool
+  // message per call id, so a turn's consecutive tool uses are coalesced into one
+  // assistant message and their results emitted as a contiguous block. File results
+  // have no tool-role representation, so they trail the block as user messages.
+  let toolTurn: {
+    reasoning: string;
+    calls: ChatCompletionMessageToolCall[];
+    results: Map<string, string>;
+    files: ChatCompletionMessageParam[];
+  } | null = null;
+
+  function flushToolTurn() {
+    if (!toolTurn) return;
+    // Unlike the text branch, `reasoning_content` is emitted even when empty: DeepSeek
+    // rejects a tool-call turn that omits the field outright, and compaction can drop the
+    // reasoning while keeping the use. Every other provider ignores an empty value.
+    messages.push({
+      role: "assistant",
+      content: null,
+      reasoning_content: toolTurn.reasoning,
+      tool_calls: toolTurn.calls,
+    } as ChatCompletionMessageParam);
+    for (const call of toolTurn.calls) {
+      messages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: toolTurn.results.get(call.id) ?? "",
+      });
+    }
+    messages.push(...toolTurn.files);
+    toolTurn = null;
+    turnReasoning = "";
+  }
+
   for (const historyItem of options.history) {
     switch (historyItem.type) {
       case "input_text":
+        flushToolTurn();
+        turnReasoning = "";
         messages.push({
           role: "user",
           content: historyItem.content,
         });
         break;
       case "output_text":
-        messages.push({
-          role: isStructuredOutputRetryFeedback(historyItem.content) ? "user" : "assistant",
-          content: historyItem.content,
-        });
+        flushToolTurn();
+        if (isStructuredOutputRetryFeedback(historyItem.content)) {
+          messages.push({ role: "user", content: historyItem.content });
+        } else {
+          messages.push({
+            role: "assistant",
+            content: historyItem.content,
+            ...(turnReasoning ? { reasoning_content: turnReasoning } : {}),
+          } as ChatCompletionMessageParam);
+        }
+        turnReasoning = "";
         break;
       case "output_reasoning":
+        flushToolTurn();
+        turnReasoning += historyItem.content;
         break;
       case "context_summary":
+        flushToolTurn();
+        turnReasoning = "";
         messages.push({
           role: "user",
           content: historyItem.content,
         });
         break;
       case "tool_use": {
+        // A use arriving after results belongs to the next turn, not this one.
+        if (toolTurn && toolTurn.results.size > 0) flushToolTurn();
+        toolTurn ??= { reasoning: turnReasoning, calls: [], results: new Map(), files: [] };
+
         const tool = options.normalizedTools.find((candidate) => candidate.original.name === historyItem.kind);
-        messages.push({
-          role: "assistant",
-          content: null,
-          tool_calls: [{
-            id: historyItem.tool_use_id,
-            type: "function",
-            function: {
-              name: tool?.openAI.function.name ?? normalizeToolName(historyItem.kind),
-              arguments: serializeWrappedToolArguments(historyItem.content, tool),
-            },
-          }],
+        toolTurn.calls.push({
+          id: historyItem.tool_use_id,
+          type: "function",
+          function: {
+            name: tool?.openAI.function.name ?? normalizeToolName(historyItem.kind),
+            arguments: serializeWrappedToolArguments(historyItem.content, tool),
+          },
         });
         break;
       }
       case "tool_result_text":
-        messages.push({
-          role: "tool",
-          tool_call_id: historyItem.tool_use_id,
-          content: historyItem.content,
-        });
+        // A result whose use was compacted away cannot be paired; an unanswerable
+        // tool message would be rejected outright, so drop it.
+        toolTurn?.results.set(historyItem.tool_use_id, historyItem.content);
         break;
+      case "tool_result_file": {
+        if (!toolTurn) break;
+        if (!toolTurn.results.has(historyItem.tool_use_id)) {
+          toolTurn.results.set(historyItem.tool_use_id, "");
+        }
+        toolTurn.files.push(
+          await getOpenAICompletionsFileMessage(
+            options.model,
+            historyItem,
+            supportedMimeTypes,
+            options.pdfSupport,
+            options.signal,
+          ),
+        );
+        break;
+      }
       case "input_file":
-      case "tool_result_file":
+        flushToolTurn();
+        turnReasoning = "";
         messages.push(
           await getOpenAICompletionsFileMessage(
             options.model,
@@ -177,6 +244,8 @@ export async function getOpenAICompletionsHistory<TModel extends string>(options
         historyItem satisfies never;
     }
   }
+
+  flushToolTurn();
 
   const lastHistoryItem = options.history.at(-1);
   if (lastHistoryItem?.type === "output_text" && !isStructuredOutputRetryFeedback(lastHistoryItem.content)) {
