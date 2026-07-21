@@ -11,7 +11,13 @@ import { Tool } from "../../src/tool.ts";
 
 function createMockClient(
   events: unknown[],
-  finalResponse: { usage: { input_tokens: number; output_tokens: number } },
+  finalResponse: {
+    usage: {
+      input_tokens: number;
+      output_tokens: number;
+      input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+    };
+  },
   captureRequest?: (request: unknown) => void,
 ) {
   return {
@@ -511,7 +517,7 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
   while (true) {
     const next = await stream.next();
     if (next.done) {
-      assertEquals(next.value, { inputTokens: 11, outputTokens: 7 });
+      assertEquals(next.value, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
       break;
     }
     items.push(next.value);
@@ -585,7 +591,10 @@ Deno.test("OpenAIModel defaults effort for reasoning models", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals(await stream.next(), {
+    done: true,
+    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
+  });
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
 });
 
@@ -606,7 +615,10 @@ Deno.test("OpenAIModel omits reasoning for non-reasoning models", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals(await stream.next(), {
+    done: true,
+    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
+  });
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, undefined);
 });
 
@@ -628,7 +640,10 @@ Deno.test("OpenAIModel stores configured service tier", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), { done: true, value: { inputTokens: 0, outputTokens: 0 } });
+  assertEquals(await stream.next(), {
+    done: true,
+    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
+  });
   assertEquals((capturedRequest as { service_tier?: unknown }).service_tier, "flex");
 });
 
@@ -732,8 +747,46 @@ Deno.test("Open Responses respects parallelToolCalls option", async () => {
 
   assertEquals(await stream.next(), {
     done: true,
-    value: { inputTokens: 0, outputTokens: 0 },
+    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
   });
 
   assertEquals((capturedRequest as { parallel_tool_calls?: boolean }).parallel_tool_calls, false);
+});
+
+Deno.test("Open Responses reports cached tokens as their own bucket, outside inputTokens", async () => {
+  const client = createMockClient([], {
+    usage: { input_tokens: 1500, output_tokens: 7, input_tokens_details: { cached_tokens: 1024 } },
+  });
+  const adapter = openResponsesModel({ model: "gpt-4.1-mini", client });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  // OpenAI counts cached tokens inside input_tokens, so 1500 - 1024 is the uncached remainder.
+  assertEquals(await stream.next(), {
+    done: true,
+    value: { inputTokens: 476, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 0 },
+  });
+});
+
+Deno.test("Open Responses splits the cache write premium out of inputTokens (GPT-5.6+)", async () => {
+  // From GPT-5.6 OpenAI bills cache writes at 1.25x and counts them inside input_tokens.
+  const client = createMockClient([], {
+    usage: {
+      input_tokens: 1500,
+      output_tokens: 7,
+      input_tokens_details: { cached_tokens: 1024, cache_write_tokens: 400 },
+    },
+  });
+  const adapter = openResponsesModel({ model: "gpt-5.6", client });
+
+  const stream = adapter.stream({ history: [], instructions: "Be useful", tools: [], signal: AbortSignal.abort() });
+  assertEquals(await stream.next(), {
+    done: true,
+    value: { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 },
+  });
 });

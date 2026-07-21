@@ -1,9 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { assert, assertEquals } from "@std/assert";
 import z from "zod";
-import { addStreamItem, Agent, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
+import { addStreamItem, Agent, type AnyTool, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
 import { anthropicModel } from "../../src/adapters/anthropic/adapter.ts";
-import { getAnthropicHistory } from "../../src/adapters/anthropic/history.ts";
+import { applyAnthropicCacheBreakpoint, getAnthropicHistory } from "../../src/adapters/anthropic/history.ts";
 import { getAnthropicMessagesStreamConfig } from "../../src/adapters/anthropic/models.ts";
 import { createAnthropicCompatibleSchema, normalizeAnthropicTools } from "../../src/adapters/anthropic/utils.ts";
 import {
@@ -590,7 +590,7 @@ Deno.test("Anthropic ignores signature deltas when thinking display omits reason
     delta: "done",
     index: 1,
   }]);
-  assertEquals(metadata, { inputTokens: 0, outputTokens: 0 });
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: null });
 });
 
 Deno.test("Anthropic attaches signatures after reasoning block completion", async () => {
@@ -756,4 +756,233 @@ Deno.test({
   await checkReasoning(anthropicModel({ model: "claude-opus-4-7", effort: "max", thinkingDisplay: "omitted" }), {
     shouldStreamReasoning: false,
   });
+});
+
+/**
+ * Captures the request body the adapter builds, and replays a fixed usage block,
+ * so caching can be asserted without spending a live call.
+ */
+function createCapturingAnthropicClient(usage: Partial<Anthropic.Beta.BetaUsage> = {}) {
+  const requests: Anthropic.Beta.Messages.MessageCreateParams[] = [];
+  const client = {
+    beta: {
+      messages: {
+        stream(params: Anthropic.Beta.Messages.MessageCreateParams) {
+          requests.push(params);
+          return Object.assign(
+            (async function* () {})(),
+            {
+              finalMessage: () => ({
+                usage: {
+                  input_tokens: 10,
+                  output_tokens: 20,
+                  cache_read_input_tokens: null,
+                  cache_creation_input_tokens: null,
+                  ...usage,
+                },
+              }),
+            },
+          );
+        },
+      },
+    },
+  } as unknown as Anthropic;
+  return { client, requests };
+}
+
+/** The breakpoint the adapter placed on the tail of the conversation, if any. */
+function tailCacheControl(request: Anthropic.Beta.Messages.MessageCreateParams) {
+  const content = request.messages.at(-1)?.content;
+  const block = typeof content === "string" ? undefined : content?.at(-1);
+  if (!block || block.type === "thinking" || block.type === "redacted_thinking") return undefined;
+  return block.cache_control;
+}
+
+function streamOnce(
+  adapter: Adapter<unknown, unknown>,
+  { instructions = "You are a test assistant.", tools = [], cache }: {
+    instructions?: string;
+    tools?: AnyTool[];
+    cache?: boolean;
+  } = {},
+) {
+  return collectAdapterStream(adapter.stream({
+    history: [
+      { type: "input_text", content: "hi" },
+      { type: "tool_use", kind: "echo", tool_use_id: "toolu_1", content: '{"query":"x"}' },
+      { type: "tool_result_text", tool_use_id: "toolu_1", content: "x" },
+    ],
+    instructions,
+    tools,
+    cache,
+    signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+  }));
+}
+
+Deno.test("Anthropic caching breakpoints cover the system prefix and the conversation tail", async () => {
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: { ttl: "1h" }, client }));
+
+  const [request] = requests;
+  assertEquals(request.system, [{
+    type: "text",
+    text: "You are a test assistant.",
+    cache_control: { type: "ephemeral", ttl: "1h" },
+  }]);
+
+  // Tail breakpoint rides the last block so the next turn reads this turn's prefix.
+  assertEquals(tailCacheControl(request), { type: "ephemeral", ttl: "1h" });
+});
+
+Deno.test("Anthropic caching defaults to the 5 minute cache", async () => {
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: true, client }));
+
+  assertEquals(requests[0].system, [{
+    type: "text",
+    text: "You are a test assistant.",
+    cache_control: { type: "ephemeral", ttl: undefined },
+  }]);
+});
+
+Deno.test("Anthropic caching is on by default for a tool-using agent and off without tools", async () => {
+  const { echoTool } = createToolFixtures();
+
+  const withTools = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", client: withTools.client }), { tools: [echoTool] });
+  assertEquals(tailCacheControl(withTools.requests[0]), { type: "ephemeral", ttl: undefined });
+
+  const withoutTools = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", client: withoutTools.client }));
+  const [request] = withoutTools.requests;
+  assertEquals(request.system, "You are a test assistant.");
+  assertEquals(tailCacheControl(request), undefined);
+});
+
+Deno.test("Anthropic caching honours the caller's default over the tools heuristic", async () => {
+  const { echoTool } = createToolFixtures();
+
+  // Agent-level `cache: false` is the opt out of what tools would otherwise switch on.
+  const off = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", client: off.client }), {
+    tools: [echoTool],
+    cache: false,
+  });
+  assertEquals(tailCacheControl(off.requests[0]), undefined);
+
+  // And switches caching on for a toolless agent that would otherwise skip it.
+  const on = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", client: on.client }), { cache: true });
+  assertEquals(tailCacheControl(on.requests[0]), { type: "ephemeral", ttl: undefined });
+});
+
+Deno.test("Anthropic caching keeps a cache configured on the model over the caller's default", async () => {
+  // Someone who configured a ttl asked for caching explicitly; a blanket default must not undo it.
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: { ttl: "1h" }, client }), { cache: false });
+
+  assertEquals(tailCacheControl(requests[0]), { type: "ephemeral", ttl: "1h" });
+});
+
+Deno.test("Anthropic caching stays off when explicitly disabled on a tool-using agent", async () => {
+  const { echoTool } = createToolFixtures();
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: false, client }), { tools: [echoTool] });
+
+  const [request] = requests;
+  assertEquals(request.system, "You are a test assistant.");
+  assertEquals(tailCacheControl(request), undefined);
+});
+
+Deno.test("Anthropic sends blank instructions as a bare string, which caching cannot turn into an empty block", async () => {
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: true, client }), { instructions: "" });
+
+  assertEquals(requests[0].system, "");
+});
+
+Deno.test("Anthropic reports cache token usage separately from uncached input", async () => {
+  const { client } = createCapturingAnthropicClient({
+    cache_read_input_tokens: 4096,
+    cache_creation_input_tokens: 512,
+  });
+  const { metadata } = await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: true, client }));
+
+  assertEquals(metadata, {
+    inputTokens: 10,
+    outputTokens: 20,
+    cacheReadTokens: 4096,
+    cacheWriteTokens: 512,
+  });
+});
+
+Deno.test("Anthropic caching skips a thinking block, which cannot carry a breakpoint", () => {
+  const history: Anthropic.Messages.MessageParam[] = [{
+    role: "assistant",
+    content: [{ type: "thinking", thinking: "hmm", signature: "sig" }],
+  }];
+  applyAnthropicCacheBreakpoint(history, { type: "ephemeral" });
+
+  assertEquals(history, [{
+    role: "assistant",
+    content: [{ type: "thinking", thinking: "hmm", signature: "sig" }],
+  }]);
+});
+
+Deno.test({
+  name: "AnthropicModel reads its own cached prefix on a second call (claude-haiku-4-5)",
+  ignore: !HAS_ANTHROPIC_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    // Anthropic silently skips caching below the model minimum (4096 tokens here),
+    // so the instructions have to clear it for the assertion to mean anything.
+    const instructions = `You are a test assistant.\n${
+      "Answer questions truthfully and cite the relevant policy section.\n".repeat(1200)
+    }`;
+    const adapter = anthropicModel({ model: "claude-haiku-4-5", cache: true });
+    const call = () =>
+      collectAdapterStream(adapter.stream({
+        history: [{ type: "input_text", content: "Reply with the single word: ok" }],
+        instructions,
+        tools: [],
+        signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+      }));
+
+    const first = await call();
+    assert(
+      (first.metadata.cacheWriteTokens ?? 0) > 0,
+      `Expected the first call to write a cache entry, got ${JSON.stringify(first.metadata)}`,
+    );
+
+    const second = await call();
+    assert(
+      (second.metadata.cacheReadTokens ?? 0) > 0,
+      `Expected the second call to read the cached prefix, got ${JSON.stringify(second.metadata)}`,
+    );
+    // Cached tokens are billed separately, so they must not double count as input.
+    assert(
+      (second.metadata.inputTokens ?? 0) < (second.metadata.cacheReadTokens ?? 0),
+      `Expected cached tokens to be excluded from inputTokens, got ${JSON.stringify(second.metadata)}`,
+    );
+  },
+});
+
+Deno.test("Agent cache option reaches the Anthropic adapter", async () => {
+  const { echoTool } = createToolFixtures();
+
+  async function runAgent(cache: boolean | undefined) {
+    const { client, requests } = createCapturingAnthropicClient();
+    const agent = new Agent({
+      model: anthropicModel({ model: "claude-opus-4-8", client }),
+      instructions: "You are a test assistant.",
+      tools: [echoTool],
+      cache,
+    });
+    await agent.run("hi");
+    return requests[0];
+  }
+
+  assertEquals(tailCacheControl(await runAgent(undefined)), { type: "ephemeral", ttl: undefined });
+  assertEquals(tailCacheControl(await runAgent(false)), undefined);
 });

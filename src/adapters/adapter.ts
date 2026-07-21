@@ -19,6 +19,16 @@ export interface AdapterStreamOptions<zO, zI> {
   instructions: string;
   /** Previous conversation history */
   history: ChatItem[];
+  /**
+   * Whether to prompt cache this call, overriding the adapter's default. Unset
+   * leaves the adapter to decide.
+   *
+   * Only adapters whose provider takes cache instructions on the request can honor
+   * this; where the provider caches automatically and offers no opt out, it is
+   * ignored. An option the adapter was constructed with wins over this, so an
+   * explicitly configured cache is never silently turned off.
+   */
+  cache?: boolean;
   /** Cancellation signal */
   signal: AbortSignal;
 }

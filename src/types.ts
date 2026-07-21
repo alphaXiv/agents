@@ -6,15 +6,31 @@ import type { ClassifiedError } from "./errors.ts";
  * If the provider is unable to classify, then all tokens are "output" tokens.
  */
 export interface TokenUsage {
-  /** Input tokens from the most recent model call. */
+  /**
+   * Input tokens from the most recent model call. Providers that report prompt
+   * caching exclude cached tokens here; providers that do not report it leave
+   * their cached tokens counted in this number.
+   */
   inputTokens: number;
   /** Output tokens from the most recent model call. */
   outputTokens: number;
+  /** Input tokens read from the provider's prompt cache in the most recent model call. `0` if unreported. */
+  cacheReadTokens: number;
+  /**
+   * Input tokens billed at the provider's cache write premium in the most recent
+   * model call. `0` on providers whose caches populate for free, which is Gemini
+   * and OpenAI before GPT-5.6.
+   */
+  cacheWriteTokens: number;
 
   /** Total input tokens used over the span of the agent run */
   totalInputTokens: number;
   /** Total output tokens used over the span of the agent run */
   totalOutputTokens: number;
+  /** Total cached input tokens read over the span of the agent run */
+  totalCacheReadTokens: number;
+  /** Total input tokens written to cache over the span of the agent run */
+  totalCacheWriteTokens: number;
 }
 
 export type ChatItemToolUse = {
@@ -178,8 +194,20 @@ export type AgentStreamIterator<T = unknown> = AsyncGenerator<
 export type Awaitable<T> = T | Promise<T>;
 
 export interface ProviderStreamMetadata {
-  /** Count of input tokens */
+  /**
+   * Count of input tokens billed at the full rate. Providers that report prompt
+   * caching exclude cached tokens here, so the prompt size is
+   * `inputTokens + cacheReadTokens + cacheWriteTokens`.
+   */
   inputTokens: number | null;
   /** Count of output tokens. If the provider is unable to classify, then all tokens are "output" tokens. */
   outputTokens: number | null;
+  /** Input tokens served from the provider's prompt cache, or `null` if the provider does not report caching. */
+  cacheReadTokens?: number | null;
+  /**
+   * Input tokens billed at the provider's cache write premium, or `null` if the
+   * provider does not report caching. Providers whose caches populate for free
+   * have no write to bill and report `0`.
+   */
+  cacheWriteTokens?: number | null;
 }

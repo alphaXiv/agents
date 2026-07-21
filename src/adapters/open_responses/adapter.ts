@@ -8,6 +8,7 @@ import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { DEFAULT_SUPPORTED_MIME_TYPES } from "../shared/media.ts";
 import { createOpenAICompatibleSchema } from "../shared/openai_compatibility.ts";
 import { restoreWrappedToolArguments } from "../shared/tools.ts";
+import { splitCacheInclusiveUsage } from "../shared/usage.ts";
 import { getOpenResponsesHistory } from "./history.ts";
 import { normalizeOpenResponsesTools, type OpenResponsesToolMap } from "./tools.ts";
 import type { ClientOptions } from "openai";
@@ -194,7 +195,11 @@ export function openResponsesModel<zO, zI>(options: {
 
       const final = await response.finalResponse();
       return {
-        inputTokens: final.usage?.input_tokens ?? null,
+        ...splitCacheInclusiveUsage(
+          final.usage?.input_tokens,
+          final.usage?.input_tokens_details?.cached_tokens,
+          final.usage?.input_tokens_details?.cache_write_tokens,
+        ),
         outputTokens: final.usage?.output_tokens ?? null,
       };
     },

@@ -606,7 +606,11 @@ Deno.test("token_usage event is emitted after a successful model call", async ()
   assertEquals(usageEvent.usage, {
     inputTokens: 0,
     outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
     totalInputTokens: 0,
     totalOutputTokens: 0,
+    totalCacheReadTokens: 0,
+    totalCacheWriteTokens: 0,
   });
 });

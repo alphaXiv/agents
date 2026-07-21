@@ -109,6 +109,10 @@ export interface ModelTraceEvent extends BaseTraceEvent {
     inputTokens: number | null;
     /** Total count of output tokens. If the provider is unable to classify, then all tokens are "output" tokens. */
     outputTokens: number | null;
+    /** Input tokens read from the provider's prompt cache. `null` if the provider does not report caching. */
+    cacheReadTokens: number | null;
+    /** Input tokens written to the provider's prompt cache. `null` if the provider does not report caching. */
+    cacheWriteTokens: number | null;
   };
 }
 

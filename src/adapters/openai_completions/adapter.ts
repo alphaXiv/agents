@@ -7,6 +7,7 @@ import { classifyOpenAIError } from "../shared/classify_error.ts";
 import { DEFAULT_SUPPORTED_MIME_TYPES, supportsMimeType } from "../shared/media.ts";
 import { createOpenAICompatibleSchema } from "../shared/openai_compatibility.ts";
 import { restoreWrappedToolArguments } from "../shared/tools.ts";
+import { splitCacheInclusiveUsage } from "../shared/usage.ts";
 
 import { getOpenAICompletionsHistory, type OpenAICompletionsPdfSupport } from "./history.ts";
 import { normalizeOpenAICompletionsTools, type OpenAICompletionsToolMap } from "./tools.ts";
@@ -228,9 +229,17 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
         }
       }
 
-      const usage = await response.totalUsage();
+      // totalUsage() re-sums usage into a bare {prompt,completion,total} literal and drops
+      // prompt_tokens_details, so the cached count is only reachable on the completion itself.
+      // It throws when a stream produced no completion at all, where totalUsage() reported zeros;
+      // a compatible API that does that keeps the old tolerance and reports unknown usage.
+      const usage = (await response.finalChatCompletion().catch(() => undefined))?.usage;
       return {
-        inputTokens: usage?.prompt_tokens ?? null,
+        ...splitCacheInclusiveUsage(
+          usage?.prompt_tokens,
+          usage?.prompt_tokens_details?.cached_tokens,
+          usage?.prompt_tokens_details?.cache_write_tokens,
+        ),
         outputTokens: usage?.completion_tokens ?? null,
       };
     },

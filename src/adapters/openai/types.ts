@@ -17,6 +17,10 @@ export interface ReasoningModelSupport<T extends readonly [string, ...string[]]>
 }
 
 export interface OpenAiModelsMap {
+  "gpt-5.6": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
+  "gpt-5.6-sol": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
+  "gpt-5.6-terra": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
+  "gpt-5.6-luna": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
   "gpt-5.5": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh"]>;
   "gpt-5.5-pro": ReasoningModelSupport<["medium", "high", "xhigh"]>;
   "gpt-5.4": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh"]>;

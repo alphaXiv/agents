@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertThrows } from "@std/assert";
-import type OpenAI from "openai";
+import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import z from "zod";
 import { openAICompletionsModel } from "../../src/adapters/openai_completions/adapter.ts";
@@ -8,9 +8,14 @@ import { normalizeOpenAICompletionsTools } from "../../src/adapters/openai_compl
 import { RETRY_RESUMABILITY_PROMPT } from "../../src/constants.ts";
 import { Tool } from "../../src/tool.ts";
 
+/**
+ * Replays raw stream events without going through the SDK. Fine for asserting how the
+ * adapter maps deltas; not usable for usage assertions, which depend on which fields the
+ * SDK itself preserves — use `createFakeTransportClient` for those.
+ */
 function createMockClient(
   events: unknown[],
-  totalUsage: { prompt_tokens: number; completion_tokens: number } | undefined,
+  usage: { prompt_tokens: number; completion_tokens: number } | undefined,
   captureRequest?: (request: unknown) => void,
 ) {
   return {
@@ -25,8 +30,9 @@ function createMockClient(
                 yield event;
               }
             },
-            totalUsage() {
-              return totalUsage;
+            // deno-lint-ignore require-await
+            async finalChatCompletion() {
+              return { usage };
             },
           };
         },
@@ -394,7 +400,7 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
   while (true) {
     const next = await stream.next();
     if (next.done) {
-      assertEquals(next.value, { inputTokens: 11, outputTokens: 7 });
+      assertEquals(next.value, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
       break;
     }
     items.push(next.value);
@@ -465,4 +471,99 @@ Deno.test("OpenAI Completions validates pdf support against supported mime types
     Error,
     "pdfSupport requires application/pdf to be included in supportedMimeTypes",
   );
+});
+
+/**
+ * Drives the real OpenAI client over a fake transport. A hand-rolled `totalUsage()` /
+ * `finalChatCompletion()` cannot show which usage fields the SDK actually preserves —
+ * `totalUsage()` silently drops `prompt_tokens_details` — so usage assertions have to
+ * replay chunks through the SDK rather than mock its accessors.
+ */
+function createFakeTransportClient(chunks: unknown[]) {
+  const sse = chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n";
+  return new OpenAI({
+    apiKey: "test",
+    fetch: () => Promise.resolve(new Response(sse, { status: 200, headers: { "content-type": "text/event-stream" } })),
+  });
+}
+
+function usageChunks(usage: Record<string, unknown>) {
+  const base = { id: "c", object: "chat.completion.chunk", created: 1, model: "gpt-4.1-mini" };
+  return [
+    { ...base, choices: [{ index: 0, delta: { role: "assistant", content: "hi" }, finish_reason: null }] },
+    { ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
+    { ...base, choices: [], usage },
+  ];
+}
+
+Deno.test("OpenAI Completions reports cached tokens as their own bucket, outside inputTokens", async () => {
+  const client = createFakeTransportClient(usageChunks({
+    prompt_tokens: 1500,
+    completion_tokens: 7,
+    total_tokens: 1507,
+    prompt_tokens_details: { cached_tokens: 1024 },
+  }));
+  const adapter = openAICompletionsModel({ model: "gpt-4.1-mini", client });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.timeout(5000),
+  });
+  while (true) {
+    const next = await stream.next();
+    if (!next.done) continue;
+    // OpenAI counts cached tokens inside prompt_tokens, so 1500 - 1024 is the uncached remainder.
+    assertEquals(next.value, { inputTokens: 476, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 0 });
+    break;
+  }
+});
+
+Deno.test("OpenAI Completions splits the cache write premium out of inputTokens (GPT-5.6+)", async () => {
+  // From GPT-5.6 OpenAI bills cache writes at 1.25x and counts them inside prompt_tokens,
+  // so leaving them in inputTokens would price the premium tokens at the full rate.
+  const client = createFakeTransportClient(usageChunks({
+    prompt_tokens: 1500,
+    completion_tokens: 7,
+    total_tokens: 1507,
+    prompt_tokens_details: { cached_tokens: 1024, cache_write_tokens: 400 },
+  }));
+  const adapter = openAICompletionsModel({ model: "gpt-5.6", client });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.timeout(5000),
+  });
+  while (true) {
+    const next = await stream.next();
+    if (!next.done) continue;
+    assertEquals(next.value, { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 });
+    break;
+  }
+});
+
+Deno.test("OpenAI Completions reports an uncached call with no cache bucket", async () => {
+  const client = createFakeTransportClient(usageChunks({
+    prompt_tokens: 1500,
+    completion_tokens: 7,
+    total_tokens: 1507,
+    prompt_tokens_details: { cached_tokens: 0 },
+  }));
+  const adapter = openAICompletionsModel({ model: "gpt-4.1-mini", client });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.timeout(5000),
+  });
+  while (true) {
+    const next = await stream.next();
+    if (!next.done) continue;
+    assertEquals(next.value, { inputTokens: 1500, outputTokens: 7, cacheReadTokens: 0, cacheWriteTokens: 0 });
+    break;
+  }
 });

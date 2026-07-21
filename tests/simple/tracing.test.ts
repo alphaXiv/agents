@@ -262,6 +262,8 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
         model: "outer-model",
         inputTokens: 2,
         outputTokens: 3,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
       },
     },
     {
@@ -282,6 +284,8 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
         model: "inner-model",
         inputTokens: 1,
         outputTokens: 2,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
       },
     },
     {
@@ -318,6 +322,8 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
         model: "outer-model",
         inputTokens: 4,
         outputTokens: 5,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
       },
     },
     {
