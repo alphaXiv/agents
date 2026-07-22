@@ -8,6 +8,7 @@ import { createStructuredOutputRetryFeedback } from "./constants.ts";
 import { type ClassifiedError, classifyError, createClassifiedError, FirstTokenTimeoutError } from "./errors.ts";
 import {
   determineRetryBehavior,
+  isDeterministicModelError,
   type ResolvedRetryStrategy,
   resolveRetryStrategy,
   type RetryStrategy,
@@ -349,6 +350,11 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       const history: WithTraceId<ChatItem>[] = [];
       let modelCallReason: ModelCallReason = "init";
 
+      // Indices into #models that failed this run with a deterministic (input-level)
+      // error. Skipped on later turns so the run stops re-paying a call that is
+      // guaranteed to fail identically.
+      const deadModels = new Set<number>();
+
       for (let turn = 0; turn < this.#maxTurns; turn++) {
         signal.throwIfAborted();
 
@@ -364,6 +370,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             modelCallReason,
             turn,
             usage,
+            deadModels,
           });
 
         usage.totalInputTokens += inputTokens;
@@ -453,6 +460,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     modelCallReason: ModelCallReason;
     turn: number;
     usage: TokenUsage;
+    deadModels: Set<number>;
   }): AsyncGenerator<
     WithTraceId<StreamItem>,
     ModelCallTokens & { turnItems: WithTraceId<ChatItem>[]; trace: string }
@@ -481,6 +489,14 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
 
       modelLoop: while (currentModelIndex < this.#models.length) {
         const adapter = this.#models[currentModelIndex];
+
+        // Skip a retired model only while a viable fallback remains, so an all-dead
+        // list still attempts (and surfaces the real error) rather than skipping past.
+        if (options.deadModels.has(currentModelIndex) && options.deadModels.size < this.#models.length) {
+          currentModelIndex++;
+          continue modelLoop;
+        }
+
         const currentModel: ModelInfo = { provider: adapter.provider, model: adapter.model };
 
         // Only guard time-to-first-token when there is somewhere to fall back to. The final
@@ -568,6 +584,12 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               ? createClassifiedError("timeout", error)
               : adapter.classifyError?.(error) ?? classifyError(error);
             agentTrace.log(`Model ${adapter.model} failed (${classified.kind}): ${errMessage(error)}`, error);
+
+            // A deterministic (input-level) failure recurs on every later turn, so
+            // retire this model as a candidate for the rest of the run.
+            if (isDeterministicModelError(classified.kind)) {
+              options.deadModels.add(currentModelIndex);
+            }
 
             const behavior = determineRetryBehavior(classified, this.#retryStrategy, sameModelRetries);
 

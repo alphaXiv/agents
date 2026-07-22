@@ -443,6 +443,32 @@ Deno.test("Anthropic tool history re-wraps normalized string tool inputs as obje
   }]);
 });
 
+Deno.test("Anthropic wraps a scalar tool input whose tool is no longer registered", async () => {
+  // A wrapper-object tool call authored by another provider stores its inner scalar.
+  // Replayed once the tool is gone (nothing to re-wrap it), the raw scalar would make
+  // Anthropic reject the request with "tool_use.input: Input should be an object".
+  const history = await getAnthropicHistory({
+    history: [{
+      type: "tool_use",
+      tool_use_id: "call_1",
+      kind: "search_web",
+      content: '"habitat challenge dataset"',
+    }],
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(history, [{
+    role: "assistant",
+    content: [{
+      type: "tool_use",
+      id: "call_1",
+      name: "search_web",
+      input: { content: "habitat challenge dataset" },
+    }],
+  }]);
+});
+
 Deno.test("Anthropic replays missing tool definitions with normalized names", async () => {
   const history = await getAnthropicHistory({
     history: [

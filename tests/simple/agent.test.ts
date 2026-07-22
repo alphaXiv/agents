@@ -3,6 +3,7 @@ import { assertObjectMatch } from "@std/assert/object-match";
 import { delay } from "@std/async/delay";
 import z from "zod";
 import { Agent, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
+import type { Adapter } from "../../src/adapters/adapter.ts";
 import {
   contextWindowTestModel,
   deterministicTestModel,
@@ -613,4 +614,40 @@ Deno.test("token_usage event is emitted after a successful model call", async ()
     totalCacheReadTokens: 0,
     totalCacheWriteTokens: 0,
   });
+});
+
+Deno.test("a deterministic client error retires a model for the rest of the run", async () => {
+  let primaryCalls = 0;
+  const clientErrorModel: Adapter<unknown, unknown> = {
+    provider: "primary",
+    model: "primary",
+    stream() {
+      primaryCalls += 1;
+      throw Object.assign(
+        new Error("400 invalid_request_error: tool_use.input: Input should be an object"),
+        { status: 400 },
+      );
+    },
+  };
+
+  const searchTool = new Tool({
+    name: "Searching the internet...",
+    description: "Search the internet",
+    parameters: z.string(),
+    execute: () => "search done",
+  });
+
+  const agent = new Agent({
+    model: [clientErrorModel, deterministicTestModel()],
+    instructions: "You are a friendly assistant",
+    tools: [searchTool],
+    retryStrategy: { modelCycles: 1, sameModelRetries: 0 },
+  });
+
+  const run = await agent.run("Find me something");
+
+  // Turn 1 fails the primary over to the fallback (which runs the tool). Turn 2 must
+  // skip the primary rather than re-pay its guaranteed 400, so it is called only once.
+  assertEquals(primaryCalls, 1);
+  assertObjectMatch(run.history.at(-1)!, { type: "output_text", content: "search done" });
 });

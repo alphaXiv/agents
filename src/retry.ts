@@ -3,6 +3,23 @@ import type { ClassifiedError, ErrorKind } from "./errors.ts";
 /** Retry behavior options for different error types. */
 export type RetryBehavior = "retry-same" | "switch-model" | "no-retry";
 
+/**
+ * Error kinds that are a deterministic property of the (model, request) pair
+ * rather than a transient condition. Because an agent's history only grows, a
+ * model that rejects the request this way will reject it identically on every
+ * later turn, so it should be skipped for the rest of the run instead of being
+ * re-attempted (and re-failed) as the primary each turn.
+ */
+const DETERMINISTIC_ERROR_KINDS = new Set<ErrorKind>([
+  "client",
+  "unsupported_file_type",
+  "image_too_large",
+]);
+
+export function isDeterministicModelError(kind: ErrorKind): boolean {
+  return DETERMINISTIC_ERROR_KINDS.has(kind);
+}
+
 /** Configuration for retry behavior. All fields are optional with sensible defaults. */
 export interface RetryStrategy {
   /**
