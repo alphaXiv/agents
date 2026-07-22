@@ -5,7 +5,7 @@ import type { Adapter } from "./adapters/adapter.ts";
 import { type AdapterLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
-import { type ClassifiedError, classifyError } from "./errors.ts";
+import { type ClassifiedError, classifyError, createClassifiedError, FirstTokenTimeoutError } from "./errors.ts";
 import {
   determineRetryBehavior,
   type ResolvedRetryStrategy,
@@ -30,6 +30,7 @@ import type {
   ChatLike,
   ContextSummaryStartEvent,
   ModelInfo,
+  ProviderStreamMetadata,
   StreamItem,
   TokenUsage,
   WithTraceId,
@@ -482,6 +483,12 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         const adapter = this.#models[currentModelIndex];
         const currentModel: ModelInfo = { provider: adapter.provider, model: adapter.model };
 
+        // Only guard time-to-first-token when there is somewhere to fall back to. The final
+        // model of the final cycle is allowed to take as long as it needs.
+        const isFinalModelAttempt = cycle === this.#retryStrategy.modelCycles - 1 &&
+          currentModelIndex === this.#models.length - 1;
+        const hasFallback = this.#models.length > 1 && !isFinalModelAttempt;
+
         // Emit model_switched event when switching to a different model after a failure
         if (previousModel && (previousModel.provider !== adapter.provider || previousModel.model !== adapter.model)) {
           yield {
@@ -542,6 +549,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               messageTracer,
               turnItems,
               streamIndexOffset: history.length + turnItems.length + compactionItems.length,
+              hasFallback,
             });
 
             // Only persist compaction items after the model succeeds. Using unshift ensures
@@ -554,8 +562,11 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             modelTrace.error(error);
             lastError = error;
 
-            // Classify the error - try adapter's classifier first, fall back to heuristics
-            const classified = adapter.classifyError?.(error) ?? classifyError(error);
+            // Classify the error - the first-token watchdog is authoritative (skip the adapter's
+            // classifier, which would otherwise read the aborted connection as "aborted").
+            const classified = error instanceof FirstTokenTimeoutError
+              ? createClassifiedError("timeout", error)
+              : adapter.classifyError?.(error) ?? classifyError(error);
             agentTrace.log(`Model ${adapter.model} failed (${classified.kind}): ${errMessage(error)}`, error);
 
             const behavior = determineRetryBehavior(classified, this.#retryStrategy, sameModelRetries);
@@ -622,8 +633,38 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     messageTracer: MessageTracer;
     turnItems: WithTraceId<ChatItem>[];
     streamIndexOffset: number;
+    hasFallback: boolean;
   }): AsyncGenerator<WithTraceId<StreamItem>, ModelCallTokens & { trace: string }> {
     const { adapter, signal, pendingTools, toolSignal, agentTrace, modelTrace, messageTracer, turnItems } = options;
+    const { firstTokenTimeoutMs } = this.#retryStrategy;
+
+    let watchdogController: AbortController | null = null;
+    let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+    let watchdogError: null | FirstTokenTimeoutError = null;
+    function forwardAbort(error: unknown) {
+      disarmTimer();
+      watchdogController?.abort(error);
+    }
+    function disarmTimer() {
+      if (watchdogTimer) clearTimeout(watchdogTimer);
+      watchdogTimer = null;
+    }
+    if (options.hasFallback && firstTokenTimeoutMs > 0) {
+      watchdogController = new AbortController();
+      signal.addEventListener("abort", forwardAbort);
+      watchdogTimer = setTimeout(() => {
+        watchdogTimer = null;
+        watchdogError = new FirstTokenTimeoutError(firstTokenTimeoutMs, adapter.provider, adapter.model);
+        watchdogController?.abort(watchdogError);
+      }, firstTokenTimeoutMs);
+    }
+    using _ = {
+      [Symbol.dispose]: () => {
+        if (!watchdogController) return;
+        disarmTimer();
+        signal.removeEventListener("abort", forwardAbort);
+      },
+    };
 
     const adapterStream = adapter.stream({
       instructions: this.#instructions,
@@ -631,11 +672,20 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       output: this.#output,
       cache: this.#cache,
       history: options.history,
-      signal,
+      signal: watchdogController?.signal ?? signal,
     });
 
     while (true) {
-      const { value: part, done } = await adapterStream.next();
+      let next: IteratorResult<StreamItem, ProviderStreamMetadata>;
+      try {
+        next = await adapterStream.next();
+      } catch (error) {
+        if (watchdogError) throw watchdogError;
+        throw error;
+      }
+      disarmTimer();
+
+      const { value: part, done } = next;
       if (done) {
         messageTracer.endMessageTraceIfStarted();
         modelTrace.success({

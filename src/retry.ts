@@ -20,6 +20,19 @@ export interface RetryStrategy {
   modelCycles?: number;
 
   /**
+   * If the current model produces no tokens within this many milliseconds, treat it
+   * as a timeout and fall back to the next model (honoring {@link onTimeout}).
+   *
+   * Only armed when a fallback is actually available: more than one model is configured
+   * and this is not the final model of the final cycle. The last model is allowed to take
+   * as long as it needs, since rolling over would have nowhere to go.
+   *
+   * Set to `0` to disable the watchdog entirely.
+   * @default 10000
+   */
+  firstTokenTimeoutMs?: number;
+
+  /**
    * Behavior when a timeout is detected (model hung/slow).
    * @default 'switch-model'
    */
@@ -61,6 +74,7 @@ export interface RetryStrategy {
 export interface ResolvedRetryStrategy {
   sameModelRetries: number;
   modelCycles: number;
+  firstTokenTimeoutMs: number;
   onTimeout: RetryBehavior;
   onRateLimit: RetryBehavior;
   onModelUnavailable: RetryBehavior;
@@ -80,6 +94,7 @@ export interface ResolvedRetryStrategy {
 export const DEFAULT_RETRY_STRATEGY: ResolvedRetryStrategy = {
   sameModelRetries: 2,
   modelCycles: 1,
+  firstTokenTimeoutMs: 10000,
   onTimeout: "switch-model",
   onRateLimit: "switch-model",
   onModelUnavailable: "switch-model",
@@ -96,6 +111,7 @@ export function resolveRetryStrategy(strategy?: RetryStrategy): ResolvedRetryStr
   return {
     sameModelRetries: strategy.sameModelRetries ?? DEFAULT_RETRY_STRATEGY.sameModelRetries,
     modelCycles: strategy.modelCycles ?? DEFAULT_RETRY_STRATEGY.modelCycles,
+    firstTokenTimeoutMs: strategy.firstTokenTimeoutMs ?? DEFAULT_RETRY_STRATEGY.firstTokenTimeoutMs,
     onTimeout: strategy.onTimeout ?? DEFAULT_RETRY_STRATEGY.onTimeout,
     onRateLimit: strategy.onRateLimit ?? DEFAULT_RETRY_STRATEGY.onRateLimit,
     onModelUnavailable: strategy.onModelUnavailable ?? DEFAULT_RETRY_STRATEGY.onModelUnavailable,
