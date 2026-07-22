@@ -156,6 +156,18 @@ export function createClassifiedError(kind: ErrorKind, original: unknown, status
 }
 
 /**
+ * Thrown when a model produces no tokens within the configured first-token window and a
+ * fallback model is available. Named `TimeoutError` so heuristic classification also lands
+ * on {@link ErrorKind} `"timeout"`.
+ */
+export class FirstTokenTimeoutError extends Error {
+  override readonly name = "TimeoutError";
+  constructor(readonly timeoutMs: number, readonly provider: string, readonly model: string) {
+    super(`Model ${provider}/${model} produced no tokens within ${timeoutMs}ms`);
+  }
+}
+
+/**
  * Classifies an error into a known category to determine retry behavior.
  * This is the heuristic-based classifier used when adapters don't provide
  * their own provider-specific classification.

@@ -8,7 +8,7 @@ export type {
   ModelCallReason,
 } from "./src/agent.ts";
 
-export { classifyError, createClassifiedError, ERROR_KINDS } from "./src/errors.ts";
+export { classifyError, createClassifiedError, ERROR_KINDS, FirstTokenTimeoutError } from "./src/errors.ts";
 export type { ClassifiedError, ErrorKind } from "./src/errors.ts";
 
 export { DEFAULT_RETRY_STRATEGY, determineRetryBehavior, resolveRetryStrategy } from "./src/retry.ts";
