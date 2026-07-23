@@ -2,6 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem } from "../../types.ts";
+import { ensureToolInputObject } from "../shared/tools.ts";
 import type { AnthropicToolMap } from "./utils.ts";
 
 const supportedImageMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
@@ -85,7 +86,7 @@ export async function getAnthropicHistory(options: {
             type: "tool_use",
             id: historyItem.tool_use_id,
             name: tool?.anthropic.name ?? normalizeToolName(historyItem.kind),
-            input: tool?.compatibility ? tool.compatibility.toProvider(content) : content,
+            input: ensureToolInputObject(tool?.compatibility ? tool.compatibility.toProvider(content) : content),
           }],
         });
         break;
