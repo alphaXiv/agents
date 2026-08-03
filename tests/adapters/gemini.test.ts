@@ -46,6 +46,62 @@ Deno.test({
 });
 
 Deno.test({
+  name: "GeminiAdapter streams a parameterized tool call (gemini-3.6-flash, thinking-level)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    const fixtures = createToolFixtures();
+    const adapter = googleGenerateContentAPIModel({
+      model: "gemini-3.6-flash",
+      thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
+    });
+
+    await runAdapterToolStreamingTest(t, {
+      stream: adapter.stream({
+        history: [{
+          type: "input_text",
+          content: `Call ${fixtures.echoTool.normalizedName} exactly once with {\"query\":\"${fixtures.query}\"}.`,
+        }],
+        instructions: "You are a compliant live integration test assistant.",
+        tools: [fixtures.echoTool],
+        signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+      }),
+      toolName: fixtures.echoTool.normalizedName,
+      expectedContentSubstring: fixtures.query,
+    });
+  },
+});
+
+Deno.test({
+  name: "GeminiAdapter streams a parameterized tool call (gemini-3.5-flash-lite, thinking-level)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    const fixtures = createToolFixtures();
+    const adapter = googleGenerateContentAPIModel({
+      model: "gemini-3.5-flash-lite",
+      thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
+    });
+
+    await runAdapterToolStreamingTest(t, {
+      stream: adapter.stream({
+        history: [{
+          type: "input_text",
+          content: `Call ${fixtures.echoTool.normalizedName} exactly once with {\"query\":\"${fixtures.query}\"}.`,
+        }],
+        instructions: "You are a compliant live integration test assistant.",
+        tools: [fixtures.echoTool],
+        signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+      }),
+      toolName: fixtures.echoTool.normalizedName,
+      expectedContentSubstring: fixtures.query,
+    });
+  },
+});
+
+Deno.test({
   name: "GeminiAdapter streams a parameterized tool call (gemini-3.1-flash-lite, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
@@ -170,6 +226,30 @@ Deno.test({
 });
 
 Deno.test({
+  name: "GeminiModel streams tools and results (gemini-3.6-flash, thinking-level)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runAgentToolStreamingTest(t, {
+      model: geminiModel({ model: "gemini-3.6-flash", thinkingLevel: "low" }),
+    });
+  },
+});
+
+Deno.test({
+  name: "GeminiModel streams tools and results (gemini-3.5-flash-lite, thinking-level)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runAgentToolStreamingTest(t, {
+      model: geminiModel({ model: "gemini-3.5-flash-lite", thinkingLevel: "low" }),
+    });
+  },
+});
+
+Deno.test({
   name: "GeminiModel streams tools and results (gemini-3.1-flash-lite, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
@@ -237,6 +317,30 @@ Deno.test({
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
       model: geminiModel({ model: "gemini-3.1-pro-preview", thinkingLevel: "low" }),
+    });
+  },
+});
+
+Deno.test({
+  name: "GeminiModel streams structured output (gemini-3.6-flash, thinking-level)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runStructuredOutputStreamingTest(t, {
+      model: geminiModel({ model: "gemini-3.6-flash", thinkingLevel: "low" }),
+    });
+  },
+});
+
+Deno.test({
+  name: "GeminiModel streams structured output (gemini-3.5-flash-lite, thinking-level)",
+  ignore: !HAS_GEMINI_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runStructuredOutputStreamingTest(t, {
+      model: geminiModel({ model: "gemini-3.5-flash-lite", thinkingLevel: "low" }),
     });
   },
 });

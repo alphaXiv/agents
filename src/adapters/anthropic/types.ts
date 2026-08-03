@@ -32,6 +32,7 @@ export interface ExtendedThinkingSupport<T extends string> {
 }
 
 export interface AnthropicModelThinkingSupportMap {
+  "claude-opus-5": AdaptiveThinkingSupport<"low" | "medium" | "high" | "xhigh" | "max">;
   "claude-opus-4-8": AdaptiveThinkingSupport<"low" | "medium" | "high" | "xhigh" | "max">;
   "claude-opus-4-7": AdaptiveThinkingSupport<"low" | "medium" | "high" | "xhigh" | "max">;
   "claude-opus-4-6": AdaptiveThinkingSupport<"low" | "medium" | "high" | "max">;

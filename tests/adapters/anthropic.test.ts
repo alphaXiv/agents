@@ -21,6 +21,34 @@ import type { Adapter } from "../../src/adapters/adapter.ts";
 const HAS_ANTHROPIC_KEY = Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
 
 Deno.test({
+  name: "AnthropicAdapter streams a parameterized tool call (claude-opus-5, adaptive)",
+  ignore: !HAS_ANTHROPIC_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    const fixtures = createToolFixtures();
+    const adapter = anthropicModel({
+      model: "claude-opus-5",
+      effort: "high",
+    });
+
+    await runAdapterToolStreamingTest(t, {
+      stream: adapter.stream({
+        history: [{
+          type: "input_text",
+          content: `Call ${fixtures.echoTool.normalizedName} exactly once with {\"query\":\"${fixtures.query}\"}.`,
+        }],
+        instructions: "You are a compliant live integration test assistant.",
+        tools: [fixtures.echoTool],
+        signal: AbortSignal.timeout(INTEGRATION_TIMEOUT_MS),
+      }),
+      toolName: fixtures.echoTool.normalizedName,
+      expectedContentSubstring: fixtures.query,
+    });
+  },
+});
+
+Deno.test({
   name: "AnthropicAdapter streams a parameterized tool call (claude-opus-4-8, adaptive)",
   ignore: !HAS_ANTHROPIC_KEY,
   sanitizeOps: false,
@@ -100,6 +128,18 @@ Deno.test({
       }),
       toolName: fixtures.echoTool.normalizedName,
       expectedContentSubstring: fixtures.query,
+    });
+  },
+});
+
+Deno.test({
+  name: "AnthropicModel streams tools and results (claude-opus-5, adaptive-only)",
+  ignore: !HAS_ANTHROPIC_KEY,
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn(t) {
+    await runAgentToolStreamingTest(t, {
+      model: anthropicModel({ model: "claude-opus-5", effort: "low" }),
     });
   },
 });
