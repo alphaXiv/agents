@@ -21,6 +21,27 @@ export interface OpenRouterPlugin {
   [key: string]: unknown;
 }
 
+/**
+ * OpenRouter reports an upstream 4xx as a flat "Provider returned error" and keeps the
+ * provider's own message in `metadata.raw`. Folding it into the error message is what lets
+ * the retry layer see a context overflow for what it is instead of an opaque client error.
+ */
+function describeOpenRouterProviderError(error: unknown): string | null {
+  const body = (error as { error?: { message?: unknown; metadata?: { raw?: unknown } } } | null)?.error;
+  if (typeof body?.message !== "string" || typeof body.metadata?.raw !== "string") return null;
+
+  const raw = body.metadata.raw;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+
+  const parsedMessage = (parsed as { error?: { message?: unknown } })?.error?.message;
+  return typeof parsedMessage === "string" ? parsedMessage : raw;
+}
+
 function getOpenRouterHeaders(options: {
   headers?: Record<string, string>;
   siteUrl?: string;
@@ -49,7 +70,7 @@ export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options
   extraRequestBody?: Record<string, unknown>;
   pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
 }): Adapter<zO, zI> {
-  return openAICompletionsModel({
+  const adapter = openAICompletionsModel<zO, zI, TModel>({
     provider: "OpenRouter",
     model: options.model,
     client: options.client,
@@ -70,4 +91,20 @@ export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options
       ...(options.extraRequestBody ?? {}),
     }),
   });
+
+  return {
+    ...adapter,
+    stream: async function* (streamOptions) {
+      try {
+        return yield* adapter.stream(streamOptions);
+      } catch (error) {
+        const providerError = describeOpenRouterProviderError(error);
+        // Rewritten in place so the error stays an `OpenAI.APIError` for classification.
+        if (providerError && error instanceof Error) {
+          error.message = `${error.message}: ${providerError}`;
+        }
+        throw error;
+      }
+    },
+  };
 }

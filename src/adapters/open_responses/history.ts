@@ -30,6 +30,15 @@ function getSyntheticId(prefix: string) {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
 }
 
+/**
+ * Provider-issued ids for one tool call. Only usable as a pair and only against the endpoint that
+ * issued them: replaying a `function_call` id whose reasoning item is absent is rejected outright.
+ */
+export interface ToolCallReplay {
+  callItemId: string;
+  reasoningItemId: string;
+}
+
 function createUserTextMessage(text: string, role: "user" | "developer" = "user"): ResponseInputItem {
   return {
     type: "message",
@@ -121,9 +130,12 @@ export async function getOpenResponsesHistory(options: {
   normalizedTools: OpenResponsesToolMap[];
   signal: AbortSignal;
   supportedMimeTypes?: string[];
+  toolCallReplays?: Map<string, ToolCallReplay>;
 }): Promise<ResponseInputItem[]> {
   const supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
   const responseHistory: ResponseInputItem[] = [];
+  const calledToolUseIds = new Set<string>();
+  const replayedReasoningItemIds = new Set<string>();
 
   for (const historyItem of options.history) {
     switch (historyItem.type) {
@@ -146,8 +158,19 @@ export async function getOpenResponsesHistory(options: {
         break;
       case "tool_use": {
         const tool = options.normalizedTools.find((candidate) => candidate.original.name === historyItem.kind);
+        calledToolUseIds.add(historyItem.tool_use_id);
+
+        // Replaying the call's own id lets the model reuse the reasoning that produced it instead
+        // of deriving the whole chain again. The reasoning item has to precede it, and several
+        // calls can share one, so it is emitted once for the group.
+        const replay = options.toolCallReplays?.get(historyItem.tool_use_id);
+        if (replay && !replayedReasoningItemIds.has(replay.reasoningItemId)) {
+          replayedReasoningItemIds.add(replay.reasoningItemId);
+          responseHistory.push({ type: "reasoning", id: replay.reasoningItemId, summary: [] });
+        }
+
         responseHistory.push({
-          id: getSyntheticId("fc"),
+          id: replay?.callItemId ?? getSyntheticId("fc"),
           type: "function_call",
           status: "completed",
           call_id: historyItem.tool_use_id,
@@ -157,12 +180,16 @@ export async function getOpenResponsesHistory(options: {
         break;
       }
       case "tool_result_text": {
+        // A result whose call is not in this history cannot be paired, and the API
+        // rejects the request outright over it, so drop it.
+        if (!calledToolUseIds.has(historyItem.tool_use_id)) break;
         const output = getOrCreateFunctionCallOutput(responseHistory, historyItem.tool_use_id);
         assert(typeof output.output !== "string");
         output.output.push({ type: "input_text", text: historyItem.content });
         break;
       }
       case "tool_result_file": {
+        if (!calledToolUseIds.has(historyItem.tool_use_id)) break;
         const output = getOrCreateFunctionCallOutput(responseHistory, historyItem.tool_use_id);
         assert(typeof output.output !== "string");
         output.output.push(
@@ -181,6 +208,24 @@ export async function getOpenResponsesHistory(options: {
       default:
         historyItem satisfies never;
     }
+  }
+
+  // A call whose result never made it into the history is rejected the same way an
+  // unpaired result is, so it answers with nothing rather than losing the whole turn.
+  const answeredCallIds = new Set(
+    responseHistory.flatMap((item) => item.type === "function_call_output" ? [item.call_id] : []),
+  );
+  for (let index = responseHistory.length - 1; index >= 0; index -= 1) {
+    const item = responseHistory[index];
+    if (item.type !== "function_call" || answeredCallIds.has(item.call_id)) continue;
+
+    responseHistory.splice(index + 1, 0, {
+      id: getSyntheticId("fco"),
+      type: "function_call_output",
+      call_id: item.call_id,
+      status: "completed",
+      output: [{ type: "input_text", text: "" }],
+    });
   }
 
   const lastHistoryItem = options.history.at(-1);

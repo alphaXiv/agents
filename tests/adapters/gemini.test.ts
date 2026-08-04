@@ -440,6 +440,19 @@ Deno.test("GeminiAdapter replays tool calls and results without current tool def
   ]);
 });
 
+Deno.test("GeminiAdapter drops a tool result whose call is missing from the history", async () => {
+  const history = await getGoogleGenerateContentAPIHistory({
+    history: [
+      { type: "tool_result_text", tool_use_id: "call_1", content: "orphaned result" },
+      { type: "input_text", content: "what did you find?" },
+    ],
+    toolMap: [],
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(history, [{ role: "user", parts: [{ text: "what did you find?" }] }]);
+});
+
 Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without current tool definitions", async () => {
   const history = await getGoogleGenerateContentAPIHistory({
     history: [

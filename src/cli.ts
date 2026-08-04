@@ -166,7 +166,10 @@ export async function cli<zO, zI, const Tools extends AnyTool[]>(
             break;
           }
 
-          if (next.value.type === "delta_output_reasoning" && !announcedThinking) {
+          if (
+            (next.value.type === "reasoning_start" || next.value.type === "delta_output_reasoning") &&
+            !announcedThinking
+          ) {
             announcedThinking = true;
             io.write("[thinking]\n");
           } else if (next.value.type === "tool_use_start") {
