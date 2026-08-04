@@ -261,6 +261,20 @@ Deno.test("OpenAI Completions uses reversible OpenAI compatibility for tuple and
   assert(normalizedTool?.openAI.function.description?.includes("<input_requirements>"));
 });
 
+Deno.test("OpenAI Completions keeps string formats in the tool schema", () => {
+  const [normalizedTool] = normalizeOpenAICompletionsTools([
+    new Tool({
+      name: "Fetch Page",
+      description: "Reads a url",
+      parameters: z.object({ url: z.url() }).strict(),
+      execute: () => "unused",
+    }),
+  ]);
+
+  const parameters = normalizedTool?.openAI.function.parameters as { properties?: Record<string, unknown> };
+  assertEquals(parameters.properties?.url, { type: "string", format: "uri" });
+});
+
 Deno.test("OpenAI Completions restores structured output from OpenAI-compatible surrogate shapes", async () => {
   let capturedRequest: unknown;
 

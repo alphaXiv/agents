@@ -42,6 +42,11 @@ export interface SchemaCompatibilityFeatures {
   };
   strings: {
     length: "native" | "instructions";
+    /**
+     * Named formats (`uri`, `date`, `uuid`, ...) and regex patterns. Providers that compile schemas
+     * into a decoding grammar pay for them, and Zod's date format alone spells out every leap year.
+     */
+    format: "native" | "instructions";
   };
   numbers: {
     integerType: "native" | "number";
@@ -313,16 +318,24 @@ function transformStringSchema(schema: ZodJsonSchema, path: string, context: Com
     }
   }
 
-  const transformed = context.features.strings.length === "instructions"
-    ? omitSchemaKeywords(schema, ["minLength", "maxLength"])
-    : { ...schema };
+  const omitted = context.features.strings.length === "instructions" ? ["minLength", "maxLength"] : [];
+  const describesFormat = context.features.strings.format === "instructions";
+  const format = describesFormat && typeof schema.format === "string" ? schema.format : undefined;
+  const pattern = describesFormat && typeof schema.pattern === "string" ? schema.pattern : undefined;
+  if (format || pattern) omitted.push("format", "pattern");
 
   if (constraints.length > 0) {
     context.constraints.push(`- \`${path}\` must have ${constraints.join(" and ")}`);
   }
+  // A named format already says what its pattern spells out, so the regex itself stays out of the prompt.
+  if (format) {
+    context.constraints.push(`- \`${path}\` must be a valid ${format}`);
+  } else if (pattern) {
+    context.constraints.push(`- \`${path}\` must match \`${pattern}\``);
+  }
 
   return {
-    jsonSchema: transformed,
+    jsonSchema: omitSchemaKeywords(schema, omitted),
     toProvider: identity,
     fromProvider: identity,
   };
@@ -587,6 +600,9 @@ function stripUnsupportedKeywords(schema: ZodJsonSchema, context: CompatibilityC
         case "minLength":
         case "maxLength":
           return context.features.strings.length === "instructions" ? [] : [[key, value]];
+        case "format":
+        case "pattern":
+          return context.features.strings.format === "instructions" ? [] : [[key, value]];
         case "maxItems":
           return context.features.arrays.length === "native" ? [[key, value]] : [];
         case "minItems":
@@ -831,8 +847,10 @@ function schemaTypeToString(schema: ZodJsonSchemaInput | ZodJsonSchemaInput[] | 
       return `${schemaTypeToString(schema.items)}[]`;
     case "integer":
       return "integer";
-    case "number":
+    // Record keys never reach transformStringSchema, so this string is the only place their format can land.
     case "string":
+      return typeof schema.format === "string" ? schema.format : type;
+    case "number":
     case "boolean":
     case "null":
       return type;

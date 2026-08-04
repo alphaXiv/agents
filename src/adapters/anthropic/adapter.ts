@@ -81,6 +81,18 @@ export function anthropicModel<zO, zI, TModel extends AnthropicModels>(options: 
    * assuming a hit.
    */
   cache?: boolean | AnthropicCacheOptions;
+  /**
+   * Compile the tool schemas into a decoding grammar so arguments are guaranteed to validate.
+   *
+   * Off by default: Anthropic compiles every strict tool on the request into one grammar and rejects
+   * the whole request with "The compiled grammar is too large" past an undocumented ceiling, which a
+   * dozen ordinary tools already clear on 4.6-generation models. Only worth enabling for a small,
+   * fixed toolset.
+   *
+   * Structured output compiles into that same grammar on models that support it natively, so an
+   * agent with a large output schema can reach the ceiling with this off.
+   */
+  strictTools?: boolean;
   baseUrl?: string;
   apiKey?: string;
   client?: Anthropic;
@@ -145,7 +157,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
     stream: async function* stream<zO, zI>(
       { history, instructions, tools, signal, output, cache: cacheDefault }: AdapterStreamOptions<zO, zI>,
     ): AdapterStreamIterator {
-      const normalizedTools = normalizeAnthropicTools(tools);
+      const normalizedTools = normalizeAnthropicTools(tools, options.strictTools);
       const anthropicHistory = await getAnthropicHistory({ history, normalizedTools, signal });
 
       // Tools mean an agent loop, which rereads its prefix every turn and profits from caching.
