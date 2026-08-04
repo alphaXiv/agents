@@ -426,6 +426,38 @@ Deno.test("tool schemas can be wrapped to satisfy Anthropic top-level object req
   assert(compatibility.instructions.includes("at least 2 characters"));
 });
 
+Deno.test("string formats are described in instructions instead of the schema", () => {
+  const compatibility = createAnthropicCompatibleSchema(
+    z.object({ url: z.url(), day: z.iso.date(), slug: z.string().regex(/^[a-z]+$/) }),
+    {
+      kind: "tool",
+      requireTopLevelObject: true,
+      rootPath: "input",
+    },
+  );
+
+  assertEquals(compatibility.jsonSchema.properties, {
+    url: { type: "string" },
+    day: { type: "string" },
+    slug: { type: "string" },
+  });
+  assert(compatibility.instructions.includes("`input.url` must be a valid uri"));
+  assert(compatibility.instructions.includes("`input.day` must be a valid date"));
+  assert(compatibility.instructions.includes("`input.slug` must match `^[a-z]+$`"));
+});
+
+Deno.test("tools are not strict unless the caller opts in", () => {
+  const tool = new Tool({
+    name: "search",
+    description: "A tool",
+    parameters: z.object({ query: z.string() }),
+    execute: () => "ok",
+  });
+
+  assertEquals(normalizeAnthropicTools([tool])[0].anthropic.strict, false);
+  assertEquals(normalizeAnthropicTools([tool], true)[0].anthropic.strict, true);
+});
+
 Deno.test("Anthropic retry feedback is replayed as a user message", async () => {
   const history = await getAnthropicHistory({
     history: [

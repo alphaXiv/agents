@@ -39,6 +39,7 @@ export const anthropicSchemaCompatibilityFeatures: SchemaCompatibilityFeatures =
   },
   strings: {
     length: "instructions",
+    format: "instructions",
   },
   numbers: {
     integerType: "number",
@@ -50,7 +51,7 @@ export const anthropicSchemaCompatibilityFeatures: SchemaCompatibilityFeatures =
   },
 };
 
-export function normalizeAnthropicTools(tools: AnyTool[]): AnthropicToolMap[] {
+export function normalizeAnthropicTools(tools: AnyTool[], strict = false): AnthropicToolMap[] {
   return tools.map((tool): AnthropicToolMap => {
     const name = tool.normalizedName;
 
@@ -78,7 +79,7 @@ export function normalizeAnthropicTools(tools: AnyTool[]): AnthropicToolMap[] {
       original: tool,
       anthropic: {
         name,
-        strict: true,
+        strict,
         eager_input_streaming: true,
         input_schema: compatibleSchema.jsonSchema,
         description: compatibleSchema.instructions

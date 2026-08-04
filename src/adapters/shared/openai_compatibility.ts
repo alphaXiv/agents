@@ -30,6 +30,7 @@ export const openAISchemaCompatibilityFeatures: SchemaCompatibilityFeatures = {
   },
   strings: {
     length: "instructions",
+    format: "native",
   },
   numbers: {
     integerType: "number",
