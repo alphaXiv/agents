@@ -437,7 +437,7 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
       function: {
         name: "search",
         description: "Search for documents",
-        strict: true,
+        strict: false,
         parameters: {
           type: "object",
           properties: {
