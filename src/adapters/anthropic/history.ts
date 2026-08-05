@@ -79,14 +79,22 @@ export async function getAnthropicHistory(options: {
       }
       case "tool_use": {
         const tool = options.normalizedTools.find((tool) => tool.original.name === historyItem.kind);
-        const content = historyItem.content ? JSON.parse(historyItem.content) : {};
+        let input: unknown;
+        try {
+          const content = historyItem.content ? JSON.parse(historyItem.content) : {};
+          input = tool?.compatibility ? tool.compatibility.toProvider(content) : content;
+        } catch {
+          // A turn whose arguments never parsed still has to replay as a legal tool_use block.
+          // Throwing here would make the whole conversation unsendable to any model.
+          input = historyItem.content;
+        }
         anthropicHistory.push({
           role: "assistant",
           content: [{
             type: "tool_use",
             id: historyItem.tool_use_id,
             name: tool?.anthropic.name ?? normalizeToolName(historyItem.kind),
-            input: ensureToolInputObject(tool?.compatibility ? tool.compatibility.toProvider(content) : content),
+            input: ensureToolInputObject(input),
           }],
         });
         break;

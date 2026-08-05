@@ -1,6 +1,6 @@
 {
   "name": "@alphaxiv/agents",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "license": "MIT",
   "fmt": {
     "lineWidth": 120
@@ -11,6 +11,7 @@
     "./client": "./src/client.ts",
 
     "./anthropic": "./src/adapters/anthropic/adapter.ts",
+    "./anthropic/utils": "./src/adapters/anthropic/utils.ts",
     "./google-genai": "./src/adapters/google_genai/adapter.ts",
     "./gemini": "./src/adapters/gemini/adapter.ts",
     "./vertex-ai": "./src/adapters/vertex_ai/adapter.ts",

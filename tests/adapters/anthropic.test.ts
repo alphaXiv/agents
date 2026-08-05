@@ -446,7 +446,19 @@ Deno.test("string formats are described in instructions instead of the schema", 
   assert(compatibility.instructions.includes("`input.slug` must match `^[a-z]+$`"));
 });
 
-Deno.test("tools are not strict unless the caller opts in", () => {
+Deno.test("tools are strict unless one opts out", () => {
+  const options = {
+    description: "A tool",
+    parameters: z.object({ query: z.string() }),
+    execute: () => "ok",
+  };
+  const plain = new Tool({ ...options, name: "plain" });
+  const optOut = new Tool({ ...options, name: "opt_out", anthropicStrict: false });
+
+  assertEquals(normalizeAnthropicTools([plain, optOut]).map(({ anthropic }) => anthropic.strict), [true, false]);
+});
+
+Deno.test("tool input is not streamed eagerly, so the API validates it", () => {
   const tool = new Tool({
     name: "search",
     description: "A tool",
@@ -454,8 +466,90 @@ Deno.test("tools are not strict unless the caller opts in", () => {
     execute: () => "ok",
   });
 
-  assertEquals(normalizeAnthropicTools([tool])[0].anthropic.strict, false);
-  assertEquals(normalizeAnthropicTools([tool], true)[0].anthropic.strict, true);
+  const voidTool = new Tool({
+    name: "ping",
+    description: "A tool",
+    parameters: z.void(),
+    execute: () => "ok",
+  });
+
+  for (const normalized of normalizeAnthropicTools([tool, voidTool])) {
+    assertEquals("eager_input_streaming" in normalized.anthropic, false);
+  }
+});
+
+Deno.test("a malformed tool call still replays as a legal tool_use block", async () => {
+  const tool = new Tool({
+    name: "search",
+    description: "A tool",
+    parameters: z.object({ query: z.string() }),
+    execute: () => "ok",
+  });
+  const malformed = '{"query": what is a cat}';
+
+  const history = await getAnthropicHistory({
+    history: [
+      { type: "tool_use", tool_use_id: "call_1", kind: "search", content: malformed },
+      { type: "tool_result_text", tool_use_id: "call_1", content: "Error: Invalid parameters for tool" },
+    ],
+    normalizedTools: normalizeAnthropicTools([tool]),
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(history[0], {
+    role: "assistant",
+    content: [{ type: "tool_use", id: "call_1", name: "search", input: { content: malformed } }],
+  });
+});
+
+Deno.test("malformed tool arguments are handed on rather than ending the run", async () => {
+  const tool = new Tool({
+    name: "search",
+    description: "A tool",
+    parameters: z.object({ query: z.string() }),
+    execute: () => "ok",
+  });
+  const malformed = '{"query": what is a cat}';
+  const events = [
+    { type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "call_1", name: "search" } },
+    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: malformed } },
+    { type: "content_block_stop", index: 0 },
+  ];
+  const adapter = anthropicModel({
+    model: "claude-opus-5",
+    apiKey: "unused",
+    client: {
+      beta: {
+        messages: {
+          stream: () =>
+            Object.assign(
+              async function* () {
+                yield* events;
+              }(),
+              {
+                finalMessage: () => Promise.resolve({ usage: { input_tokens: 1, output_tokens: 1 } }),
+              },
+            ),
+        },
+      },
+      // deno-lint-ignore no-explicit-any
+    } as any,
+  });
+
+  const { items } = await collectAdapterStream(adapter.stream({
+    history: [{ type: "input_text", content: "hi" }],
+    instructions: "",
+    tools: [tool],
+    signal: AbortSignal.timeout(1000),
+  }));
+
+  assertEquals(items.filter((item) => item.type === "tool_use"), [{
+    type: "tool_use",
+    index: 0,
+    kind: tool.name,
+    tool_use_id: "call_1",
+    content: malformed,
+  }]);
 });
 
 Deno.test("Anthropic retry feedback is replayed as a user message", async () => {
