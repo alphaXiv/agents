@@ -34,10 +34,6 @@ function extractJson(text: string): string {
   return text.trim();
 }
 
-function supportsNativeStructuredOutput<TModel extends AnthropicModels>(model: TModel) {
-  return anthropicModelStructuredOutputSupport[model];
-}
-
 // Only include thinkingLevel for models with extended thinking (adaptive-only models don't use budget_tokens).
 type ThinkingLevelOption<TModel extends AnthropicModels> = SupportedThinkingLevel<TModel> extends never ? undefined
   : SupportedThinkingLevel<TModel>;
@@ -58,65 +54,77 @@ export type AnthropicCacheOptions = {
   ttl?: "5m" | "1h";
 };
 
-export function anthropicModel<zO, zI, TModel extends AnthropicModels>(options: {
-  model: TModel;
-  effort?: EffortOption<TModel>;
-  thinkingLevel?: ThinkingLevelOption<TModel>;
-  interleaved?: InterleavedOption<TModel>;
-  thinkingDisplay?: ThinkingDisplay;
-  /**
-   * Cache the instructions, tools and conversation prefix across calls.
-   *
-   * Defaults to the 5 minute cache when the agent has tools, and to off when it
-   * has none: cached tokens are billed at ~0.1x but writes at 1.25x (2x for
-   * `ttl: "1h"`), so caching pays off from the second call sharing a prefix
-   * onward, and tools are the signal that a second call is coming. Pass `true`
-   * to cache a toolless agent anyway (worth it if you rerun the same
-   * instructions), or `false` to opt out entirely. Set here, this outranks the
-   * `cache` on the agent using the model.
-   *
-   * Anthropic silently declines to cache prefixes below the model's minimum,
-   * which is per-model and ranges from 1024 tokens (Sonnet 4.5 and older) to
-   * 4096 (Opus, Haiku 4.5), so read `usage.cacheReadTokens` rather than
-   * assuming a hit.
-   */
-  cache?: boolean | AnthropicCacheOptions;
-  /**
-   * Compile the tool schemas into a decoding grammar so arguments are guaranteed to validate.
-   *
-   * Off by default: Anthropic compiles every strict tool on the request into one grammar and rejects
-   * the whole request with "The compiled grammar is too large" past an undocumented ceiling, which a
-   * dozen ordinary tools already clear on 4.6-generation models. Only worth enabling for a small,
-   * fixed toolset.
-   *
-   * Structured output compiles into that same grammar on models that support it natively, so an
-   * agent with a large output schema can reach the ceiling with this off.
-   */
-  strictTools?: boolean;
-  baseUrl?: string;
-  apiKey?: string;
-  client?: Anthropic;
-}): Adapter<zO, zI> {
-  const modelConfig = anthropicModelThinkingSupport[options.model];
-  // I know, terrifying, someone should fix this tbh it's super super scary
-  const thinkingLevel =
-    ("schema" in modelConfig ? (options.thinkingLevel ?? modelConfig.schema.parse(undefined)) : undefined) as
-      | SupportedThinkingLevel<TModel>
-      | undefined;
-  const effort =
-    ("effortSchema" in modelConfig ? (options.effort ?? modelConfig.effortSchema.parse(undefined)) : undefined) as
-      | SupportedEffortLevel<TModel>
-      | undefined;
+export function anthropicModel<zO, zI, TModel extends AnthropicModels | (string & Record<never, never>)>(
+  options:
+    & {
+      model: TModel;
+      effort?: TModel extends AnthropicModels ? EffortOption<TModel> : EffortLevel;
+      thinkingLevel?: TModel extends AnthropicModels ? ThinkingLevelOption<TModel> : never;
+      interleaved?: TModel extends AnthropicModels ? InterleavedOption<TModel> : never;
+      thinkingDisplay?: ThinkingDisplay;
+      /**
+       * Cache the instructions, tools and conversation prefix across calls.
+       *
+       * Defaults to the 5 minute cache when the agent has tools, and to off when it
+       * has none: cached tokens are billed at ~0.1x but writes at 1.25x (2x for
+       * `ttl: "1h"`), so caching pays off from the second call sharing a prefix
+       * onward, and tools are the signal that a second call is coming. Pass `true`
+       * to cache a toolless agent anyway (worth it if you rerun the same
+       * instructions), or `false` to opt out entirely. Set here, this outranks the
+       * `cache` on the agent using the model.
+       *
+       * Anthropic silently declines to cache prefixes below the model's minimum,
+       * which is per-model and ranges from 1024 tokens (Sonnet 4.5 and older) to
+       * 4096 (Opus, Haiku 4.5), so read `usage.cacheReadTokens` rather than
+       * assuming a hit.
+       */
+      cache?: boolean | AnthropicCacheOptions;
+      /**
+       * Compile the tool schemas into a decoding grammar so arguments are guaranteed to validate.
+       *
+       * Off by default: Anthropic compiles every strict tool on the request into one grammar and rejects
+       * the whole request with "The compiled grammar is too large" past an undocumented ceiling, which a
+       * dozen ordinary tools already clear on 4.6-generation models. Only worth enabling for a small,
+       * fixed toolset.
+       *
+       * Structured output compiles into that same grammar on models that support it natively, so an
+       * agent with a large output schema can reach the ceiling with this off.
+       */
+      strictTools?: boolean;
+      baseUrl?: string;
+      apiKey?: string;
+      client?: Anthropic;
+    }
+    & (TModel extends AnthropicModels ? { capabilities?: never } : {
+      /** Declare capabilities for a model ID that is not yet in the built-in list. */
+      capabilities: { adaptiveThinking?: boolean; nativeStructuredOutput?: boolean };
+    }),
+): Adapter<zO, zI> {
+  const modelConfig = anthropicModelThinkingSupport[options.model as AnthropicModels];
+  const capabilities = "capabilities" in options ? options.capabilities : undefined;
+  const nativeStructuredOutput = capabilities?.nativeStructuredOutput ??
+    anthropicModelStructuredOutputSupport[options.model as AnthropicModels] ?? false;
+  const thinkingLevel = modelConfig && "schema" in modelConfig
+    ? (options.thinkingLevel ?? modelConfig.schema.parse(undefined))
+    : undefined;
+  const effort = modelConfig && "effortSchema" in modelConfig
+    ? (options.effort ?? modelConfig.effortSchema.parse(undefined))
+    : options.effort;
   const thinkingDisplay = options.thinkingDisplay ?? "summarized";
   const interleaved = options.interleaved;
-  const streamConfig = getAnthropicMessagesStreamConfig({
-    model: options.model,
-    thinkingLevel: thinkingLevel as ThinkingLevel | undefined,
-    effort: effort as EffortLevel | undefined,
-    thinkingDisplay: thinkingDisplay,
-    interleaved: interleaved,
-  });
-  // scaryness over
+  const streamConfig = modelConfig
+    ? getAnthropicMessagesStreamConfig({
+      model: options.model as AnthropicModels,
+      thinkingLevel: thinkingLevel as ThinkingLevel | undefined,
+      effort: effort as EffortLevel | undefined,
+      thinkingDisplay: thinkingDisplay,
+      interleaved: interleaved,
+    })
+    : {
+      thinking: capabilities?.adaptiveThinking ? { type: "adaptive" as const, display: thinkingDisplay } : undefined,
+      output_config: effort ? { effort: effort as EffortLevel } : undefined,
+      betas: undefined,
+    };
   const client = options.client ??
     new Anthropic({
       apiKey: options.apiKey ?? requireEnv("ANTHROPIC_API_KEY"),
@@ -128,7 +136,7 @@ export function anthropicModel<zO, zI, TModel extends AnthropicModels>(options: 
       return instructions;
     }
 
-    if (supportsNativeStructuredOutput(options.model)) {
+    if (nativeStructuredOutput) {
       if (structuredOutput.instructions) {
         return `${structuredOutput.instructions}\n\n${instructions}`;
       }
@@ -194,7 +202,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
         thinking: streamConfig.thinking,
         output_config: {
           ...streamConfig.output_config,
-          format: supportsNativeStructuredOutput(options.model) && structuredOutput
+          format: nativeStructuredOutput && structuredOutput
             ? { type: "json_schema", schema: structuredOutput.jsonSchema }
             : undefined,
         },
@@ -292,9 +300,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
               content: restoredContent,
             };
           } else if (endingPart.type === "output_text" && structuredOutput) {
-            const rawJson = supportsNativeStructuredOutput(options.model)
-              ? endingPart.content
-              : extractJson(endingPart.content);
+            const rawJson = nativeStructuredOutput ? endingPart.content : extractJson(endingPart.content);
 
             let structuredContent: string;
             try {

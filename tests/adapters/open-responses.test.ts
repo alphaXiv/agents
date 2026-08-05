@@ -657,6 +657,42 @@ Deno.test("OpenAIModel defaults effort for reasoning models", async () => {
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
 });
 
+Deno.test("GPT-6 models use medium reasoning by default", async () => {
+  for (const modelId of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"] as const) {
+    let capturedRequest: unknown;
+    const model = openAIModel({
+      model: modelId,
+      client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+        capturedRequest = request;
+      }),
+    });
+
+    const stream = model.stream({ history: [], instructions: "test", tools: [], signal: AbortSignal.abort() });
+    await stream.next();
+
+    assertEquals((capturedRequest as { model: string }).model, modelId);
+    assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
+  }
+});
+
+Deno.test("OpenAIModel accepts future IDs with explicit capabilities", async () => {
+  let capturedRequest: unknown;
+  const model = openAIModel({
+    model: "gpt-7",
+    modalities: ["text", "image"],
+    effort: "high",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+      capturedRequest = request;
+    }),
+  });
+
+  const stream = model.stream({ history: [], instructions: "test", tools: [], signal: AbortSignal.abort() });
+  await stream.next();
+
+  assertEquals((capturedRequest as { model: string }).model, "gpt-7");
+  assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "high", summary: "auto" });
+});
+
 Deno.test("OpenAIModel omits reasoning for non-reasoning models", async () => {
   let capturedRequest: unknown;
   const model = openAIModel({

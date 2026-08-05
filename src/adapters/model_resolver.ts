@@ -3,13 +3,13 @@ import { anthropicModel } from "./anthropic/adapter.ts";
 import type { AnthropicModels } from "./anthropic/models.ts";
 import { geminiModel } from "./gemini/adapter.ts";
 import type { GoogleModels } from "./google_genai/models.ts";
+import { openAIModel } from "./openai/adapter.ts";
 import type { OpenAIModels } from "./openai/models.ts";
+import { openrouterModel } from "./openrouter/adapter.ts";
 import type { OpenRouterModels } from "./openrouter/models.ts";
 import { sidModel, type SidModels } from "./sid/adapter.ts";
 import { tributaryModel, type TributaryModels } from "./tributary/adapter.ts";
 import { vertexAIModel } from "./vertex_ai/adapter.ts";
-import { openrouterModel } from "./openrouter/adapter.ts";
-import { openAIModel } from "./openai/adapter.ts";
 
 /**
  * A string shorthand for creating a model instance.
@@ -33,7 +33,10 @@ export type ModelString =
   | `sid:${SidModels}`;
 
 /** A model instance or a string shorthand that can be resolved into one. */
-export type AdapterLike = Adapter<unknown, unknown> | ModelString;
+export type AdapterLike =
+  | Adapter<unknown, unknown>
+  | ModelString
+  | (string & Record<never, never>);
 
 /**
  * Resolve a {@link ModelLike} value into a concrete {@link Model} instance.
@@ -57,9 +60,9 @@ export function resolveModel(model: AdapterLike): Adapter<unknown, unknown> {
 
   switch (provider) {
     case "anthropic":
-      return anthropicModel({ model: modelName as AnthropicModels });
+      return anthropicModel({ model: modelName, capabilities: {} });
     case "openai":
-      return openAIModel({ model: modelName as OpenAIModels });
+      return openAIModel({ model: modelName });
     case "gemini":
       return geminiModel({ model: modelName as GoogleModels });
     case "vertex":

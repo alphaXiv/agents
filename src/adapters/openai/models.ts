@@ -34,6 +34,21 @@ function reasoning<const T extends readonly [OpenAIReasoningEffort, ...OpenAIRea
 
 const openAiModelsDefinition = {
   // Frontier
+  "gpt-6-astra": reasoning({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-6-sol": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-6-luna": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
   // `gpt-5.6` is an alias that routes to Sol. Terra trades capability for cost, Luna is the
   // fast, high-volume tier. `max` arrived with this generation and is reserved for the
   // hardest quality-first work.
