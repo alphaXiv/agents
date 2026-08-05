@@ -51,7 +51,12 @@ export const anthropicSchemaCompatibilityFeatures: SchemaCompatibilityFeatures =
   },
 };
 
-export function normalizeAnthropicTools(tools: AnyTool[], strict = false): AnthropicToolMap[] {
+/**
+ * `eager_input_streaming` stays off.
+ * It drops the server-side buffering that validates a tool's arguments, and nothing here reads a
+ * fragment before the block closes.
+ */
+export function normalizeAnthropicTools(tools: AnyTool[]): AnthropicToolMap[] {
   return tools.map((tool): AnthropicToolMap => {
     const name = tool.normalizedName;
 
@@ -61,7 +66,6 @@ export function normalizeAnthropicTools(tools: AnyTool[], strict = false): Anthr
         anthropic: {
           name,
           strict: false,
-          eager_input_streaming: true,
           input_schema: { type: "object" },
           description: tool.description,
         },
@@ -79,8 +83,7 @@ export function normalizeAnthropicTools(tools: AnyTool[], strict = false): Anthr
       original: tool,
       anthropic: {
         name,
-        strict,
-        eager_input_streaming: true,
+        strict: tool.anthropicStrict ?? true,
         input_schema: compatibleSchema.jsonSchema,
         description: compatibleSchema.instructions
           ? `${tool.description}\n\n${compatibleSchema.instructions}`
