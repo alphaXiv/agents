@@ -74,6 +74,7 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
       };
     case "token_usage":
     case "context_summary_start":
+    case "reasoning_start":
     case "model_switched":
       throw new Error(
         `Cannot convert informational stream item "${streamItem.type}" into ChatItem.`,
@@ -97,6 +98,7 @@ export function addStreamItem<T extends ChatItem>(
   if (
     streamItem.type === "token_usage" ||
     streamItem.type === "context_summary_start" ||
+    streamItem.type === "reasoning_start" ||
     streamItem.type === "model_switched"
   ) {
     return;

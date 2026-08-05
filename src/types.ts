@@ -138,38 +138,55 @@ type BaseStreamItem = {
 };
 
 type StreamItemType = {
+  /** Content added to `output_text` */
   type: "delta_output_text";
   delta: string;
 } | {
+  /** Content added to `output_reasoning` */
   type: "delta_output_reasoning";
   delta: string;
 } | {
+  /** A tool use is being formed, metadata is available. */
   type: "tool_use_start";
   tool_use_id: string;
   kind: string;
 } | {
+  /** A tool use completed. Does not require `tool_use_start` */
   type: "tool_use";
   tool_use_id: string;
   kind: string;
   content?: string;
 } | {
+  /** The result of a tool. Implies a `tool_use` earlier in the history. */
   type: "tool_result_text";
   tool_use_id: string;
   content: string;
 } | {
+  /** The result of a tool. Implies a `tool_use` earlier in the chat. */
   type: "tool_result_file";
   tool_use_id: string;
   kind: string;
   content: string;
 } | {
+  /**
+   * Indicates `output_reasoning` has started. Due to redacted reasoning on some
+   * providers, this may not actually deliver the reasoning content. This event
+   * is not required to receive `delta_output_reasoning`.
+   */
+  type: "reasoning_start";
+} | {
+  /** Compaction is running. Repeats while it reports progress, and may produce no summary. */
   type: "context_summary_start";
 } | {
+  /** A newly compacted summary. Only history from the most recent one is sent to the model. */
   type: "context_summary";
   content: string;
 } | {
+  /** Early hint to indicate token usage before a fully complete call. */
   type: "token_usage";
   usage: TokenUsage;
 } | {
+  /** The model switched to a fallback due to an error. */
   type: "model_switched";
   from: ModelInfo;
   to: ModelInfo;

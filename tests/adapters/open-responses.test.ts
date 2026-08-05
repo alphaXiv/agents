@@ -8,6 +8,9 @@ import { openAIModel } from "../../src/adapters/openai/adapter.ts";
 import { getOpenAISupportedMimeTypes } from "../../src/adapters/openai/mimes.ts";
 import { getModelModalities } from "../../src/adapters/openai/models.ts";
 import { Tool } from "../../src/tool.ts";
+import { addStreamItem } from "../../src/client.ts";
+import type { ChatItem } from "../../src/types.ts";
+import type { ResponseInputItem } from "openai/resources/responses/responses";
 
 function createMockClient(
   events: unknown[],
@@ -120,6 +123,61 @@ Deno.test("Open Responses history normalizes assistant, reasoning, tool, and fil
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+Deno.test("Open Responses pairs every tool call, dropping results whose call is gone", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  const history = await getOpenResponsesHistory({
+    model: "test-model",
+    history: [
+      // A compaction window cut through a parallel batch, leaving call_1 behind.
+      { type: "tool_result_text", tool_use_id: "call_1", content: "orphaned result" },
+      { type: "tool_use", tool_use_id: "call_2", kind: searchTool.name, content: '"cats"' },
+      { type: "tool_result_text", tool_use_id: "call_2", content: "found 2 results" },
+      { type: "tool_use", tool_use_id: "call_3", kind: searchTool.name, content: '"dogs"' },
+    ],
+    normalizedTools: normalizeOpenResponsesTools([searchTool]),
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(history, [
+    {
+      id: getItemId(history[0]),
+      type: "function_call",
+      call_id: "call_2",
+      name: "search",
+      arguments: '{"content":"cats"}',
+      status: "completed",
+    },
+    {
+      id: getItemId(history[1]),
+      type: "function_call_output",
+      status: "completed",
+      call_id: "call_2",
+      output: [{ type: "input_text", text: "found 2 results" }],
+    },
+    {
+      id: getItemId(history[2]),
+      type: "function_call",
+      call_id: "call_3",
+      name: "search",
+      arguments: '{"content":"dogs"}',
+      status: "completed",
+    },
+    {
+      id: getItemId(history[3]),
+      type: "function_call_output",
+      status: "completed",
+      call_id: "call_3",
+      output: [{ type: "input_text", text: "" }],
+    },
+  ]);
 });
 
 Deno.test("Open Responses retry feedback is replayed as a user message", async () => {
@@ -525,6 +583,7 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
 
   assertEquals(items, [
     { type: "delta_output_text", delta: "Hello", index: 0 },
+    { type: "reasoning_start", index: 1 },
     { type: "delta_output_reasoning", delta: "Need tool", index: 1 },
     { type: "tool_use_start", tool_use_id: "call_1", kind: "Search", index: 2 },
     { type: "tool_use", tool_use_id: "call_1", kind: "Search", content: '"cats"', index: 2 },
@@ -789,4 +848,320 @@ Deno.test("Open Responses splits the cache write premium out of inputTokens (GPT
     done: true,
     value: { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 },
   });
+});
+
+Deno.test("Open Responses stream separates reasoning summary parts sharing an output index", async () => {
+  const adapter = openResponsesModel({
+    model: "test-model",
+    client: createMockClient([
+      {
+        type: "response.output_item.added",
+        sequence_number: 1,
+        output_index: 0,
+        item: { id: "rs_1", type: "reasoning", status: "in_progress", summary: [] },
+      },
+      {
+        type: "response.reasoning_summary_text.delta",
+        sequence_number: 2,
+        output_index: 0,
+        item_id: "rs_1",
+        summary_index: 0,
+        delta: "First thought",
+      },
+      {
+        type: "response.reasoning_summary_text.delta",
+        sequence_number: 3,
+        output_index: 0,
+        item_id: "rs_1",
+        summary_index: 1,
+        delta: "Second thought",
+      },
+      {
+        type: "response.output_text.delta",
+        sequence_number: 4,
+        output_index: 1,
+        content_index: 0,
+        item_id: "msg_1",
+        delta: "Answer",
+        logprobs: [],
+      },
+    ], { usage: { input_tokens: 3, output_tokens: 5 } }),
+    reasoning: { effort: "medium", summary: "auto" },
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [],
+    signal: AbortSignal.abort(),
+  });
+
+  const items = [];
+  while (true) {
+    const next = await stream.next();
+    if (next.done) break;
+    items.push(next.value);
+  }
+
+  assertEquals(items, [
+    { type: "reasoning_start", index: 0 },
+    { type: "delta_output_reasoning", delta: "First thought", index: 0 },
+    { type: "delta_output_reasoning", delta: "Second thought", index: 1 },
+    { type: "delta_output_text", delta: "Answer", index: 2 },
+  ]);
+});
+
+Deno.test("Open Responses reasoning starts do not consume a stream index", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  const adapter = openResponsesModel({
+    model: "test-model",
+    client: createMockClient([
+      // Silent reasoning: two blocks that never produce a summary, as seen from gpt-5.6-luna.
+      {
+        type: "response.output_item.added",
+        sequence_number: 1,
+        output_index: 0,
+        item: { id: "rs_1", type: "reasoning", status: "in_progress", summary: [] },
+      },
+      {
+        type: "response.output_item.added",
+        sequence_number: 2,
+        output_index: 1,
+        item: { id: "rs_2", type: "reasoning", status: "in_progress", summary: [] },
+      },
+      {
+        type: "response.output_item.added",
+        sequence_number: 3,
+        output_index: 2,
+        item: {
+          id: "fc_1",
+          type: "function_call",
+          status: "in_progress",
+          call_id: "call_1",
+          name: "search",
+          arguments: "",
+        },
+      },
+      {
+        type: "response.function_call_arguments.done",
+        sequence_number: 4,
+        output_index: 2,
+        item_id: "fc_1",
+        name: "search",
+        arguments: '{"content":"cats"}',
+      },
+    ], { usage: { input_tokens: 3, output_tokens: 5 } }),
+    reasoning: { effort: "medium", summary: "auto" },
+  });
+
+  const stream = adapter.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [searchTool],
+    signal: AbortSignal.abort(),
+  });
+
+  const items = [];
+  while (true) {
+    const next = await stream.next();
+    if (next.done) break;
+    items.push(next.value);
+  }
+
+  assertEquals(items, [
+    { type: "reasoning_start", index: 0 },
+    { type: "reasoning_start", index: 0 },
+    { type: "tool_use_start", tool_use_id: "call_1", kind: "Search", index: 0 },
+    { type: "tool_use", tool_use_id: "call_1", kind: "Search", content: '"cats"', index: 0 },
+  ]);
+
+  // Rebuilding through the exported path must leave the tool result on its own item, which
+  // only holds when the emitted indices stay dense.
+  const rebuilt: ChatItem[] = [];
+  for (const item of items) addStreamItem(rebuilt, item);
+  addStreamItem(rebuilt, { type: "tool_result_text", index: rebuilt.length, tool_use_id: "call_1", content: "done" });
+
+  assertEquals(rebuilt.map((item) => item.type), ["tool_use", "tool_result_text"]);
+});
+
+Deno.test("Open Responses replays tool calls with the reasoning item that produced them", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  let capturedRequest: unknown;
+  const adapter = openResponsesModel({
+    model: "test-model",
+    client: createMockClient(
+      [
+        {
+          type: "response.output_item.added",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: "rs_real", type: "reasoning", status: "in_progress", summary: [] },
+        },
+        // Two calls share one reasoning item, as gpt-5.6-luna does with parallel tool calls.
+        {
+          type: "response.output_item.added",
+          sequence_number: 2,
+          output_index: 1,
+          item: {
+            id: "fc_real_1",
+            type: "function_call",
+            status: "in_progress",
+            call_id: "call_1",
+            name: "search",
+            arguments: "",
+          },
+        },
+        {
+          type: "response.output_item.added",
+          sequence_number: 3,
+          output_index: 2,
+          item: {
+            id: "fc_real_2",
+            type: "function_call",
+            status: "in_progress",
+            call_id: "call_2",
+            name: "search",
+            arguments: "",
+          },
+        },
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 4,
+          output_index: 1,
+          item_id: "fc_real_1",
+          name: "search",
+          arguments: '{"content":"cats"}',
+        },
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 5,
+          output_index: 2,
+          item_id: "fc_real_2",
+          name: "search",
+          arguments: '{"content":"dogs"}',
+        },
+      ],
+      { usage: { input_tokens: 1, output_tokens: 1 } },
+      (request) => {
+        capturedRequest = request;
+      },
+    ),
+    reasoning: { effort: "medium", summary: "auto" },
+  });
+
+  async function drain(history: ChatItem[]) {
+    const stream = adapter.stream({
+      history,
+      instructions: "Be useful",
+      tools: [searchTool],
+      signal: AbortSignal.abort(),
+    });
+    while (!(await stream.next()).done) { /* drain */ }
+  }
+
+  await drain([]);
+  await drain([
+    { type: "tool_use", tool_use_id: "call_1", kind: "Search", content: '"cats"' },
+    { type: "tool_use", tool_use_id: "call_2", kind: "Search", content: '"dogs"' },
+    { type: "tool_result_text", tool_use_id: "call_1", content: "found cats" },
+    { type: "tool_result_text", tool_use_id: "call_2", content: "found dogs" },
+    // Never streamed, so it has no captured ids and must fall back to a synthetic id.
+    { type: "tool_use", tool_use_id: "call_unknown", kind: "Search", content: '"birds"' },
+  ]);
+
+  const input = (capturedRequest as { input: ResponseInputItem[] }).input;
+
+  // The shared reasoning item appears exactly once, ahead of both calls that reference it.
+  assertEquals(input.filter((item) => item.type === "reasoning"), [
+    { type: "reasoning", id: "rs_real", summary: [] },
+  ]);
+  assertEquals(input[0], { type: "reasoning", id: "rs_real", summary: [] });
+
+  const calls = input.filter((item) => item.type === "function_call");
+  assertEquals(calls.map((call) => getItemId(call)), ["fc_real_1", "fc_real_2", getItemId(calls[2])]);
+  // A cache miss must not borrow a provider id, or the API rejects the unpaired call.
+  assert(getItemId(calls[2]).startsWith("fc_"));
+  assert(getItemId(calls[2]) !== "fc_real_1" && getItemId(calls[2]) !== "fc_real_2");
+});
+
+Deno.test("Open Responses does not share replay ids between adapter instances", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  const streamed = openResponsesModel({
+    model: "test-model",
+    client: createMockClient([
+      {
+        type: "response.output_item.added",
+        sequence_number: 1,
+        output_index: 0,
+        item: { id: "rs_leaked", type: "reasoning", status: "in_progress", summary: [] },
+      },
+      {
+        type: "response.output_item.added",
+        sequence_number: 2,
+        output_index: 1,
+        item: {
+          id: "fc_leaked",
+          type: "function_call",
+          status: "in_progress",
+          call_id: "call_1",
+          name: "search",
+          arguments: "",
+        },
+      },
+      {
+        type: "response.function_call_arguments.done",
+        sequence_number: 3,
+        output_index: 1,
+        item_id: "fc_leaked",
+        name: "search",
+        arguments: '{"content":"cats"}',
+      },
+    ], { usage: { input_tokens: 1, output_tokens: 1 } }),
+  });
+
+  const first = streamed.stream({
+    history: [],
+    instructions: "Be useful",
+    tools: [searchTool],
+    signal: AbortSignal.abort(),
+  });
+  while (!(await first.next()).done) { /* drain so the ids are captured */ }
+
+  // A separate adapter may point at a different endpoint or model, where these ids are unknown.
+  let capturedRequest: unknown;
+  const other = openResponsesModel({
+    model: "other-model",
+    client: createMockClient([], { usage: { input_tokens: 1, output_tokens: 1 } }, (request) => {
+      capturedRequest = request;
+    }),
+  });
+  const second = other.stream({
+    history: [{ type: "tool_use", tool_use_id: "call_1", kind: "Search", content: '"cats"' }],
+    instructions: "Be useful",
+    tools: [searchTool],
+    signal: AbortSignal.abort(),
+  });
+  while (!(await second.next()).done) { /* drain */ }
+
+  const input = (capturedRequest as { input: ResponseInputItem[] }).input;
+  assertEquals(input.filter((item) => item.type === "reasoning"), []);
+  assert(getItemId(input[0]) !== "fc_leaked");
 });

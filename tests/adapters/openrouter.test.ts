@@ -1,4 +1,6 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
+import { APIError } from "openai";
+import { classifyError } from "../../src/errors.ts";
 import type { OpenAICompletionsClient } from "../../src/adapters/openai_completions/adapter.ts";
 import { openrouterModel } from "../../src/adapters/openrouter/adapter.ts";
 import {
@@ -53,6 +55,60 @@ Deno.test("OpenRouterModel uses the provided completions client", async () => {
   });
   assertEquals((capturedRequest as { model?: unknown; reasoning?: unknown }).model, "openai/gpt-5-mini");
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { enabled: true, effort: "medium" });
+});
+
+Deno.test("OpenRouterModel surfaces the upstream provider error behind its own message", async () => {
+  const providerError = APIError.generate(
+    400,
+    {
+      error: {
+        message: "Provider returned error",
+        code: 400,
+        metadata: {
+          raw: JSON.stringify({
+            error: {
+              message: "This model's maximum context length is 400000 tokens.",
+              type: "invalid_request_error",
+            },
+          }),
+          provider_name: "OpenAI",
+        },
+      },
+    },
+    "400 Provider returned error",
+    new Headers(),
+  );
+
+  const adapter = openrouterModel({
+    model: "openai/gpt-5-mini",
+    client: {
+      chat: {
+        completions: {
+          stream() {
+            throw providerError;
+          },
+        },
+      },
+    } as unknown as OpenAICompletionsClient,
+  });
+
+  const error = await assertRejects(
+    () =>
+      Array.fromAsync(adapter.stream({
+        history: [],
+        instructions: "test",
+        tools: [],
+        signal: AbortSignal.abort(),
+      })),
+    Error,
+  );
+
+  assertEquals(
+    error.message,
+    "400 Provider returned error: This model's maximum context length is 400000 tokens.",
+  );
+  // The point of surfacing it: an overflow behind the wrapper stops looking like a client error.
+  assertEquals(classifyError(error).kind, "context_overflow");
 });
 
 Deno.test({

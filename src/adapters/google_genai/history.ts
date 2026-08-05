@@ -1,5 +1,4 @@
 import type { Content } from "@google/genai";
-import { assert } from "@std/assert";
 import { encodeBase64 } from "@std/encoding";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem, ChatItemToolUse } from "../../types.ts";
@@ -80,7 +79,10 @@ export async function getGoogleGenerateContentAPIHistory(options: {
           candidate.type === "tool_use" &&
           candidate.tool_use_id === item.tool_use_id
         );
-        assert(toolCall, "Tool result is present in the history without initial tool call");
+        // A result whose call is gone (compaction cutting a parallel batch, a caller
+        // assembling its own history) has no name to respond under, and Gemini rejects
+        // an unpaired response anyway, so it is dropped.
+        if (!toolCall) break;
 
         // We don't actually assert the definition's existence. Chat history might get reused without previously existing tool calls,
         //  e.g. for context compaction, or when user wants to implement custom tool selection system.
