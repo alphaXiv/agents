@@ -733,10 +733,9 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           `Provider ${adapter.provider} did not use unique tool use id: ${part.tool_use_id}`,
         );
         trace = generate();
-        pendingTools.set(
-          part.tool_use_id,
-          this.#runTool(part, signal, toolSignal, trace, agentTrace),
-        );
+        const toolPromise = this.#runTool(part, signal, toolSignal, trace, agentTrace);
+        toolPromise.catch(() => {});
+        pendingTools.set(part.tool_use_id, toolPromise);
       }
 
       // Message tracing
