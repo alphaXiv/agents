@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import z from "zod";
 import { addStreamItem, Agent, type AnyTool, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
 import { anthropicModel } from "../../src/adapters/anthropic/adapter.ts";
@@ -1177,4 +1177,37 @@ Deno.test("Agent cache option reaches the Anthropic adapter", async () => {
 
   assertEquals(tailCacheControl(await runAgent(undefined)), { type: "ephemeral", ttl: undefined });
   assertEquals(tailCacheControl(await runAgent(false)), undefined);
+});
+
+Deno.test("textlike application/* files are inlined instead of rejected", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response('{"cats": 2}'))) as typeof fetch;
+
+  try {
+    const history = await getAnthropicHistory({
+      history: [{ type: "input_file", kind: "application/json", content: "https://example.com/cats.json" }],
+      normalizedTools: [],
+      signal: AbortSignal.abort(),
+    });
+
+    assertEquals(history, [{
+      role: "user",
+      content: [{ type: "text", text: '<ant-file>{"cats": 2}</ant-file>' }],
+    }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+Deno.test("non-textlike media types are still rejected", async () => {
+  await assertRejects(
+    () =>
+      getAnthropicHistory({
+        history: [{ type: "input_file", kind: "video/mp2t", content: "https://example.com/cats.ts" }],
+        normalizedTools: [],
+        signal: AbortSignal.abort(),
+      }),
+    Error,
+    "video/mp2t",
+  );
 });
