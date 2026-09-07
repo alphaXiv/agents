@@ -31,12 +31,12 @@ function getSyntheticId(prefix: string) {
 }
 
 /**
- * Provider-issued ids for one tool call. Only usable as a pair and only against the endpoint that
- * issued them: replaying a `function_call` id whose reasoning item is absent is rejected outright.
+ * The reasoning item that produced one tool call, as the endpoint returned it.
+ * The encrypted blob is opaque, and only the endpoint that issued it can decrypt it.
  */
 export interface ToolCallReplay {
-  callItemId: string;
   reasoningItemId: string;
+  encryptedContent: string;
 }
 
 function createUserTextMessage(text: string, role: "user" | "developer" = "user"): ResponseInputItem {
@@ -160,17 +160,24 @@ export async function getOpenResponsesHistory(options: {
         const tool = options.normalizedTools.find((candidate) => candidate.original.name === historyItem.kind);
         calledToolUseIds.add(historyItem.tool_use_id);
 
-        // Replaying the call's own id lets the model reuse the reasoning that produced it instead
-        // of deriving the whole chain again. The reasoning item has to precede it, and several
-        // calls can share one, so it is emitted once for the group.
+        // Replaying the reasoning that produced the call lets the model reuse it instead of deriving
+        // the whole chain again.
+        // The reasoning item has to precede the call, and several calls can share one, so it is
+        // emitted once for the group.
+        // The call keeps a synthetic id so nothing in the request needs a server-side lookup.
         const replay = options.toolCallReplays?.get(historyItem.tool_use_id);
         if (replay && !replayedReasoningItemIds.has(replay.reasoningItemId)) {
           replayedReasoningItemIds.add(replay.reasoningItemId);
-          responseHistory.push({ type: "reasoning", id: replay.reasoningItemId, summary: [] });
+          responseHistory.push({
+            type: "reasoning",
+            id: replay.reasoningItemId,
+            encrypted_content: replay.encryptedContent,
+            summary: [],
+          });
         }
 
         responseHistory.push({
-          id: replay?.callItemId ?? getSyntheticId("fc"),
+          id: getSyntheticId("fc"),
           type: "function_call",
           status: "completed",
           call_id: historyItem.tool_use_id,

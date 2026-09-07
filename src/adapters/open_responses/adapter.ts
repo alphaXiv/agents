@@ -49,12 +49,13 @@ export function openResponsesModel<zO, zI>(options: {
   const parallelToolCalls = options.parallelToolCalls ?? true;
   const supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
 
-  // Only the live tool loop benefits from replaying provider ids, and that always runs in one
-  // process, so a bounded cache is enough. A miss falls back to synthetic ids, which is what
-  // every replay did before this existed.
+  // Only the live tool loop benefits from replaying reasoning, and that always runs in one process,
+  // so a bounded cache is enough.
+  // A miss falls back to synthetic ids, which is what every replay did before this existed.
   //
-  // Replaying an id assumes the endpoint still holds the response it came from. That is the
-  // default on OpenAI; an endpoint that does not retain responses should pass `client`.
+  // Reasoning is replayed as the encrypted blob the endpoint returned, never by id alone.
+  // An id is looked up in the endpoint's response store, and on Azure the store may not hold
+  // the response yet when the next request arrives.
   const toolCallReplays = new Map<string, ToolCallReplay>();
   const rememberToolCallReplay = (toolUseId: string, replay: ToolCallReplay) => {
     if (!toolCallReplays.has(toolUseId) && toolCallReplays.size >= TOOL_CALL_REPLAY_LIMIT) {
@@ -108,6 +109,7 @@ export function openResponsesModel<zO, zI>(options: {
             : { type: "text" },
         },
         reasoning: options.reasoning,
+        include: ["reasoning.encrypted_content"],
         stream: true,
       };
 
@@ -119,6 +121,7 @@ export function openResponsesModel<zO, zI>(options: {
       const streamIndices = new Map<string, number>();
       let nextStreamIndex = 0;
       let openReasoningItemId: string | undefined;
+      const encryptedReasoning = new Map<string, string>();
       const streamIndex = (key: string) => {
         const existing = streamIndices.get(key);
         if (existing !== undefined) return existing;
@@ -158,6 +161,11 @@ export function openResponsesModel<zO, zI>(options: {
                     : `reasoning:${part.output_index}:content:${part.content_index}`,
                 ),
               };
+            }
+            break;
+          case "response.output_item.done":
+            if (part.item.type === "reasoning" && part.item.encrypted_content) {
+              encryptedReasoning.set(part.item.id, part.item.encrypted_content);
             }
             break;
           case "response.output_item.added": {
@@ -207,13 +215,13 @@ export function openResponsesModel<zO, zI>(options: {
               };
             }
 
-            // Recorded only once the call is complete, since ids from an abandoned response may
-            // never have been stored. A preamble message between the two is fine; the API pairs a
-            // call with any reasoning item from its response, not strictly the preceding one.
-            if (openReasoningItemId) {
+            // A preamble message between the reasoning item and the call is fine.
+            // The API pairs a call with any reasoning item from its response, not strictly the preceding one.
+            const encryptedContent = openReasoningItemId && encryptedReasoning.get(openReasoningItemId);
+            if (openReasoningItemId && encryptedContent) {
               rememberToolCallReplay(toolUseId, {
-                callItemId: part.item_id,
                 reasoningItemId: openReasoningItemId,
+                encryptedContent,
               });
             }
 
