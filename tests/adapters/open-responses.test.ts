@@ -629,6 +629,7 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
       },
     },
     reasoning: { effort: "medium", summary: "auto" },
+    include: ["reasoning.encrypted_content"],
     stream: true,
   });
 });
@@ -1009,6 +1010,12 @@ Deno.test("Open Responses replays tool calls with the reasoning item that produc
           output_index: 0,
           item: { id: "rs_real", type: "reasoning", status: "in_progress", summary: [] },
         },
+        {
+          type: "response.output_item.done",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: "rs_real", type: "reasoning", status: "completed", summary: [], encrypted_content: "enc_real" },
+        },
         // Two calls share one reasoning item, as gpt-5.6-luna does with parallel tool calls.
         {
           type: "response.output_item.added",
@@ -1083,17 +1090,79 @@ Deno.test("Open Responses replays tool calls with the reasoning item that produc
 
   const input = (capturedRequest as { input: ResponseInputItem[] }).input;
 
-  // The shared reasoning item appears exactly once, ahead of both calls that reference it.
-  assertEquals(input.filter((item) => item.type === "reasoning"), [
-    { type: "reasoning", id: "rs_real", summary: [] },
-  ]);
-  assertEquals(input[0], { type: "reasoning", id: "rs_real", summary: [] });
+  // The shared reasoning item appears exactly once, ahead of both calls that reference it,
+  // and carries the blob so the endpoint never has to look the id up.
+  const replayed = { type: "reasoning" as const, id: "rs_real", encrypted_content: "enc_real", summary: [] };
+  assertEquals(input.filter((item) => item.type === "reasoning"), [replayed]);
+  assertEquals(input[0], replayed);
 
-  const calls = input.filter((item) => item.type === "function_call");
-  assertEquals(calls.map((call) => getItemId(call)), ["fc_real_1", "fc_real_2", getItemId(calls[2])]);
-  // A cache miss must not borrow a provider id, or the API rejects the unpaired call.
-  assert(getItemId(calls[2]).startsWith("fc_"));
-  assert(getItemId(calls[2]) !== "fc_real_1" && getItemId(calls[2]) !== "fc_real_2");
+  // Call ids are always synthetic so nothing in the request needs a server-side lookup.
+  const callIds = input.filter((item) => item.type === "function_call").map(getItemId);
+  assertEquals(callIds.length, 3);
+  assertEquals(new Set(callIds).size, 3);
+  for (const id of callIds) {
+    assert(id.startsWith("fc_") && id !== "fc_real_1" && id !== "fc_real_2");
+  }
+});
+
+Deno.test("Open Responses does not replay reasoning the endpoint returned without a blob", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  let capturedRequest: unknown;
+  const adapter = openResponsesModel({
+    model: "test-model",
+    client: createMockClient(
+      [
+        {
+          type: "response.output_item.added",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: "rs_stored", type: "reasoning", status: "in_progress", summary: [] },
+        },
+        // An endpoint that ignores `include` keeps the reasoning server side only.
+        {
+          type: "response.output_item.done",
+          sequence_number: 2,
+          output_index: 0,
+          item: { id: "rs_stored", type: "reasoning", status: "completed", summary: [], encrypted_content: null },
+        },
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 3,
+          output_index: 1,
+          item_id: "fc_stored",
+          name: "search",
+          arguments: '{"content":"cats"}',
+        },
+      ],
+      { usage: { input_tokens: 1, output_tokens: 1 } },
+      (request) => {
+        capturedRequest = request;
+      },
+    ),
+  });
+
+  async function drain(history: ChatItem[]) {
+    const stream = adapter.stream({
+      history,
+      instructions: "Be useful",
+      tools: [searchTool],
+      signal: AbortSignal.abort(),
+    });
+    while (!(await stream.next()).done) { /* drain */ }
+  }
+
+  await drain([]);
+  await drain([{ type: "tool_use", tool_use_id: "fc_stored", kind: "Search", content: '"cats"' }]);
+
+  const input = (capturedRequest as { input: ResponseInputItem[] }).input;
+  assertEquals(input.filter((item) => item.type === "reasoning"), []);
+  assert(getItemId(input[0]).startsWith("fc_") && getItemId(input[0]) !== "fc_stored");
 });
 
 Deno.test("Open Responses does not share replay ids between adapter instances", async () => {
@@ -1112,6 +1181,12 @@ Deno.test("Open Responses does not share replay ids between adapter instances", 
         sequence_number: 1,
         output_index: 0,
         item: { id: "rs_leaked", type: "reasoning", status: "in_progress", summary: [] },
+      },
+      {
+        type: "response.output_item.done",
+        sequence_number: 1,
+        output_index: 0,
+        item: { id: "rs_leaked", type: "reasoning", status: "completed", summary: [], encrypted_content: "enc_leaked" },
       },
       {
         type: "response.output_item.added",
