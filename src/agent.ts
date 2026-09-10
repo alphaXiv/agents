@@ -36,7 +36,13 @@ import type {
   TokenUsage,
   WithTraceId,
 } from "./types.ts";
-import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
+import {
+  convertChatLikeToChatItem,
+  convertToolResultLikeToChatItem,
+  errMessage,
+  iteratePromiseArray,
+  wellFormedItems,
+} from "./util.ts";
 
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
@@ -276,7 +282,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   constructor(options: AgentOptions<zO, zI, Tools>) {
     this.#name = options.name;
     this.#models = (Array.isArray(options.model) ? options.model : [options.model]).map(resolveModel);
-    this.#instructions = options.instructions;
+    this.#instructions = options.instructions.toWellFormed();
     this.#tools = (options.tools?.slice() ?? []) as Tools;
     this.#output = options.output;
     this.#cache = options.cache;
@@ -693,7 +699,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       tools: this.#tools,
       output: this.#output,
       cache: this.#cache,
-      history: options.history,
+      history: wellFormedItems(options.history),
       signal: watchdogController?.signal ?? signal,
     });
 
