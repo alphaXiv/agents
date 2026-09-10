@@ -75,6 +75,7 @@ function createChatItemFromStreamItem(streamItem: StreamItem): ChatItem {
     case "token_usage":
     case "context_summary_start":
     case "reasoning_start":
+    case "request_start":
     case "model_switched":
       throw new Error(
         `Cannot convert informational stream item "${streamItem.type}" into ChatItem.`,

@@ -114,7 +114,7 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
         },
       };
 
-      yield { type: "request_start" };
+      yield { type: "request_start", index: 0 };
       const response = client.chat.completions.stream(request, { signal });
 
       const pendingToolUses: PendingToolUse[] = [];

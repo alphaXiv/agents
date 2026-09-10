@@ -138,7 +138,7 @@ export function openResponsesModel<zO, zI>(options: {
           stream: true,
         };
 
-        yield { type: "request_start" };
+        yield { type: "request_start", index: 0 };
         const response = client.responses.stream(request, { signal });
 
         // Provider indices are per output item, so consecutive summary parts of one reasoning
@@ -311,13 +311,6 @@ export function openResponsesModel<zO, zI>(options: {
             if (!uploadedFileIds.has(fileId)) await options.files?.store.delete(url, fileId);
           }
           if (attempt === FILE_SEND_ATTEMPTS) throw error;
-          yield {
-            type: "log",
-            message: `Provider rejected file ids ${
-              rejected.map(([, fileId]) => fileId).join(", ")
-            } on attempt ${attempt}`,
-            error,
-          };
           await delay(FILE_RESEND_DELAYS_MS[attempt - 1], { signal });
         }
       }

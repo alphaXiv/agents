@@ -718,7 +718,7 @@ Deno.test("the model trace records requestAt when the adapter yields request_sta
     model: "request-start-model",
     stream: () =>
       (async function* () {
-        yield { type: "request_start" as const };
+        yield { type: "request_start" as const, index: 0 };
         yield { type: "delta_output_text" as const, index: 0, delta: "hi" };
         return { inputTokens: 1, outputTokens: 1 };
       })(),

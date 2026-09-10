@@ -47,7 +47,7 @@ function preparingModel(
 
       return (async function* () {
         await wait(options.prepareMs);
-        if (options.announce) yield { type: "request_start" as const };
+        if (options.announce) yield { type: "request_start" as const, index: 0 };
         await wait(options.respondMs);
         yield { type: "delta_output_text" as const, index: 0, delta: "late reply" };
         return { inputTokens: 0, outputTokens: 0 };

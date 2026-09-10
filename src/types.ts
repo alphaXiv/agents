@@ -186,6 +186,9 @@ type StreamItemType = {
   type: "token_usage";
   usage: TokenUsage;
 } | {
+  /** The request is going to the provider, after any preparation such as file uploads. Consumed by the Agent. */
+  type: "request_start";
+} | {
   /** The model switched to a fallback due to an error. */
   type: "model_switched";
   from: ModelInfo;
@@ -196,18 +199,8 @@ type StreamItemType = {
 
 export type StreamItem = BaseStreamItem & StreamItemType;
 
-/**
- * Adapter to Agent signals. Consumed by the Agent, never forwarded.
- *
- * `request_start` is yielded right before the request goes to the provider, after any preparation such as uploads.
- * `log` records something the adapter handled on its own, such as a resend, on the model trace.
- */
-export type AdapterEvent =
-  | { type: "request_start" }
-  | { type: "log"; message: string; error?: unknown };
-
 export type AdapterStreamIterator = AsyncGenerator<
-  StreamItem | AdapterEvent,
+  StreamItem,
   ProviderStreamMetadata,
   unknown
 >;

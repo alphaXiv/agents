@@ -5,7 +5,7 @@ import { azureOpenAIModel } from "../../src/adapters/azure_openai/adapter.ts";
 import type { OpenResponsesClient } from "../../src/adapters/open_responses/adapter.ts";
 import { openAIModel } from "../../src/adapters/openai/adapter.ts";
 import type { Adapter } from "../../src/adapters/adapter.ts";
-import type { AdapterEvent, ChatItem, ProviderFileStore, StreamItem } from "../../src/types.ts";
+import type { ChatItem, ProviderFileStore, StreamItem } from "../../src/types.ts";
 
 const IMAGE_URL = "https://example.com/uploads/user/cats.png";
 const PDF_URL = "https://example.com/uploads/user/paper.pdf";
@@ -136,9 +136,9 @@ function runStream(
 function collectStream(
   adapter: Adapter<unknown, unknown>,
   history: ChatItem[] = HISTORY,
-): Promise<(StreamItem | AdapterEvent)[]> {
+): Promise<StreamItem[]> {
   return withFakeTime(async () => {
-    const items: (StreamItem | AdapterEvent)[] = [];
+    const items: StreamItem[] = [];
     const stream = adapter.stream({
       history,
       instructions: "test",
@@ -265,7 +265,7 @@ Deno.test("an id uploaded in this call that the provider rejects is resent as is
   assertEquals(store.rows.get(PDF_URL)?.fileId, "file-2");
 });
 
-Deno.test("a resend yields request_start again and logs the rejection", async () => {
+Deno.test("a resend yields request_start again", async () => {
   using _fetch = stubFetch();
   const fake = createFakeClient("file");
   const adapter = openAIModel({ model: "gpt-5.6-luna", client: fake.client, fileStore: createMemoryStore() });
@@ -274,10 +274,6 @@ Deno.test("a resend yields request_start again and logs the rejection", async ()
   const items = await collectStream(adapter);
 
   assertEquals(items.filter((item) => item.type === "request_start").length, 2);
-  const logs = items.flatMap((item) => item.type === "log" ? [item] : []);
-  assertEquals(logs.length, 1);
-  assertEquals(logs[0].message, "Provider rejected file ids file-2 on attempt 1");
-  assertEquals(logs[0].error, fake.failOnce);
 });
 
 Deno.test("a file the provider keeps rejecting is sent three times, then the provider error surfaces", async () => {
@@ -433,7 +429,7 @@ Deno.test("request_start is yielded only once every upload is done", async () =>
   const first = await stream.next();
 
   assertEquals(first.done, false);
-  assertEquals(first.value, { type: "request_start" });
+  assertEquals(first.value, { type: "request_start", index: 0 });
   assertEquals(fake.created.length, 2);
   while (!(await stream.next()).done) { /* drain */ }
 });

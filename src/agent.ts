@@ -24,7 +24,6 @@ import {
   type TraceRef,
 } from "./tracing.ts";
 import type {
-  AdapterEvent,
   AgentStreamIterator,
   ChatItem,
   ChatItemToolResult,
@@ -703,7 +702,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     });
 
     while (true) {
-      let next: IteratorResult<StreamItem | AdapterEvent, ProviderStreamMetadata>;
+      let next: IteratorResult<StreamItem, ProviderStreamMetadata>;
       try {
         next = await adapterStream.next();
       } catch (error) {
@@ -738,10 +737,6 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           armTimer();
         }
         modelTrace.update({ requestAt: Date.now() });
-        continue;
-      }
-      if (part.type === "log") {
-        modelTrace.log(part.message, part.error);
         continue;
       }
       disarmTimer();
