@@ -20,6 +20,7 @@
     "./openrouter": "./src/adapters/openrouter/adapter.ts",
     "./tributary": "./src/adapters/tributary/adapter.ts",
     "./openai": "./src/adapters/openai/adapter.ts",
+    "./azure-openai": "./src/adapters/azure_openai/adapter.ts",
     "./sid": "./src/adapters/sid/adapter.ts",
 
     "./sid/tools": "./src/adapters/sid/tools.ts"

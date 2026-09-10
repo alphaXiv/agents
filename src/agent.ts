@@ -24,6 +24,7 @@ import {
   type TraceRef,
 } from "./tracing.ts";
 import type {
+  AdapterEvent,
   AgentStreamIterator,
   ChatItem,
   ChatItemToolResult,
@@ -532,6 +533,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               outputTokens: null,
               cacheReadTokens: null,
               cacheWriteTokens: null,
+              requestAt: null,
             },
           });
           using messageTracer = new MessageTracer(modelTrace);
@@ -671,14 +673,17 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       if (watchdogTimer) clearTimeout(watchdogTimer);
       watchdogTimer = null;
     }
-    if (options.hasFallback && firstTokenTimeoutMs > 0) {
-      watchdogController = new AbortController();
-      signal.addEventListener("abort", forwardAbort);
+    function armTimer() {
       watchdogTimer = setTimeout(() => {
         watchdogTimer = null;
         watchdogError = new FirstTokenTimeoutError(firstTokenTimeoutMs, adapter.provider, adapter.model);
         watchdogController?.abort(watchdogError);
       }, firstTokenTimeoutMs);
+    }
+    if (options.hasFallback && firstTokenTimeoutMs > 0) {
+      watchdogController = new AbortController();
+      signal.addEventListener("abort", forwardAbort);
+      armTimer();
     }
     using _ = {
       [Symbol.dispose]: () => {
@@ -698,17 +703,17 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     });
 
     while (true) {
-      let next: IteratorResult<StreamItem, ProviderStreamMetadata>;
+      let next: IteratorResult<StreamItem | AdapterEvent, ProviderStreamMetadata>;
       try {
         next = await adapterStream.next();
       } catch (error) {
         if (watchdogError) throw watchdogError;
         throw error;
       }
-      disarmTimer();
 
       const { value: part, done } = next;
       if (done) {
+        disarmTimer();
         messageTracer.endMessageTraceIfStarted();
         modelTrace.success({
           inputTokens: part.inputTokens,
@@ -724,6 +729,22 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           trace: modelTrace.id,
         };
       }
+
+      if (part.type === "request_start") {
+        // Preparation (store lookups, file uploads) already happened, so restart the
+        // watchdog to give the provider itself the full first token budget.
+        if (watchdogTimer) {
+          disarmTimer();
+          armTimer();
+        }
+        modelTrace.update({ requestAt: Date.now() });
+        continue;
+      }
+      if (part.type === "log") {
+        modelTrace.log(part.message, part.error);
+        continue;
+      }
+      disarmTimer();
 
       // Eager tool dispatch: start tool execution while the model is still streaming
       let trace: string | null = null;

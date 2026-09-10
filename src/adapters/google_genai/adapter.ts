@@ -122,6 +122,7 @@ export function googleGenerateContentAPIModel<zO, zI>(
         inlineFiles: options.googleGenAIOptions?.vertexai === true,
       });
 
+      yield { type: "request_start" };
       const stream = await client.models.generateContentStream({
         model: options.model,
         contents: googleHistory,

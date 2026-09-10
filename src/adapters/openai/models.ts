@@ -212,6 +212,16 @@ export function getModelModalities<TModel extends OpenAIModels>(model: TModel): 
   return openAiModels[model].modalities as readonly OpenAIModelModality[];
 }
 
+export function resolveOpenAIReasoning<TModel extends OpenAIModels>(
+  model: TModel,
+  effort?: SupportedReasoningEffort<TModel>,
+): { effort: OpenAIReasoningEffort; summary?: "auto" } | undefined {
+  const config = openAiModelReasoningSupport[model];
+  if (!("schema" in config)) return undefined;
+  const resolved = (effort ?? getDefaultReasoningEffort(model)) as OpenAIReasoningEffort;
+  return { effort: resolved, summary: resolved === "none" ? undefined : "auto" };
+}
+
 export function getDefaultReasoningEffort<TModel extends OpenAIModels>(
   model: TModel,
 ): SupportedReasoningEffort<TModel> {

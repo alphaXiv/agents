@@ -70,6 +70,7 @@ export type {
 } from "./src/tracing.ts";
 
 export type {
+  AdapterEvent,
   AdapterStreamIterator,
   AgentStreamIterator,
   Awaitable,
@@ -82,6 +83,7 @@ export type {
   ChatItemToolUse,
   ChatLike,
   ContextSummaryStartEvent,
+  ProviderFileStore,
   ProviderStreamMetadata,
   StreamItem,
   TokenUsage,

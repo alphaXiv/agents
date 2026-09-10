@@ -196,8 +196,18 @@ type StreamItemType = {
 
 export type StreamItem = BaseStreamItem & StreamItemType;
 
+/**
+ * Adapter to Agent signals. Consumed by the Agent, never forwarded.
+ *
+ * `request_start` is yielded right before the request goes to the provider, after any preparation such as uploads.
+ * `log` records something the adapter handled on its own, such as a resend, on the model trace.
+ */
+export type AdapterEvent =
+  | { type: "request_start" }
+  | { type: "log"; message: string; error?: unknown };
+
 export type AdapterStreamIterator = AsyncGenerator<
-  StreamItem,
+  StreamItem | AdapterEvent,
   ProviderStreamMetadata,
   unknown
 >;
@@ -227,4 +237,27 @@ export interface ProviderStreamMetadata {
    * have no write to bill and report `0`.
    */
   cacheWriteTokens?: number | null;
+}
+
+/**
+ * Record of files uploaded to the provider, keyed by the source URL of the file.
+ *
+ * The caller owns storage and expiry.
+ * The adapter treats a row whose `expiresAt` has passed as a miss, uploads again, and never extends a row.
+ *
+ * An expired row is only replaced when the adapter reads that URL again.
+ * The caller is expected to sweep on its own schedule, deleting expired rows and their files on the provider.
+ * An upload aborted midway can also leave a file on the provider that was never stored.
+ * OpenAI's own expiry collects those and Azure does not.
+ */
+export interface ProviderFileStore {
+  get(url: string): Promise<{ fileId: string; expiresAt: Date } | undefined>;
+  /**
+   * Stores the mapping and returns the id that won.
+   * A live row, one whose `expiresAt` is after now, keeps its id and wins.
+   * An expired row is replaced by the new id, so an insert-or-ignore store breaks this contract.
+   */
+  set(url: string, fileId: string, expiresAt: Date): Promise<{ fileId: string }>;
+  /** Deletes the row only if it still holds `fileId`, so a concurrent replacement is kept. */
+  delete(url: string, fileId: string): Promise<void>;
 }

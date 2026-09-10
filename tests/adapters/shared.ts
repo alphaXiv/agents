@@ -333,7 +333,8 @@ export async function collectAdapterStream(stream: AdapterStreamIterator) {
     if (next.done) {
       return { items, metadata: next.value };
     }
-    items.push(next.value);
+    // The Agent consumes adapter events itself, so tests assert on stream items only.
+    if (next.value.type !== "request_start" && next.value.type !== "log") items.push(next.value);
   }
 }
 

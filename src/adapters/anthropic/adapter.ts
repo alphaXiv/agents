@@ -167,6 +167,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
       // caches the tools with it, and one on the conversation tail caches the turn so far.
       if (cacheControl) applyAnthropicCacheBreakpoint(anthropicHistory, cacheControl);
 
+      yield { type: "request_start" };
       const response = client.beta.messages.stream({
         model: options.model,
         // An empty text block is rejected, so a blank prompt stays a bare string (and has nothing to cache).
