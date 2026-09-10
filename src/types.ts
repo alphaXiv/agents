@@ -233,24 +233,14 @@ export interface ProviderStreamMetadata {
 }
 
 /**
- * Record of files uploaded to the provider, keyed by the source URL of the file.
- *
- * The caller owns storage and expiry.
- * The adapter treats a row whose `expiresAt` has passed as a miss, uploads again, and never extends a row.
- *
- * An expired row is only replaced when the adapter reads that URL again.
- * The caller is expected to sweep on its own schedule, deleting expired rows and their files on the provider.
- * An upload aborted midway can also leave a file on the provider that was never stored.
- * OpenAI's own expiry collects those and Azure does not.
+ * Files uploaded to the provider, keyed by source URL. The caller owns storage and expiry.
+ * A row past `expiresAt` is a miss, replaced on the next read of that URL and never extended.
+ * The adapter never deletes expired rows or their provider files, so sweep them yourself.
  */
 export interface ProviderFileStore {
   get(url: string): Promise<{ fileId: string; expiresAt: Date } | undefined>;
-  /**
-   * Stores the mapping and returns the id that won.
-   * A live row, one whose `expiresAt` is after now, keeps its id and wins.
-   * An expired row is replaced by the new id, so an insert-or-ignore store breaks this contract.
-   */
+  /** Returns the id that won. A live row keeps its own id, an expired row takes `fileId`. */
   set(url: string, fileId: string, expiresAt: Date): Promise<{ fileId: string }>;
-  /** Deletes the row only if it still holds `fileId`, so a concurrent replacement is kept. */
+  /** Deletes the row only while it still holds `fileId`. */
   delete(url: string, fileId: string): Promise<void>;
 }
