@@ -50,6 +50,19 @@ export function convertToolResultLikeToChatItem(
   });
 }
 
+/**
+ * Replaces lone UTF-16 surrogates in `content` with U+FFFD.
+ * Providers reject requests containing them, and text cut by code unit (`slice`) can end on one.
+ * Items whose content changes are copied, so the caller's items are never mutated.
+ */
+export function wellFormedItems<T extends ChatItem>(items: readonly T[]): T[] {
+  return items.map((item) => {
+    if (item.content === undefined) return item;
+    const content = item.content.toWellFormed();
+    return content === item.content ? item : { ...item, content };
+  });
+}
+
 export function crossPlatformEnv(key: string) {
   return process.env[key];
 }
