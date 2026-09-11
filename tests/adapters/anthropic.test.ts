@@ -715,14 +715,9 @@ Deno.test("Anthropic structured output streamed as text is restored before emiss
     output,
   });
 
-  const items = [];
+  const { items } = await collectAdapterStream(stream);
   const rebuiltHistory: ChatItem[] = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-    addStreamItem(rebuiltHistory, next.value);
-  }
+  for (const item of items) addStreamItem(rebuiltHistory, item);
 
   assertEquals(items, [
     {
@@ -828,14 +823,9 @@ Deno.test("Anthropic attaches signatures after reasoning block completion", asyn
     signal: AbortSignal.abort(),
   });
 
-  const items: StreamItem[] = [];
+  const { items } = await collectAdapterStream(stream);
   const rebuiltHistory: ChatItem[] = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-    addStreamItem(rebuiltHistory, next.value);
-  }
+  for (const item of items) addStreamItem(rebuiltHistory, item);
 
   assertEquals(items, [{
     type: "delta_output_reasoning",

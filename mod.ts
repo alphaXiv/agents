@@ -82,6 +82,7 @@ export type {
   ChatItemToolUse,
   ChatLike,
   ContextSummaryStartEvent,
+  ProviderFileStore,
   ProviderStreamMetadata,
   StreamItem,
   TokenUsage,

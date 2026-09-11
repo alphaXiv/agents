@@ -18,6 +18,7 @@ Models and Adapters for these providers are shipped out of the box:
 
 - Anthropic
 - OpenAI
+- Azure OpenAI
 - Gemini
 - Vertex AI
 - Tributary
@@ -51,7 +52,7 @@ const calculator = new Tool({
 });
 
 const agent = new Agent({
-  model: openAIModel({ model: "gpt-4.1-mini" }), // Or via shorthand "openai:gpt-4.1-mini"
+  model: openAIModel({ model: "gpt-4.1-mini" }), // Or via shorthand "openai:gpt-4.1-mini", "azure:gpt-4.1-mini"
   instructions: "You are a helpful assistant. Use the calculator when math is needed.",
   tools: [calculator],
 });
@@ -360,6 +361,40 @@ console.log(result.outputText);
 ```
 
 This works for file inputs like PDFs, images, and CSVs, depending on the model provider.
+
+### Files API
+
+`openAIModel` and `azureOpenAIModel` accept a `fileStore`. With one set, images and PDFs are uploaded to the provider's
+Files API once and referenced by `file_id` on later calls instead of being sent as base64 every time.
+
+```ts
+import { Agent } from "jsr:@alphaxiv/agents";
+import { openAIModel } from "jsr:@alphaxiv/agents/openai";
+
+const agent = new Agent({
+  model: openAIModel({
+    model: "gpt-5.4-mini",
+    fileStore: {
+      get: (url) => db.getProviderFile(url),
+      set: (url, fileId, expiresAt) => db.upsertProviderFile(url, fileId, expiresAt),
+      delete: (url, fileId) => db.deleteProviderFile(url, fileId),
+    },
+  }),
+  instructions: "You are a helpful assistant.",
+});
+```
+
+The store maps a source URL to a provider file id and lives wherever you keep it:
+
+- `get` returns the row for a URL, or nothing
+- `set` stores a new id and returns the one that won, keeping a live row's id and replacing an expired one
+- `delete` removes a row only while it still holds the id you pass
+
+Rows expire 7 days after upload and are never extended. The adapter only replaces an expired row when that URL comes up
+again, so sweep expired rows on your own schedule and delete their files on the provider with your own client.
+
+If the provider rejects a file id, the adapter uploads again and resends the request inside the same call, so a run sees
+one uninterrupted stream.
 
 ## Tracing
 

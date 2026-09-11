@@ -1,26 +1,30 @@
-import { crossPlatformEnv, requireEnv } from "../../util.ts";
+import { requireEnv } from "../../util.ts";
 import {
   type OpenResponsesClient,
   openResponsesModel,
   type OpenResponsesServiceTier,
 } from "../open_responses/adapter.ts";
 import type { Adapter } from "../adapter.ts";
-import { getOpenAISupportedMimeTypes } from "./mimes.ts";
+import { getOpenAISupportedMimeTypes } from "../openai/mimes.ts";
 import {
   getModelModalities,
   type OpenAIModels,
   resolveOpenAIReasoning,
   type SupportedReasoningEffort,
-} from "./models.ts";
+} from "../openai/models.ts";
 import type { ProviderFileStore } from "../../types.ts";
 
-/** Backup to the store's 7 day expiry, later so the store is always the one that deletes first. */
-const FILE_EXPIRES_AFTER_SECONDS = 9 * 24 * 60 * 60;
-
-export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
+/**
+ * OpenAI models on Azure Foundry, addressed by model name rather than by deployment name.
+ * A deployment named after a model id takes that name over, so never create one.
+ *
+ * With a `fileStore`, files are capped at 50 MB each, and Azure never expires an upload on its own.
+ * The store's sweep is the only thing that deletes them.
+ */
+export function azureOpenAIModel<zO, zI, TModel extends OpenAIModels>(options: {
   model: TModel;
   apiKey?: string;
-  baseUrl?: string;
+  endpoint?: string;
   serviceTier?: OpenResponsesServiceTier;
   effort?: SupportedReasoningEffort<TModel>;
   parallelToolCalls?: boolean;
@@ -29,23 +33,18 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels>(options: {
   fileStore?: ProviderFileStore;
 }): Adapter<zO, zI> {
   return openResponsesModel({
-    provider: "OpenAI",
+    provider: "Azure",
     model: options.model,
     supportedMimeTypes: getOpenAISupportedMimeTypes(getModelModalities(options.model)),
     client: options.client,
     openAIOptions: options.client ? undefined : {
-      apiKey: options.apiKey ?? requireEnv("OPENAI_API_KEY"),
-      baseURL: options.baseUrl ?? crossPlatformEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",
+      apiKey: options.apiKey ?? requireEnv("AZURE_OPENAI_API_KEY"),
+      baseURL: `${(options.endpoint ?? requireEnv("AZURE_OPENAI_ENDPOINT")).replace(/\/$/, "")}/openai/v1`,
     },
     reasoning: resolveOpenAIReasoning(options.model, options.effort),
     parallelToolCalls: options.parallelToolCalls,
     serviceTier: options.serviceTier,
-    files: options.fileStore
-      ? {
-        purpose: "user_data",
-        expiresAfterSeconds: FILE_EXPIRES_AFTER_SECONDS,
-        store: options.fileStore,
-      }
-      : undefined,
+    // Responses on Azure only reads ids uploaded with this purpose, and Azure rejects `expires_after`.
+    files: options.fileStore ? { purpose: "assistants", store: options.fileStore } : undefined,
   });
 }

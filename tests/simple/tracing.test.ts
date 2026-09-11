@@ -264,6 +264,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
         outputTokens: 3,
         cacheReadTokens: null,
         cacheWriteTokens: null,
+        requestAt: null,
       },
     },
     {
@@ -286,6 +287,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
         outputTokens: 2,
         cacheReadTokens: null,
         cacheWriteTokens: null,
+        requestAt: null,
       },
     },
     {
@@ -324,6 +326,7 @@ Deno.test("local tracer captures sub-agent spans and tags history items with the
         outputTokens: 5,
         cacheReadTokens: null,
         cacheWriteTokens: null,
+        requestAt: null,
       },
     },
     {
@@ -704,4 +707,27 @@ Deno.test("newTrace uses the UUIDv7 timestamp when given a pre-generated id", ()
   assertExists(toolTrace);
   assertEquals(toolTrace.id, id);
   assertEquals(toolTrace.start, start);
+});
+
+Deno.test("the model trace records requestAt when the adapter yields request_start", async () => {
+  const { events, tracer } = createRecorder();
+  using _ = registerGlobalTracer(tracer);
+
+  const model = traceTestModel({
+    name: "request-start",
+    model: "request-start-model",
+    stream: () =>
+      (async function* () {
+        yield { type: "request_start" as const, index: 0 };
+        yield { type: "delta_output_text" as const, index: 0, delta: "hi" };
+        return { inputTokens: 1, outputTokens: 1 };
+      })(),
+  });
+
+  const agent = new Agent({ model, instructions: "x" });
+  await agent.run("Hello!");
+
+  const modelTrace = filterTrace(events, "model")[0];
+  assertExists(modelTrace);
+  assertEquals(typeof modelTrace.content.requestAt, "number");
 });

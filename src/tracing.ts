@@ -105,6 +105,12 @@ export interface ModelTraceEvent extends BaseTraceEvent {
     provider: string;
     /** The model given to the provider */
     model: string;
+    /**
+     * The millisecond timestamp at which the adapter sent the request to the provider, after any preparation.
+     * `null` if the adapter did not report it.
+     * Subtract it from the first message trace start for a time to first token that excludes preparation.
+     */
+    requestAt: number | null;
     /** Total count of input tokens. If the provider cannot provide this info, `null` */
     inputTokens: number | null;
     /** Total count of output tokens. If the provider is unable to classify, then all tokens are "output" tokens. */
@@ -201,6 +207,8 @@ interface TraceInit<T extends TraceType> {
 }
 
 export interface ActiveTrace<T extends Exclude<TraceType, "log">> extends TraceRef {
+  /** Merges fields into the content this trace reports, without emitting an event. */
+  update(content: Partial<TraceContent<T>>): void;
   error(err: unknown, content?: Partial<TraceContent<T>>): void;
   success(content?: Partial<TraceContent<T>>): void;
   log(message: string, error?: unknown): void;
@@ -251,6 +259,9 @@ export function newTrace<T extends Exclude<TraceType, "log">>(
     id,
     rootId: rootParent ?? id,
     parentTracers: tracers,
+    update(partialContent) {
+      content = { ...content as object, ...partialContent } as TraceContent<T>;
+    },
     error(err, finalContent) {
       if (resolved) return;
       if (finalContent != null) {

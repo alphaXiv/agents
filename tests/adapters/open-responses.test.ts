@@ -11,6 +11,7 @@ import { Tool } from "../../src/tool.ts";
 import { addStreamItem } from "../../src/client.ts";
 import type { ChatItem } from "../../src/types.ts";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
+import { collectAdapterStream } from "./shared.ts";
 
 function createMockClient(
   events: unknown[],
@@ -353,12 +354,7 @@ Deno.test("Open Responses restores structured output from OpenAI-compatible surr
     }),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [{
     type: "delta_output_text",
@@ -413,12 +409,7 @@ Deno.test("Open Responses stream unwraps primitive tool arguments when the done 
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "tool_use_start", tool_use_id: "call_1", kind: "Search", index: 0 },
@@ -458,12 +449,7 @@ Deno.test("Open Responses synthesizes tool_use_start when arguments.done arrives
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "tool_use_start", tool_use_id: "fc_1", kind: "Search", index: 0 },
@@ -571,15 +557,8 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
     output: z.object({ answer: z.string() }),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) {
-      assertEquals(next.value, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
-      break;
-    }
-    items.push(next.value);
-  }
+  const { items, metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
 
   assertEquals(items, [
     { type: "delta_output_text", delta: "Hello", index: 0 },
@@ -651,10 +630,8 @@ Deno.test("OpenAIModel defaults effort for reasoning models", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
 });
 
@@ -675,10 +652,8 @@ Deno.test("OpenAIModel omits reasoning for non-reasoning models", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, undefined);
 });
 
@@ -700,10 +675,8 @@ Deno.test("OpenAIModel stores configured service tier", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { service_tier?: unknown }).service_tier, "flex");
 });
 
@@ -805,10 +778,8 @@ Deno.test("Open Responses respects parallelToolCalls option", async () => {
     output: undefined,
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
 
   assertEquals((capturedRequest as { parallel_tool_calls?: boolean }).parallel_tool_calls, false);
 });
@@ -827,10 +798,8 @@ Deno.test("Open Responses reports cached tokens as their own bucket, outside inp
   });
 
   // OpenAI counts cached tokens inside input_tokens, so 1500 - 1024 is the uncached remainder.
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 476, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 476, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 0 });
 });
 
 Deno.test("Open Responses splits the cache write premium out of inputTokens (GPT-5.6+)", async () => {
@@ -845,10 +814,8 @@ Deno.test("Open Responses splits the cache write premium out of inputTokens (GPT
   const adapter = openResponsesModel({ model: "gpt-5.6", client });
 
   const stream = adapter.stream({ history: [], instructions: "Be useful", tools: [], signal: AbortSignal.abort() });
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 });
 });
 
 Deno.test("Open Responses stream separates reasoning summary parts sharing an output index", async () => {
@@ -897,12 +864,7 @@ Deno.test("Open Responses stream separates reasoning summary parts sharing an ou
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "reasoning_start", index: 0 },
@@ -968,12 +930,7 @@ Deno.test("Open Responses reasoning starts do not consume a stream index", async
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "reasoning_start", index: 0 },
