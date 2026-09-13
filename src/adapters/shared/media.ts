@@ -1,4 +1,8 @@
 import { encodeBase64 } from "@std/encoding";
+import { InvalidAttachmentError } from "../../errors.ts";
+import { errMessage } from "../../util.ts";
+
+const textDecoder = new TextDecoder();
 
 export const IMAGE_MIME_TYPES = [
   "image/jpeg",
@@ -61,35 +65,53 @@ export function getFileNameFromUrl(url: string): string | undefined {
   }
 }
 
+async function fetchAttachment(url: string, signal: AbortSignal): Promise<ArrayBuffer> {
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    throw new InvalidAttachmentError(url, `Attachment ${url} responded with ${response.status}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  if (buffer.byteLength === 0) {
+    throw new InvalidAttachmentError(url, `Attachment ${url} is empty`);
+  }
+  return buffer;
+}
+
 export async function getContentLength(url: string, signal: AbortSignal) {
   const headResponse = await fetch(url, {
     method: "HEAD",
     signal,
   });
   const contentLength = headResponse.headers.get("Content-Length");
-  if (contentLength) {
+  if (headResponse.ok && contentLength) {
     return parseInt(contentLength, 10);
   }
 
-  const response = await fetch(url, { signal });
-  return (await response.arrayBuffer()).byteLength;
+  return (await fetchAttachment(url, signal)).byteLength;
+}
+
+export async function fetchAttachmentText(url: string, signal: AbortSignal) {
+  return textDecoder.decode(await fetchAttachment(url, signal));
 }
 
 export async function fetchTextLikeFileAsTaggedText(url: string, mimeType: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal });
-  const text = await response.text();
+  const text = await fetchAttachmentText(url, signal);
   return `<file mime-type="${mimeType}">${text}</file>`;
 }
 
 export async function fetchPdfAsText(url: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal });
+  const buffer = await fetchAttachment(url, signal);
   const { default: parsePdf } = await import("@lino/pdf-parse");
-  const pdfText = await parsePdf(await response.arrayBuffer());
-  return pdfText.text.join("\n");
+  try {
+    const pdfText = await parsePdf(buffer);
+    return pdfText.text.join("\n");
+  } catch (error) {
+    throw new InvalidAttachmentError(url, `Attachment ${url} could not be parsed as a PDF: ${errMessage(error)}`);
+  }
 }
 
 export async function fetchRemoteFileAsDataUrl(url: string, mimeType: string, signal: AbortSignal) {
-  const response = await fetch(url, { signal });
-  const buffer = await response.arrayBuffer();
+  const buffer = await fetchAttachment(url, signal);
   return `data:${mimeType};base64,${encodeBase64(buffer)}`;
 }

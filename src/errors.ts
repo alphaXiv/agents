@@ -17,6 +17,9 @@ export const ERROR_KINDS = [
   "context_overflow",
   "unsupported_file_type",
   "image_too_large",
+  "invalid_attachment",
+  "attachment_rejected",
+  "content_filtered",
   "unknown",
 ] as const;
 
@@ -80,6 +83,7 @@ function isLikelyProviderRateLimit(text: string): boolean {
 function isLikelyModelUnavailable(text: string): boolean {
   const lower = text.toLowerCase();
   return (
+    lower.includes("overloaded_error") ||
     lower.includes("specified api usage limits") ||
     (lower.includes("regain access on") && lower.includes("usage limits")) ||
     lower.includes("model is currently overloaded") ||
@@ -95,7 +99,34 @@ function isLikelyNetworkError(text: string): boolean {
     lower.includes("connection refused") ||
     lower.includes("econnrefused") ||
     lower.includes("econnreset") ||
-    lower.includes("socket hang up")
+    lower.includes("socket hang up") ||
+    lower.includes("terminated")
+  );
+}
+
+function isLikelyServerError(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("had an error processing your request") ||
+    lower.includes("missing finish_reason")
+  );
+}
+
+function isLikelyAttachmentRejected(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("invalid pdf structure") ||
+    lower.includes("does not represent a valid image") ||
+    lower.includes("error while downloading file")
+  );
+}
+
+function isLikelyContentFiltered(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("request blocked.") ||
+    lower.includes("flagged for possible") ||
+    lower.includes("violating our usage policy")
   );
 }
 
@@ -167,6 +198,12 @@ export class FirstTokenTimeoutError extends Error {
   }
 }
 
+export class InvalidAttachmentError extends Error {
+  constructor(readonly url: string, message: string) {
+    super(message);
+  }
+}
+
 /**
  * Classifies an error into a known category to determine retry behavior.
  * This is the heuristic-based classifier used when adapters don't provide
@@ -196,7 +233,11 @@ export function classifyError(error: unknown, status?: number): ClassifiedError 
 
   let kind: ErrorKind = "unknown";
 
-  if (normalizedError.name === "AbortError") {
+  if (error instanceof InvalidAttachmentError) {
+    kind = "invalid_attachment";
+  } else if (isLikelyAttachmentRejected(message)) {
+    kind = "attachment_rejected";
+  } else if (normalizedError.name === "AbortError") {
     kind = "aborted";
   } else if (normalizedError.name === "TimeoutError") {
     kind = "timeout";
@@ -207,6 +248,10 @@ export function classifyError(error: unknown, status?: number): ClassifiedError 
     kind = "network";
   } else if (isLikelyModelUnavailable(message)) {
     kind = "model_unavailable";
+  } else if (isLikelyContentFiltered(message)) {
+    kind = "content_filtered";
+  } else if (isLikelyServerError(message)) {
+    kind = "server";
   } else if (isLikelyUnsupportedFileType(message)) {
     kind = "unsupported_file_type";
   } else if (isLikelyImageTooLarge(message)) {

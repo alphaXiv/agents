@@ -14,6 +14,9 @@ const DETERMINISTIC_ERROR_KINDS = new Set<ErrorKind>([
   "client",
   "unsupported_file_type",
   "image_too_large",
+  "invalid_attachment",
+  "attachment_rejected",
+  "content_filtered",
 ]);
 
 export function isDeterministicModelError(kind: ErrorKind): boolean {
@@ -142,6 +145,8 @@ export function resolveRetryStrategy(strategy?: RetryStrategy): ResolvedRetryStr
 function getStrategyBehavior(kind: ErrorKind, strategy: ResolvedRetryStrategy): RetryBehavior {
   switch (kind) {
     case "aborted":
+    case "invalid_attachment":
+    case "content_filtered":
       return "no-retry";
     case "timeout":
       return strategy.onTimeout;
