@@ -2,7 +2,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem } from "../../types.ts";
-import { IMAGE_MIME_TYPES, isTextLikeMimeType } from "../shared/media.ts";
+import { fetchAttachmentText, IMAGE_MIME_TYPES, isTextLikeMimeType } from "../shared/media.ts";
 import { ensureToolInputObject } from "../shared/tools.ts";
 import type { AnthropicToolMap } from "./utils.ts";
 
@@ -159,8 +159,7 @@ export async function getAnthropicHistory(options: {
             ],
           });
         } else if (isTextLikeMimeType(historyItem.kind)) {
-          const req = await fetch(historyItem.content, { signal: options.signal });
-          const text = await req.text();
+          const text = await fetchAttachmentText(historyItem.content, options.signal);
 
           pushBuffer.push({
             role: "user",

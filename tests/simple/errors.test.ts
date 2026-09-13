@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { classifyError, ERROR_KINDS, type ErrorKind } from "../../src/errors.ts";
+import { classifyError, ERROR_KINDS, type ErrorKind, InvalidAttachmentError } from "../../src/errors.ts";
 
 function createAbortError() {
   try {
@@ -267,6 +267,78 @@ const testCases: ClassifyErrorTestCase[] = [
     name: "extracts nested status from JSON string",
     error: '{"error": {"code": 429, "message": "Rate limited"}}',
     expected: { kind: "rate_limit", status: 429 },
+  },
+
+  // Invalid attachments
+  {
+    name: "classifies a pdf.js parse failure as attachment_rejected",
+    error: new Error("Invalid PDF structure."),
+    expected: { kind: "attachment_rejected" },
+  },
+  {
+    name: "classifies a provider rejecting the image bytes as attachment_rejected",
+    error: {
+      message: "The image data you provided does not represent a valid image. Please check your input",
+      status: 400,
+    },
+    expected: { kind: "attachment_rejected" },
+  },
+  {
+    name: "classifies a provider failing to download the file as attachment_rejected",
+    error: { message: "Error while downloading file. Upstream status code: 404.", status: 400 },
+    expected: { kind: "attachment_rejected" },
+  },
+  {
+    name: "classifies InvalidAttachmentError as invalid_attachment",
+    error: new InvalidAttachmentError(
+      "https://example.com/paper.pdf",
+      "Attachment https://example.com/paper.pdf is not a PDF",
+    ),
+    expected: { kind: "invalid_attachment" },
+  },
+
+  // Content filtering
+  {
+    name: "classifies a blocked request as content_filtered",
+    error: { message: "Request blocked. Please try again.", status: 400 },
+    expected: { kind: "content_filtered" },
+  },
+  {
+    name: "classifies an Azure content flag as content_filtered",
+    error: { message: "The response was filtered due to content flagged for possible violence", status: 400 },
+    expected: { kind: "content_filtered" },
+  },
+  {
+    name: "classifies a usage policy rejection as content_filtered",
+    error: { message: "Your request was rejected for violating our usage policy", status: 400 },
+    expected: { kind: "content_filtered" },
+  },
+
+  // Provider wording remapped onto transient kinds
+  {
+    name: "classifies terminated as network",
+    error: new Error("terminated"),
+    expected: { kind: "network" },
+  },
+  {
+    name: "classifies Network connection lost. as network",
+    error: new Error("Network connection lost."),
+    expected: { kind: "network" },
+  },
+  {
+    name: "classifies an OpenAI processing failure as server",
+    error: { message: "The server had an error processing your request", status: 400 },
+    expected: { kind: "server" },
+  },
+  {
+    name: "classifies a missing finish_reason as server",
+    error: new Error("missing finish_reason in the response"),
+    expected: { kind: "server" },
+  },
+  {
+    name: "classifies an Anthropic overloaded_error body as model_unavailable",
+    error: '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}',
+    expected: { kind: "model_unavailable" },
   },
 
   // Unknown errors
