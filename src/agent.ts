@@ -489,6 +489,10 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     let currentModelIndex = 0;
     let sameModelRetries = 0;
 
+    let modelCalls = 0;
+    const maxModelCalls = (1 + this.#retryStrategy.sameModelRetries) * (1 + this.#maxRecoveryAttempts) *
+      this.#models.length * this.#retryStrategy.modelCycles;
+
     for (let cycle = 0; cycle < this.#retryStrategy.modelCycles; cycle++) {
       currentModelIndex = 0;
       sameModelRetries = 0;
@@ -523,10 +527,18 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             trace: agentTrace.id,
           };
           sameModelRetries = 0;
+          // Otherwise the next pass on this model counts as another switch.
+          previousModel = null;
         }
 
         // attempt 0 = initial call, 1..N = recovery retries via handleModelError
         for (let attempt = 0; attempt <= this.#maxRecoveryAttempts; attempt++) {
+          modelCalls++;
+          if (modelCalls > maxModelCalls) {
+            agentTrace.log(`Exceeded maximum model calls (${maxModelCalls}) in one turn`);
+            throw lastError ?? new Error(`Exceeded maximum model calls (${maxModelCalls}) in one turn`);
+          }
+
           using modelTrace = newTrace({
             type: "model",
             parent: agentTrace,

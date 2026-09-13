@@ -651,3 +651,46 @@ Deno.test("a deterministic client error retires a model for the rest of the run"
   assertEquals(primaryCalls, 1);
   assertObjectMatch(run.history.at(-1)!, { type: "output_text", content: "search done" });
 });
+
+function serverErrorModel(name: string, calls: { count: number }): Adapter<unknown, unknown> {
+  return {
+    provider: name,
+    model: name,
+    stream() {
+      calls.count += 1;
+      throw new Error("500 Internal Server Error");
+    },
+  };
+}
+
+Deno.test("a failing fallback keeps its own retry budget and switches models once", async () => {
+  const primaryCalls = { count: 0 };
+  const fallbackCalls = { count: 0 };
+  const sameModelRetries = 2;
+  const maxRecoveryAttempts = 0;
+
+  const agent = new Agent({
+    model: [serverErrorModel("primary", primaryCalls), serverErrorModel("fallback", fallbackCalls)],
+    instructions: "You are a friendly assistant",
+    maxRecoveryAttempts,
+    retryStrategy: { modelCycles: 1, sameModelRetries },
+  });
+
+  const streamItems: StreamItem[] = [];
+  await assertRejects(
+    async () => {
+      for await (const item of agent.stream("Hello!")) {
+        streamItems.push(item);
+      }
+    },
+    Error,
+    "500 Internal Server Error",
+  );
+
+  assertEquals(primaryCalls.count, 1 + sameModelRetries);
+  assertEquals(fallbackCalls.count, 1 + sameModelRetries);
+  assertEquals(streamItems.filter((item) => item.type === "model_switched").length, 1);
+
+  const maxModelCalls = (1 + sameModelRetries) * (1 + maxRecoveryAttempts) * 2 * 1;
+  assertEquals(primaryCalls.count + fallbackCalls.count, maxModelCalls);
+});
