@@ -284,9 +284,18 @@ const testCases: ClassifyErrorTestCase[] = [
     expected: { kind: "attachment_rejected" },
   },
   {
-    name: "classifies a provider failing to download the file as attachment_rejected",
-    error: { message: "Error while downloading file. Upstream status code: 404.", status: 400 },
+    name: "classifies Vertex failing to decode the image bytes as attachment_rejected",
+    error: {
+      message:
+        '{"error":{"message":"{\\n \\"error\\": {\\n \\"code\\": 400,\\n \\"message\\": \\"Failed to decode image data. Please make sure the image is valid.\\",\\n \\"status\\": \\"INVALID_ARGUMENT\\"\\n }\\n}\\n","code":400,"status":"Bad Request"}}',
+      status: 400,
+    },
     expected: { kind: "attachment_rejected" },
+  },
+  {
+    name: "classifies a provider failing to download the file as server",
+    error: { message: "Error while downloading file. Upstream status code: 404.", status: 400 },
+    expected: { kind: "server" },
   },
   {
     name: "classifies InvalidAttachmentError as invalid_attachment",
