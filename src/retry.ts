@@ -146,6 +146,7 @@ function getStrategyBehavior(kind: ErrorKind, strategy: ResolvedRetryStrategy): 
   switch (kind) {
     case "aborted":
     case "invalid_attachment":
+    case "attachment_rejected":
     case "content_filtered":
       return "no-retry";
     case "timeout":

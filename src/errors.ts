@@ -108,7 +108,8 @@ function isLikelyServerError(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     lower.includes("had an error processing your request") ||
-    lower.includes("missing finish_reason")
+    lower.includes("missing finish_reason") ||
+    lower.includes("error while downloading file")
   );
 }
 
@@ -117,7 +118,7 @@ function isLikelyAttachmentRejected(text: string): boolean {
   return (
     lower.includes("invalid pdf structure") ||
     lower.includes("does not represent a valid image") ||
-    lower.includes("error while downloading file")
+    lower.includes("failed to decode image data")
   );
 }
 

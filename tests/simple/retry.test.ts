@@ -80,7 +80,7 @@ const defaultBehaviorMatrix: Array<{ kind: ErrorKind; expected: RetryBehavior }>
   { kind: "context_overflow", expected: "switch-model" },
   { kind: "image_too_large", expected: "switch-model" },
   { kind: "invalid_attachment", expected: "no-retry" },
-  { kind: "attachment_rejected", expected: "switch-model" },
+  { kind: "attachment_rejected", expected: "no-retry" },
   { kind: "content_filtered", expected: "no-retry" },
 ];
 
