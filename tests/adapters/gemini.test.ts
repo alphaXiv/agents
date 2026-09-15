@@ -49,14 +49,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiAdapter streams a parameterized tool call (gemini-3.6-flash, thinking-level)",
+  name: "GeminiAdapter streams a parameterized tool call (gemini-3.8-flash, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
     const adapter = googleGenerateContentAPIModel({
-      model: "gemini-3.6-flash",
+      model: "gemini-3.8-flash",
       thinkingConfig: { includeThoughts: true, thinkingLevel: GenAiThinkingLevel.LOW },
     });
 
@@ -229,13 +229,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiModel streams tools and results (gemini-3.6-flash, thinking-level)",
+  name: "GeminiModel streams tools and results (gemini-3.8-flash, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: geminiModel({ model: "gemini-3.6-flash", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.8-flash", thinkingLevel: "low" }),
     });
   },
 });
@@ -325,13 +325,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiModel streams structured output (gemini-3.6-flash, thinking-level)",
+  name: "GeminiModel streams structured output (gemini-3.8-flash, thinking-level)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runStructuredOutputStreamingTest(t, {
-      model: geminiModel({ model: "gemini-3.6-flash", thinkingLevel: "low" }),
+      model: geminiModel({ model: "gemini-3.8-flash", thinkingLevel: "low" }),
     });
   },
 });
