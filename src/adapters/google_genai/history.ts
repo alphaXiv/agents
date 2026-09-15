@@ -7,7 +7,11 @@ import type { GoogleToolMap } from "./tools.ts";
 
 type EnsureFileUploaded = (url: string, mimeType: string, abortSignal: AbortSignal) => Promise<string>;
 
-const signatureMap = new Map<string, string>();
+// A signature is only valid on the endpoint that issued it, so a replay elsewhere sends the placeholder instead.
+const signatureMap = new Map<string, { provider: string; signature: string }>();
+
+// Magic word comes from https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#migrating_from_other_models
+const PLACEHOLDER_THOUGHT_SIGNATURE = "context_engineering_is_the_way_to_go";
 
 /**
  * Google requires functionCall.args to be an object-like Struct, so replayed
@@ -31,11 +35,12 @@ function getGoogleFileBaseUrl(url: string) {
   return new URL("v1beta/files/", url.endsWith("/") ? url : `${url}/`).toString();
 }
 
-export function rememberGoogleThoughtSignature(toolUseId: string, signature: string) {
-  signatureMap.set(toolUseId, signature);
+export function rememberGoogleThoughtSignature(provider: string, toolUseId: string, signature: string) {
+  signatureMap.set(toolUseId, { provider, signature });
 }
 
 export async function getGoogleGenerateContentAPIHistory(options: {
+  provider: string;
   history: ChatItem[];
   toolMap: GoogleToolMap[];
   signal: AbortSignal;
@@ -58,8 +63,10 @@ export async function getGoogleGenerateContentAPIHistory(options: {
         break;
       case "tool_use": {
         const tool = options.toolMap.find((tool) => tool.original.name === item.kind);
-        // Magic word comes from https://ai.google.dev/gemini-api/docs/gemini-3?thinking=high#migrating_from_other_models
-        const thoughtSignature = signatureMap.get(item.tool_use_id) ?? "context_engineering_is_the_way_to_go";
+        const remembered = signatureMap.get(item.tool_use_id);
+        const thoughtSignature = remembered?.provider === options.provider
+          ? remembered.signature
+          : PLACEHOLDER_THOUGHT_SIGNATURE;
 
         googleHistory.push({
           role: "model",

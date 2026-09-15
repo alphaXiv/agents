@@ -3,7 +3,10 @@ import { assertEquals } from "@std/assert";
 import { encodeBase64 } from "@std/encoding";
 import { geminiModel } from "../../src/adapters/gemini/adapter.ts";
 import { getThinkingConfig, googleGenerateContentAPIModel } from "../../src/adapters/google_genai/adapter.ts";
-import { getGoogleGenerateContentAPIHistory } from "../../src/adapters/google_genai/history.ts";
+import {
+  getGoogleGenerateContentAPIHistory,
+  rememberGoogleThoughtSignature,
+} from "../../src/adapters/google_genai/history.ts";
 import {
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
@@ -407,6 +410,7 @@ Deno.test({
 
 Deno.test("GeminiAdapter replays tool calls and results without current tool definitions", async () => {
   const history = await getGoogleGenerateContentAPIHistory({
+    provider: "Gemini",
     history: [
       { type: "tool_use", tool_use_id: "call_1", kind: "Load Project Snapshot", content: undefined },
       { type: "tool_result_text", tool_use_id: "call_1", content: "ready" },
@@ -440,8 +444,30 @@ Deno.test("GeminiAdapter replays tool calls and results without current tool def
   ]);
 });
 
+Deno.test("GeminiAdapter replays a thought signature only to the endpoint that issued it", async () => {
+  rememberGoogleThoughtSignature("Vertex AI", "call_1", "vertex-signature");
+  const history = [{ type: "tool_use" as const, tool_use_id: "call_1", kind: "Search Papers", content: undefined }];
+
+  const vertex = await getGoogleGenerateContentAPIHistory({
+    provider: "Vertex AI",
+    history,
+    toolMap: [],
+    signal: AbortSignal.abort(),
+  });
+  assertEquals(vertex[0].parts?.[0].thoughtSignature, "vertex-signature");
+
+  const gemini = await getGoogleGenerateContentAPIHistory({
+    provider: "Gemini",
+    history,
+    toolMap: [],
+    signal: AbortSignal.abort(),
+  });
+  assertEquals(gemini[0].parts?.[0].thoughtSignature, "context_engineering_is_the_way_to_go");
+});
+
 Deno.test("GeminiAdapter drops a tool result whose call is missing from the history", async () => {
   const history = await getGoogleGenerateContentAPIHistory({
+    provider: "Gemini",
     history: [
       { type: "tool_result_text", tool_use_id: "call_1", content: "orphaned result" },
       { type: "input_text", content: "what did you find?" },
@@ -455,6 +481,7 @@ Deno.test("GeminiAdapter drops a tool result whose call is missing from the hist
 
 Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without current tool definitions", async () => {
   const history = await getGoogleGenerateContentAPIHistory({
+    provider: "Gemini",
     history: [
       {
         type: "tool_use",
@@ -484,6 +511,7 @@ Deno.test("GeminiAdapter wraps primitive tool arguments when replaying without c
 
 Deno.test("GeminiAdapter replays mixed tool history for a tool-less handoff", async () => {
   const history = await getGoogleGenerateContentAPIHistory({
+    provider: "Gemini",
     history: [
       {
         type: "tool_use",
@@ -605,6 +633,7 @@ Deno.test("GeminiAdapter inlines file history instead of using the Files API", a
   const server = Deno.serve({ port: 0, onListen: () => {} }, () => new Response(bytes));
   try {
     const history = await getGoogleGenerateContentAPIHistory({
+      provider: "Gemini",
       history: [{
         type: "input_file",
         kind: "application/pdf",
