@@ -98,12 +98,17 @@ export interface OpenResponsesFiles extends OpenResponsesFilesConfig {
   uploaded: Set<string>;
 }
 
-/** Providers check the filename extension on upload, and the last segment of a URL often has none. */
+/**
+ * Providers check the filename extension on upload, and the last segment of a URL often has none.
+ * OpenAI compares it case-sensitively and rejects ".JPG", so the extension is always sent lowercase.
+ */
 function uploadFileName(url: string, mimeType: string): string {
   const name = getFileNameFromUrl(url) ?? "file";
   const subtype = mimeType.split("/")[1];
   const accepted = subtype === "jpeg" ? ["jpeg", "jpg"] : [subtype];
-  if (accepted.some((extension) => name.toLowerCase().endsWith(`.${extension}`))) return name;
+  const dotIndex = name.lastIndexOf(".");
+  const extension = dotIndex > 0 ? name.slice(dotIndex + 1).toLowerCase() : "";
+  if (accepted.includes(extension)) return `${name.slice(0, dotIndex)}.${extension}`;
   return `${name}.${accepted.at(-1)}`;
 }
 
