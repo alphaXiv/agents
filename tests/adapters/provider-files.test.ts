@@ -327,7 +327,7 @@ Deno.test("without a fileStore the input keeps image_url and file_data", async (
   });
 });
 
-Deno.test("an upload is named with the extension for its mime type when the URL has none", async () => {
+Deno.test("an upload is named with the lowercase extension for its mime type", async () => {
   using _fetch = stubFetch();
   const fake = createFakeClient("file");
   const adapter = openAIModel({ model: "gpt-5.6-luna", client: fake.client, fileStore: createMemoryStore() });
@@ -343,7 +343,7 @@ Deno.test("an upload is named with the extension for its mime type when the URL 
   assertEquals(fake.created.map((c) => c.filename), [
     "1706.03762v7.pdf",
     "abc.jpg",
-    "Logo.PNG",
+    "Logo.png",
     "photo.jpeg",
     "photo.jpg",
   ]);
