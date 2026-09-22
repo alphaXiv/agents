@@ -34,6 +34,21 @@ function reasoning<const T extends readonly [OpenAIReasoningEffort, ...OpenAIRea
 
 const openAiModelsDefinition = {
   // Frontier
+  "gpt-6-astra": reasoning({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-6-sol": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-6-luna": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
   // `gpt-5.6` is an alias that routes to Sol. Terra trades capability for cost, Luna is the
   // fast, high-volume tier. `max` arrived with this generation and is reserved for the
   // hardest quality-first work.
@@ -206,20 +221,20 @@ export type OpenAIModels = keyof typeof openAiModels;
 type ModelConfig<TModel extends OpenAIModels> = (typeof openAiModels)[TModel];
 
 export type SupportedReasoningEffort<TModel extends OpenAIModels> = ModelConfig<TModel> extends
-  { schema: z.ZodType<infer V> } ? V : never;
+  { schema: z.ZodType<infer V extends OpenAIReasoningEffort> } ? V : never;
 
 export function getModelModalities<TModel extends OpenAIModels>(model: TModel): readonly OpenAIModelModality[] {
   return openAiModels[model].modalities as readonly OpenAIModelModality[];
 }
 
-export function resolveOpenAIReasoning<TModel extends OpenAIModels>(
-  model: TModel,
-  effort?: SupportedReasoningEffort<TModel>,
+export function resolveOpenAIReasoning(
+  model: OpenAIModels | (string & Record<never, never>),
+  effort?: OpenAIReasoningEffort,
 ): { effort: OpenAIReasoningEffort; summary?: "auto" } | undefined {
-  const config = openAiModelReasoningSupport[model];
-  if (!("schema" in config)) return undefined;
-  const resolved = (effort ?? getDefaultReasoningEffort(model)) as OpenAIReasoningEffort;
-  return { effort: resolved, summary: resolved === "none" ? undefined : "auto" };
+  const config = openAiModelReasoningSupport[model as OpenAIModels];
+  if (config && !("schema" in config)) return undefined;
+  const resolved = effort ?? config?.schema.parse(undefined);
+  return resolved ? { effort: resolved, summary: resolved === "none" ? undefined : "auto" } : undefined;
 }
 
 export function getDefaultReasoningEffort<TModel extends OpenAIModels>(

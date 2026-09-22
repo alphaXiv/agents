@@ -1016,6 +1016,29 @@ Deno.test("Anthropic caching breakpoints cover the system prefix and the convers
   assertEquals(tailCacheControl(request), { type: "ephemeral", ttl: "1h" });
 });
 
+Deno.test("Anthropic Opus 5.5 uses medium adaptive thinking and native structured output", async () => {
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({ model: "claude-opus-5-5", client }));
+
+  assertEquals(requests[0].model, "claude-opus-5-5");
+  assertEquals(requests[0].thinking, { type: "adaptive", display: "summarized" });
+  assertEquals(requests[0].output_config?.effort, "medium");
+});
+
+Deno.test("Anthropic accepts a future model with declared capabilities", async () => {
+  const { client, requests } = createCapturingAnthropicClient();
+  await streamOnce(anthropicModel({
+    model: "claude-opus-6",
+    capabilities: { adaptiveThinking: true, nativeStructuredOutput: true },
+    effort: "high",
+    client,
+  }));
+
+  assertEquals(requests[0].model, "claude-opus-6");
+  assertEquals(requests[0].thinking, { type: "adaptive", display: "summarized" });
+  assertEquals(requests[0].output_config?.effort, "high");
+});
+
 Deno.test("Anthropic caching defaults to the 5 minute cache", async () => {
   const { client, requests } = createCapturingAnthropicClient();
   await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: true, client }));

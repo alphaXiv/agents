@@ -127,6 +127,18 @@ Deno.test("gpt-5.6 exposes the max effort level that arrived with the generation
   openAIModel({ model: "gpt-5.5", effort: "max", client });
 });
 
+Deno.test("GPT-6 models expose their supported reasoning levels", () => {
+  const client = { responses: { stream: () => ({}) } } as unknown as OpenResponsesClient;
+  openAIModel({ model: "gpt-6-astra", effort: "max", client });
+  openAIModel({ model: "gpt-6-sol", effort: "max", client });
+  openAIModel({ model: "gpt-6-luna", effort: "none", client });
+
+  // @ts-expect-error Astra does not support no reasoning.
+  openAIModel({ model: "gpt-6-astra", effort: "none", client });
+  // @ts-expect-error GPT-6 does not support minimal reasoning effort.
+  openAIModel({ model: "gpt-6-sol", effort: "minimal", client });
+});
+
 Deno.test({
   name: "OpenAIModel streams tools and results (gpt-5.6, reasoning)",
   ignore: !HAS_OPENAI_KEY,
