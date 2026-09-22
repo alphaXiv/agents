@@ -186,6 +186,9 @@ type StreamItemType = {
   type: "token_usage";
   usage: TokenUsage;
 } | {
+  /** The request is going to the provider, after any preparation such as file uploads. Consumed by the Agent. */
+  type: "request_start";
+} | {
   /** The model switched to a fallback due to an error. */
   type: "model_switched";
   from: ModelInfo;
@@ -227,4 +230,17 @@ export interface ProviderStreamMetadata {
    * have no write to bill and report `0`.
    */
   cacheWriteTokens?: number | null;
+}
+
+/**
+ * Files uploaded to the provider, keyed by source URL. The caller owns storage and expiry.
+ * A row past `expiresAt` is a miss, replaced on the next read of that URL and never extended.
+ * The adapter never deletes expired rows or their provider files, so sweep them yourself.
+ */
+export interface ProviderFileStore {
+  get(url: string): Promise<{ fileId: string; expiresAt: Date } | undefined>;
+  /** Returns the id that won. A live row keeps its own id, an expired row takes `fileId`. */
+  set(url: string, fileId: string, expiresAt: Date): Promise<{ fileId: string }>;
+  /** Deletes the row only while it still holds `fileId`. */
+  delete(url: string, fileId: string): Promise<void>;
 }

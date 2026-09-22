@@ -221,10 +221,20 @@ export type OpenAIModels = keyof typeof openAiModels;
 type ModelConfig<TModel extends OpenAIModels> = (typeof openAiModels)[TModel];
 
 export type SupportedReasoningEffort<TModel extends OpenAIModels> = ModelConfig<TModel> extends
-  { schema: z.ZodType<infer V> } ? V : never;
+  { schema: z.ZodType<infer V extends OpenAIReasoningEffort> } ? V : never;
 
 export function getModelModalities<TModel extends OpenAIModels>(model: TModel): readonly OpenAIModelModality[] {
   return openAiModels[model].modalities as readonly OpenAIModelModality[];
+}
+
+export function resolveOpenAIReasoning(
+  model: OpenAIModels | (string & Record<never, never>),
+  effort?: OpenAIReasoningEffort,
+): { effort: OpenAIReasoningEffort; summary?: "auto" } | undefined {
+  const config = openAiModelReasoningSupport[model as OpenAIModels];
+  if (config && !("schema" in config)) return undefined;
+  const resolved = effort ?? config?.schema.parse(undefined);
+  return resolved ? { effort: resolved, summary: resolved === "none" ? undefined : "auto" } : undefined;
 }
 
 export function getDefaultReasoningEffort<TModel extends OpenAIModels>(

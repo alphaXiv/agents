@@ -2,10 +2,9 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem } from "../../types.ts";
+import { fetchAttachmentText, IMAGE_MIME_TYPES, isTextLikeMimeType } from "../shared/media.ts";
 import { ensureToolInputObject } from "../shared/tools.ts";
 import type { AnthropicToolMap } from "./utils.ts";
-
-const supportedImageMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"];
 
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
@@ -79,14 +78,22 @@ export async function getAnthropicHistory(options: {
       }
       case "tool_use": {
         const tool = options.normalizedTools.find((tool) => tool.original.name === historyItem.kind);
-        const content = historyItem.content ? JSON.parse(historyItem.content) : {};
+        let input: unknown;
+        try {
+          const content = historyItem.content ? JSON.parse(historyItem.content) : {};
+          input = tool?.compatibility ? tool.compatibility.toProvider(content) : content;
+        } catch {
+          // A turn whose arguments never parsed still has to replay as a legal tool_use block.
+          // Throwing here would make the whole conversation unsendable to any model.
+          input = historyItem.content;
+        }
         anthropicHistory.push({
           role: "assistant",
           content: [{
             type: "tool_use",
             id: historyItem.tool_use_id,
             name: tool?.anthropic.name ?? normalizeToolName(historyItem.kind),
-            input: ensureToolInputObject(tool?.compatibility ? tool.compatibility.toProvider(content) : content),
+            input: ensureToolInputObject(input),
           }],
         });
         break;
@@ -127,7 +134,7 @@ export async function getAnthropicHistory(options: {
       case "input_file":
       case "tool_result_file": {
         const pushBuffer = historyItem.type === "input_file" ? anthropicHistory : anthropicToolFileBuffer;
-        if (supportedImageMimeTypes.includes(historyItem.kind)) {
+        if ((IMAGE_MIME_TYPES as readonly string[]).includes(historyItem.kind)) {
           pushBuffer.push({
             role: "user",
             content: [{
@@ -151,9 +158,8 @@ export async function getAnthropicHistory(options: {
               },
             ],
           });
-        } else if (historyItem.kind.startsWith("text/")) {
-          const req = await fetch(historyItem.content, { signal: options.signal });
-          const text = await req.text();
+        } else if (isTextLikeMimeType(historyItem.kind)) {
+          const text = await fetchAttachmentText(historyItem.content, options.signal);
 
           pushBuffer.push({
             role: "user",

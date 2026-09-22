@@ -36,7 +36,13 @@ import type {
   TokenUsage,
   WithTraceId,
 } from "./types.ts";
-import { convertChatLikeToChatItem, convertToolResultLikeToChatItem, errMessage, iteratePromiseArray } from "./util.ts";
+import {
+  convertChatLikeToChatItem,
+  convertToolResultLikeToChatItem,
+  errMessage,
+  iteratePromiseArray,
+  wellFormedItems,
+} from "./util.ts";
 
 const DEFAULT_MAX_TURNS = 100;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
@@ -276,7 +282,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
   constructor(options: AgentOptions<zO, zI, Tools>) {
     this.#name = options.name;
     this.#models = (Array.isArray(options.model) ? options.model : [options.model]).map(resolveModel);
-    this.#instructions = options.instructions;
+    this.#instructions = options.instructions.toWellFormed();
     this.#tools = (options.tools?.slice() ?? []) as Tools;
     this.#output = options.output;
     this.#cache = options.cache;
@@ -483,6 +489,10 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     let currentModelIndex = 0;
     let sameModelRetries = 0;
 
+    let modelCalls = 0;
+    const maxModelCalls = (1 + this.#retryStrategy.sameModelRetries) * (1 + this.#maxRecoveryAttempts) *
+      this.#models.length * this.#retryStrategy.modelCycles;
+
     for (let cycle = 0; cycle < this.#retryStrategy.modelCycles; cycle++) {
       currentModelIndex = 0;
       sameModelRetries = 0;
@@ -517,10 +527,18 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             trace: agentTrace.id,
           };
           sameModelRetries = 0;
+          // Otherwise the next pass on this model counts as another switch.
+          previousModel = null;
         }
 
         // attempt 0 = initial call, 1..N = recovery retries via handleModelError
         for (let attempt = 0; attempt <= this.#maxRecoveryAttempts; attempt++) {
+          modelCalls++;
+          if (modelCalls > maxModelCalls) {
+            agentTrace.log(`Exceeded maximum model calls (${maxModelCalls}) in one turn`);
+            throw lastError ?? new Error(`Exceeded maximum model calls (${maxModelCalls}) in one turn`);
+          }
+
           using modelTrace = newTrace({
             type: "model",
             parent: agentTrace,
@@ -532,6 +550,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               outputTokens: null,
               cacheReadTokens: null,
               cacheWriteTokens: null,
+              requestAt: null,
             },
           });
           using messageTracer = new MessageTracer(modelTrace);
@@ -671,14 +690,17 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       if (watchdogTimer) clearTimeout(watchdogTimer);
       watchdogTimer = null;
     }
-    if (options.hasFallback && firstTokenTimeoutMs > 0) {
-      watchdogController = new AbortController();
-      signal.addEventListener("abort", forwardAbort);
+    function armTimer() {
       watchdogTimer = setTimeout(() => {
         watchdogTimer = null;
         watchdogError = new FirstTokenTimeoutError(firstTokenTimeoutMs, adapter.provider, adapter.model);
         watchdogController?.abort(watchdogError);
       }, firstTokenTimeoutMs);
+    }
+    if (options.hasFallback && firstTokenTimeoutMs > 0) {
+      watchdogController = new AbortController();
+      signal.addEventListener("abort", forwardAbort);
+      armTimer();
     }
     using _ = {
       [Symbol.dispose]: () => {
@@ -693,7 +715,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       tools: this.#tools,
       output: this.#output,
       cache: this.#cache,
-      history: options.history,
+      history: wellFormedItems(options.history),
       signal: watchdogController?.signal ?? signal,
     });
 
@@ -705,10 +727,10 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         if (watchdogError) throw watchdogError;
         throw error;
       }
-      disarmTimer();
 
       const { value: part, done } = next;
       if (done) {
+        disarmTimer();
         messageTracer.endMessageTraceIfStarted();
         modelTrace.success({
           inputTokens: part.inputTokens,
@@ -725,6 +747,18 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         };
       }
 
+      if (part.type === "request_start") {
+        // Preparation (store lookups, file uploads) already happened, so restart the
+        // watchdog to give the provider itself the full first token budget.
+        if (watchdogTimer) {
+          disarmTimer();
+          armTimer();
+        }
+        modelTrace.update({ requestAt: Date.now() });
+        continue;
+      }
+      disarmTimer();
+
       // Eager tool dispatch: start tool execution while the model is still streaming
       let trace: string | null = null;
       if (part.type === "tool_use") {
@@ -733,10 +767,9 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           `Provider ${adapter.provider} did not use unique tool use id: ${part.tool_use_id}`,
         );
         trace = generate();
-        pendingTools.set(
-          part.tool_use_id,
-          this.#runTool(part, signal, toolSignal, trace, agentTrace),
-        );
+        const toolPromise = this.#runTool(part, signal, toolSignal, trace, agentTrace);
+        toolPromise.catch(() => {});
+        pendingTools.set(part.tool_use_id, toolPromise);
       }
 
       // Message tracing

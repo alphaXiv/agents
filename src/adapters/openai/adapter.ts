@@ -11,8 +11,13 @@ import {
   openAiModelReasoningSupport,
   type OpenAIModels,
   type OpenAIReasoningEffort,
+  resolveOpenAIReasoning,
   type SupportedReasoningEffort,
 } from "./models.ts";
+import type { ProviderFileStore } from "../../types.ts";
+
+/** Backup to the store's 7 day expiry, later so the store is always the one that deletes first. */
+const FILE_EXPIRES_AFTER_SECONDS = 9 * 24 * 60 * 60;
 
 export function openAIModel<zO, zI, TModel extends OpenAIModels | (string & Record<never, never>)>(options: {
   model: TModel;
@@ -24,11 +29,10 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels | (string & Reco
   modalities?: TModel extends OpenAIModels ? never : readonly OpenAIModelModality[];
   parallelToolCalls?: boolean;
   client?: OpenResponsesClient;
+  /** When set, images and PDFs are uploaded to the Files API and sent as `file_id`. */
+  fileStore?: ProviderFileStore;
 }): Adapter<zO, zI> {
   const modelConfig = openAiModelReasoningSupport[options.model as OpenAIModels];
-  const effort = modelConfig && "schema" in modelConfig
-    ? options.effort ?? modelConfig.schema.parse(undefined)
-    : options.effort;
 
   return openResponsesModel({
     provider: "OpenAI",
@@ -39,13 +43,15 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels | (string & Reco
       apiKey: options.apiKey ?? requireEnv("OPENAI_API_KEY"),
       baseURL: options.baseUrl ?? crossPlatformEnv("OPENAI_BASE_URL") ?? "https://api.openai.com/v1",
     },
-    reasoning: effort
-      ? {
-        effort,
-        summary: effort === "none" ? undefined : "auto",
-      }
-      : undefined,
+    reasoning: resolveOpenAIReasoning(options.model, options.effort),
     parallelToolCalls: options.parallelToolCalls,
     serviceTier: options.serviceTier,
+    files: options.fileStore
+      ? {
+        purpose: "user_data",
+        expiresAfterSeconds: FILE_EXPIRES_AFTER_SECONDS,
+        store: options.fileStore,
+      }
+      : undefined,
   });
 }

@@ -7,6 +7,7 @@ import { getOpenAICompletionsHistory } from "../../src/adapters/openai_completio
 import { normalizeOpenAICompletionsTools } from "../../src/adapters/openai_completions/tools.ts";
 import { RETRY_RESUMABILITY_PROMPT } from "../../src/constants.ts";
 import { Tool } from "../../src/tool.ts";
+import { collectAdapterStream } from "./shared.ts";
 
 /**
  * Replays raw stream events without going through the SDK. Fine for asserting how the
@@ -309,12 +310,7 @@ Deno.test("OpenAI Completions restores structured output from OpenAI-compatible 
     }),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [{
     type: "delta_output_text",
@@ -410,15 +406,8 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
     output: z.object({ answer: z.string() }),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) {
-      assertEquals(next.value, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
-      break;
-    }
-    items.push(next.value);
-  }
+  const { items, metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
 
   assertEquals(items, [
     { type: "delta_output_text", delta: "Hello", index: 0 },
@@ -437,7 +426,7 @@ Deno.test("OpenAI Completions stream maps text, reasoning, and tool calls", asyn
       function: {
         name: "search",
         description: "Search for documents",
-        strict: true,
+        strict: false,
         parameters: {
           type: "object",
           properties: {

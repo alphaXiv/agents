@@ -274,3 +274,40 @@ Deno.test("ModelOutput carries history up to the point of termination", async ()
   const toolUses = run.history.filter((h) => h.type === "tool_use");
   assert(toolUses.length > 0, "history should contain the tool_use item");
 });
+
+Deno.test("ModelOutput settling while the model is still streaming is not an unhandled rejection", async () => {
+  const outputTool = new Tool({
+    name: "output_tool",
+    description: "Returns model output",
+    parameters: z.void(),
+    execute: () => new ModelOutput("done"),
+  });
+
+  const agent = new Agent({
+    model: {
+      provider: "slow",
+      model: "slow",
+      async *stream() {
+        yield { type: "tool_use", index: 0, tool_use_id: "id-slow", kind: outputTool.name };
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return { inputTokens: 0, outputTokens: 0 };
+      },
+    },
+    instructions: "Model output during stream test",
+    tools: [outputTool],
+  });
+
+  const rejections: unknown[] = [];
+  const onRejection = (event: PromiseRejectionEvent) => {
+    event.preventDefault();
+    rejections.push(event.reason);
+  };
+  globalThis.addEventListener("unhandledrejection", onRejection);
+  try {
+    const run = await agent.run("go");
+    assertEquals(run.output, "done");
+    assertEquals(rejections, []);
+  } finally {
+    globalThis.removeEventListener("unhandledrejection", onRejection);
+  }
+});

@@ -11,6 +11,7 @@ import { Tool } from "../../src/tool.ts";
 import { addStreamItem } from "../../src/client.ts";
 import type { ChatItem } from "../../src/types.ts";
 import type { ResponseInputItem } from "openai/resources/responses/responses";
+import { collectAdapterStream } from "./shared.ts";
 
 function createMockClient(
   events: unknown[],
@@ -353,12 +354,7 @@ Deno.test("Open Responses restores structured output from OpenAI-compatible surr
     }),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [{
     type: "delta_output_text",
@@ -413,12 +409,7 @@ Deno.test("Open Responses stream unwraps primitive tool arguments when the done 
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "tool_use_start", tool_use_id: "call_1", kind: "Search", index: 0 },
@@ -458,12 +449,7 @@ Deno.test("Open Responses synthesizes tool_use_start when arguments.done arrives
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "tool_use_start", tool_use_id: "fc_1", kind: "Search", index: 0 },
@@ -571,15 +557,8 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
     output: z.object({ answer: z.string() }),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) {
-      assertEquals(next.value, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
-      break;
-    }
-    items.push(next.value);
-  }
+  const { items, metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 11, outputTokens: 7, cacheReadTokens: null, cacheWriteTokens: 0 });
 
   assertEquals(items, [
     { type: "delta_output_text", delta: "Hello", index: 0 },
@@ -629,6 +608,7 @@ Deno.test("Open Responses stream maps text, reasoning, refusal, and function cal
       },
     },
     reasoning: { effort: "medium", summary: "auto" },
+    include: ["reasoning.encrypted_content"],
     stream: true,
   });
 });
@@ -650,10 +630,8 @@ Deno.test("OpenAIModel defaults effort for reasoning models", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
 });
 
@@ -668,7 +646,7 @@ Deno.test("GPT-6 models use medium reasoning by default", async () => {
     });
 
     const stream = model.stream({ history: [], instructions: "test", tools: [], signal: AbortSignal.abort() });
-    await stream.next();
+    await collectAdapterStream(stream);
 
     assertEquals((capturedRequest as { model: string }).model, modelId);
     assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "medium", summary: "auto" });
@@ -687,7 +665,7 @@ Deno.test("OpenAIModel accepts future IDs with explicit capabilities", async () 
   });
 
   const stream = model.stream({ history: [], instructions: "test", tools: [], signal: AbortSignal.abort() });
-  await stream.next();
+  await collectAdapterStream(stream);
 
   assertEquals((capturedRequest as { model: string }).model, "gpt-7");
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { effort: "high", summary: "auto" });
@@ -710,10 +688,8 @@ Deno.test("OpenAIModel omits reasoning for non-reasoning models", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, undefined);
 });
 
@@ -735,10 +711,8 @@ Deno.test("OpenAIModel stores configured service tier", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { service_tier?: unknown }).service_tier, "flex");
 });
 
@@ -840,10 +814,8 @@ Deno.test("Open Responses respects parallelToolCalls option", async () => {
     output: undefined,
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
 
   assertEquals((capturedRequest as { parallel_tool_calls?: boolean }).parallel_tool_calls, false);
 });
@@ -862,10 +834,8 @@ Deno.test("Open Responses reports cached tokens as their own bucket, outside inp
   });
 
   // OpenAI counts cached tokens inside input_tokens, so 1500 - 1024 is the uncached remainder.
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 476, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 476, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 0 });
 });
 
 Deno.test("Open Responses splits the cache write premium out of inputTokens (GPT-5.6+)", async () => {
@@ -880,10 +850,8 @@ Deno.test("Open Responses splits the cache write premium out of inputTokens (GPT
   const adapter = openResponsesModel({ model: "gpt-5.6", client });
 
   const stream = adapter.stream({ history: [], instructions: "Be useful", tools: [], signal: AbortSignal.abort() });
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 76, outputTokens: 7, cacheReadTokens: 1024, cacheWriteTokens: 400 });
 });
 
 Deno.test("Open Responses stream separates reasoning summary parts sharing an output index", async () => {
@@ -932,12 +900,7 @@ Deno.test("Open Responses stream separates reasoning summary parts sharing an ou
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "reasoning_start", index: 0 },
@@ -1003,12 +966,7 @@ Deno.test("Open Responses reasoning starts do not consume a stream index", async
     signal: AbortSignal.abort(),
   });
 
-  const items = [];
-  while (true) {
-    const next = await stream.next();
-    if (next.done) break;
-    items.push(next.value);
-  }
+  const { items } = await collectAdapterStream(stream);
 
   assertEquals(items, [
     { type: "reasoning_start", index: 0 },
@@ -1044,6 +1002,12 @@ Deno.test("Open Responses replays tool calls with the reasoning item that produc
           sequence_number: 1,
           output_index: 0,
           item: { id: "rs_real", type: "reasoning", status: "in_progress", summary: [] },
+        },
+        {
+          type: "response.output_item.done",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: "rs_real", type: "reasoning", status: "completed", summary: [], encrypted_content: "enc_real" },
         },
         // Two calls share one reasoning item, as gpt-5.6-luna does with parallel tool calls.
         {
@@ -1119,17 +1083,79 @@ Deno.test("Open Responses replays tool calls with the reasoning item that produc
 
   const input = (capturedRequest as { input: ResponseInputItem[] }).input;
 
-  // The shared reasoning item appears exactly once, ahead of both calls that reference it.
-  assertEquals(input.filter((item) => item.type === "reasoning"), [
-    { type: "reasoning", id: "rs_real", summary: [] },
-  ]);
-  assertEquals(input[0], { type: "reasoning", id: "rs_real", summary: [] });
+  // The shared reasoning item appears exactly once, ahead of both calls that reference it,
+  // and carries the blob so the endpoint never has to look the id up.
+  const replayed = { type: "reasoning" as const, id: "rs_real", encrypted_content: "enc_real", summary: [] };
+  assertEquals(input.filter((item) => item.type === "reasoning"), [replayed]);
+  assertEquals(input[0], replayed);
 
-  const calls = input.filter((item) => item.type === "function_call");
-  assertEquals(calls.map((call) => getItemId(call)), ["fc_real_1", "fc_real_2", getItemId(calls[2])]);
-  // A cache miss must not borrow a provider id, or the API rejects the unpaired call.
-  assert(getItemId(calls[2]).startsWith("fc_"));
-  assert(getItemId(calls[2]) !== "fc_real_1" && getItemId(calls[2]) !== "fc_real_2");
+  // Call ids are always synthetic so nothing in the request needs a server-side lookup.
+  const callIds = input.filter((item) => item.type === "function_call").map(getItemId);
+  assertEquals(callIds.length, 3);
+  assertEquals(new Set(callIds).size, 3);
+  for (const id of callIds) {
+    assert(id.startsWith("fc_") && id !== "fc_real_1" && id !== "fc_real_2");
+  }
+});
+
+Deno.test("Open Responses does not replay reasoning the endpoint returned without a blob", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  let capturedRequest: unknown;
+  const adapter = openResponsesModel({
+    model: "test-model",
+    client: createMockClient(
+      [
+        {
+          type: "response.output_item.added",
+          sequence_number: 1,
+          output_index: 0,
+          item: { id: "rs_stored", type: "reasoning", status: "in_progress", summary: [] },
+        },
+        // An endpoint that ignores `include` keeps the reasoning server side only.
+        {
+          type: "response.output_item.done",
+          sequence_number: 2,
+          output_index: 0,
+          item: { id: "rs_stored", type: "reasoning", status: "completed", summary: [], encrypted_content: null },
+        },
+        {
+          type: "response.function_call_arguments.done",
+          sequence_number: 3,
+          output_index: 1,
+          item_id: "fc_stored",
+          name: "search",
+          arguments: '{"content":"cats"}',
+        },
+      ],
+      { usage: { input_tokens: 1, output_tokens: 1 } },
+      (request) => {
+        capturedRequest = request;
+      },
+    ),
+  });
+
+  async function drain(history: ChatItem[]) {
+    const stream = adapter.stream({
+      history,
+      instructions: "Be useful",
+      tools: [searchTool],
+      signal: AbortSignal.abort(),
+    });
+    while (!(await stream.next()).done) { /* drain */ }
+  }
+
+  await drain([]);
+  await drain([{ type: "tool_use", tool_use_id: "fc_stored", kind: "Search", content: '"cats"' }]);
+
+  const input = (capturedRequest as { input: ResponseInputItem[] }).input;
+  assertEquals(input.filter((item) => item.type === "reasoning"), []);
+  assert(getItemId(input[0]).startsWith("fc_") && getItemId(input[0]) !== "fc_stored");
 });
 
 Deno.test("Open Responses does not share replay ids between adapter instances", async () => {
@@ -1148,6 +1174,12 @@ Deno.test("Open Responses does not share replay ids between adapter instances", 
         sequence_number: 1,
         output_index: 0,
         item: { id: "rs_leaked", type: "reasoning", status: "in_progress", summary: [] },
+      },
+      {
+        type: "response.output_item.done",
+        sequence_number: 1,
+        output_index: 0,
+        item: { id: "rs_leaked", type: "reasoning", status: "completed", summary: [], encrypted_content: "enc_leaked" },
       },
       {
         type: "response.output_item.added",

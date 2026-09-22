@@ -1,5 +1,6 @@
 import type { Adapter } from "./adapter.ts";
 import { anthropicModel } from "./anthropic/adapter.ts";
+import { azureOpenAIModel } from "./azure_openai/adapter.ts";
 import type { AnthropicModels } from "./anthropic/models.ts";
 import { geminiModel } from "./gemini/adapter.ts";
 import type { GoogleModels } from "./google_genai/models.ts";
@@ -16,7 +17,8 @@ import { vertexAIModel } from "./vertex_ai/adapter.ts";
  *
  * Type-safe prefixes ensure autocomplete works for known model names:
  * - `"anthropic:claude-sonnet-4-5"`
- * - `"openai:gpt-4o"`
+ * - `"openai:gpt-5.6-luna"`
+ * - `"azure:gpt-5.6-luna"`
  * - `"gemini:gemini-2.5-pro"`
  * - `"vertex:gemini-2.5-pro"`
  * - `"openrouter:<any-model-path>"`
@@ -26,6 +28,7 @@ import { vertexAIModel } from "./vertex_ai/adapter.ts";
 export type ModelString =
   | `anthropic:${AnthropicModels}`
   | `openai:${OpenAIModels}`
+  | `azure:${OpenAIModels}`
   | `gemini:${GoogleModels}`
   | `vertex:${GoogleModels}`
   | `openrouter:${OpenRouterModels}`
@@ -63,6 +66,8 @@ export function resolveModel(model: AdapterLike): Adapter<unknown, unknown> {
       return anthropicModel({ model: modelName, capabilities: {} });
     case "openai":
       return openAIModel({ model: modelName });
+    case "azure":
+      return azureOpenAIModel({ model: modelName as OpenAIModels });
     case "gemini":
       return geminiModel({ model: modelName as GoogleModels });
     case "vertex":

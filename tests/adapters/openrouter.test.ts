@@ -4,6 +4,7 @@ import { classifyError } from "../../src/errors.ts";
 import type { OpenAICompletionsClient } from "../../src/adapters/openai_completions/adapter.ts";
 import { openrouterModel } from "../../src/adapters/openrouter/adapter.ts";
 import {
+  collectAdapterStream,
   createToolFixtures,
   INTEGRATION_TIMEOUT_MS,
   runAdapterToolStreamingTest,
@@ -49,10 +50,8 @@ Deno.test("OpenRouterModel uses the provided completions client", async () => {
     signal: AbortSignal.abort(),
   });
 
-  assertEquals(await stream.next(), {
-    done: true,
-    value: { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 },
-  });
+  const { metadata } = await collectAdapterStream(stream);
+  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: 0 });
   assertEquals((capturedRequest as { model?: unknown; reasoning?: unknown }).model, "openai/gpt-5-mini");
   assertEquals((capturedRequest as { reasoning?: unknown }).reasoning, { enabled: true, effort: "medium" });
 });

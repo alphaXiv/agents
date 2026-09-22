@@ -32,6 +32,7 @@ export function googleGenerateContentAPIModel<zO, zI>(
   const client = new GoogleGenAI(options?.googleGenAIOptions ?? {});
   const baseUrl = options.googleGenAIOptions?.httpOptions?.baseUrl ?? "https://generativelanguage.googleapis.com";
   const thinkingConfig = options.thinkingConfig;
+  const provider = options.provider ?? "GoogleGenerateContentAPI";
 
   async function ensureFileUploaded(url: string, mimeType: string, abortSignal: AbortSignal): Promise<string> {
     // Create a safe filename by hashing the URL
@@ -102,7 +103,7 @@ export function googleGenerateContentAPIModel<zO, zI>(
   }
 
   return {
-    provider: options.provider ?? "GoogleGenerateContentAPI",
+    provider,
     model: options.model,
     stream: async function* stream<zO, zI>({
       history,
@@ -113,6 +114,7 @@ export function googleGenerateContentAPIModel<zO, zI>(
     }: AdapterStreamOptions<zO, zI>): AdapterStreamIterator {
       const normalizedTools = normalizeGoogleTools(tools);
       const googleHistory = await getGoogleGenerateContentAPIHistory({
+        provider,
         history,
         toolMap: normalizedTools,
         signal,
@@ -122,6 +124,7 @@ export function googleGenerateContentAPIModel<zO, zI>(
         inlineFiles: options.googleGenAIOptions?.vertexai === true,
       });
 
+      yield { type: "request_start", index: 0 };
       const stream = await client.models.generateContentStream({
         model: options.model,
         contents: googleHistory,
@@ -169,7 +172,7 @@ export function googleGenerateContentAPIModel<zO, zI>(
             const tool = normalizedTools.find((tool) => tool.google.name === func.name);
 
             if (part.thoughtSignature) {
-              rememberGoogleThoughtSignature(funcId, part.thoughtSignature);
+              rememberGoogleThoughtSignature(provider, funcId, part.thoughtSignature);
             }
 
             const index = advanceIndex(funcId);

@@ -61,7 +61,7 @@ export function normalizeOpenAICompletionsTools(tools: AnyTool[]): OpenAIComplet
           description: compatibility.instructions
             ? `${tool.description}\n\n${compatibility.instructions}`
             : tool.description,
-          strict: true,
+          strict: false,
           parameters: compatibility.jsonSchema,
         },
       },

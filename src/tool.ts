@@ -52,6 +52,21 @@ interface ToolOptions<zO, zI, TModelOutput> {
    * @experimental Might be removed or have its behaviour modified without any notice
    */
   timeout?: number;
+  /**
+   * Whether Anthropic compiles this tool's schema into the request's decoding grammar, which
+   * guarantees its arguments validate.
+   * Every other provider ignores it.
+   *
+   * Anthropic budgets that grammar across the whole request and rejects the request once a toolset
+   * exceeds it, so one wide schema can cost every other tool its guarantee.
+   *
+   * Compiling is slow the first time: a 15-tool request took 96s cold against 2.5s once Anthropic
+   * had the grammar cached, and the cache is dropped when any schema on the request changes.
+   *
+   * @experimental Might be removed or have its behaviour modified without any notice
+   * @default true
+   */
+  anthropicStrict?: boolean;
 }
 
 /**
@@ -85,6 +100,7 @@ export class Tool<zO = unknown, zI = unknown, TModelOutput = unknown> {
   #retries: number;
   #signal?: AbortSignal;
   #timeout?: number;
+  #anthropicStrict?: boolean;
 
   constructor({
     name,
@@ -94,6 +110,7 @@ export class Tool<zO = unknown, zI = unknown, TModelOutput = unknown> {
     retries,
     signal,
     timeout,
+    anthropicStrict,
   }: ToolOptions<zO, zI, TModelOutput>) {
     this.#name = name;
     this.#normalizedName = normalizeToolName(name);
@@ -103,6 +120,7 @@ export class Tool<zO = unknown, zI = unknown, TModelOutput = unknown> {
     this.#retries = retries ?? 0;
     this.#signal = signal;
     this.#timeout = timeout;
+    this.#anthropicStrict = anthropicStrict;
   }
 
   get name(): string {
@@ -119,6 +137,11 @@ export class Tool<zO = unknown, zI = unknown, TModelOutput = unknown> {
 
   get parameters(): z.ZodType<zO, zI> {
     return this.#parameters;
+  }
+
+  /** @experimental Might be removed or have its behaviour modified without any notice */
+  get anthropicStrict(): boolean | undefined {
+    return this.#anthropicStrict;
   }
 
   async execute(

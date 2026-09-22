@@ -44,6 +44,14 @@ function thinkingLevel<const T extends readonly [GoogleThinkingLevel, ...GoogleT
 }
 
 const googleModelSupportedThinkingLevelsDefinition = {
+  "gemini-3.8-flash": thinkingLevel({
+    levels: ["low", "medium", "high"],
+    default: "medium",
+  }),
+  "gemini-3.7-flash": thinkingLevel({
+    levels: ["low", "medium", "high"],
+    default: "medium",
+  }),
   "gemini-3.6-flash": thinkingLevel({
     levels: ["minimal", "low", "medium", "high"],
     default: "medium",
