@@ -34,6 +34,11 @@ function reasoning<const T extends readonly [OpenAIReasoningEffort, ...OpenAIRea
 
 const openAiModelsDefinition = {
   // Frontier
+  "gpt-6.1-sol": reasoning({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
   "gpt-6-astra": reasoning({
     levels: ["low", "medium", "high", "xhigh", "max"],
     default: "medium",

@@ -636,7 +636,7 @@ Deno.test("OpenAIModel defaults effort for reasoning models", async () => {
 });
 
 Deno.test("GPT-6 models use medium reasoning by default", async () => {
-  for (const modelId of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"] as const) {
+  for (const modelId of ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"] as const) {
     let capturedRequest: unknown;
     const model = openAIModel({
       model: modelId,
