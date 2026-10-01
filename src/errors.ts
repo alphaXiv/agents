@@ -87,6 +87,7 @@ function isLikelyModelUnavailable(text: string): boolean {
     lower.includes("specified api usage limits") ||
     (lower.includes("regain access on") && lower.includes("usage limits")) ||
     lower.includes("model is currently overloaded") ||
+    lower.includes("servers are currently overloaded") ||
     lower.includes("currently experiencing high demand")
   );
 }
