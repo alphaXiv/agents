@@ -154,6 +154,11 @@ const testCases: ClassifyErrorTestCase[] = [
     expected: { kind: "model_unavailable" },
   },
   {
+    name: "classifies model unavailable from servers overloaded message",
+    error: "Our servers are currently overloaded. Please try again later.",
+    expected: { kind: "model_unavailable" },
+  },
+  {
     name: "classifies model unavailable from high demand message",
     error: "This model is currently experiencing high demand",
     expected: { kind: "model_unavailable" },
