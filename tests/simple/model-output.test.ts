@@ -23,6 +23,7 @@ Deno.test("ModelOutput from a tool terminates agent run and returns the value", 
   const run = await agent.run("Call output tool");
   run.output satisfies { ids: string[] } | undefined;
   assertEquals(run.output, { ids: ["a", "b", "c"] });
+  assertEquals(run.model, { provider: "deterministic", model: "deterministic" });
 });
 
 Deno.test("ModelOutput outputText is JSON-stringified for non-string values", async () => {

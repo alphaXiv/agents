@@ -1,7 +1,15 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import z from "zod";
-import { addStreamItem, Agent, type AnyTool, type ChatItem, type StreamItem, Tool } from "../../mod.ts";
+import {
+  addStreamItem,
+  Agent,
+  type AnyTool,
+  type ChatItem,
+  ModelRefusalError,
+  type StreamItem,
+  Tool,
+} from "../../mod.ts";
 import { anthropicModel } from "../../src/adapters/anthropic/adapter.ts";
 import { applyAnthropicCacheBreakpoint, getAnthropicHistory } from "../../src/adapters/anthropic/history.ts";
 import { getAnthropicMessagesStreamConfig } from "../../src/adapters/anthropic/models.ts";
@@ -17,8 +25,123 @@ import {
   runStructuredToolParameterStreamingTest,
 } from "./shared.ts";
 import type { Adapter } from "../../src/adapters/adapter.ts";
+import type { TraceEvent } from "../../src/tracing.ts";
 
 const HAS_ANTHROPIC_KEY = Boolean(Deno.env.get("ANTHROPIC_API_KEY"));
+
+function createStreamingAnthropicClient(stopReason: "end_turn" | "refusal", category: string | null = null) {
+  const events = [
+    {
+      type: "message_start",
+      message: {
+        id: "msg_test",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-5-5",
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        stop_details: null,
+        usage: { input_tokens: 3, output_tokens: 0 },
+      },
+    },
+    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Partial answer" } },
+    { type: "content_block_stop", index: 0 },
+    {
+      type: "message_delta",
+      delta: {
+        stop_reason: stopReason,
+        stop_sequence: null,
+        stop_details: category === null ? null : { category },
+      },
+      usage: { output_tokens: 4 },
+    },
+    { type: "message_stop" },
+  ];
+  const body = events.map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join("");
+
+  return new Anthropic({
+    apiKey: "test-api-key",
+    fetch: () => Promise.resolve(new Response(body, { headers: { "content-type": "text/event-stream" } })),
+  });
+}
+
+Deno.test("Anthropic reports completion metadata through the SDK stream", async () => {
+  const adapter = anthropicModel({ model: "claude-opus-5-5", client: createStreamingAnthropicClient("end_turn") });
+  const { metadata } = await streamOnce(adapter);
+
+  assertEquals(metadata, {
+    stopReason: "end_turn",
+    refusalCategory: null,
+    inputTokens: 3,
+    outputTokens: 4,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  });
+});
+
+Deno.test("Anthropic refusal details reach fallback and traces without retaining refused output", async () => {
+  const events: TraceEvent[] = [];
+  const fallback: Adapter<unknown, unknown> = {
+    provider: "fallback",
+    model: "requested-backup",
+    async *stream({ history }) {
+      assertEquals(history, [{ type: "input_text", content: "hi" }]);
+      yield { type: "delta_output_text", index: 0, delta: "Accepted answer" };
+      return { inputTokens: 5, outputTokens: 6 };
+    },
+  };
+  const refusals: ModelRefusalError[] = [];
+  const agent = new Agent({
+    model: [
+      anthropicModel({ model: "claude-opus-5-5", client: createStreamingAnthropicClient("refusal", "bio") }),
+      fallback,
+    ],
+    instructions: "Answer the question.",
+    retryStrategy: {
+      customHandler({ kind, original }) {
+        assertEquals(kind, "content_filtered");
+        assert(original instanceof ModelRefusalError);
+        refusals.push(original);
+        return "switch-model";
+      },
+    },
+  });
+  const result = await agent.run("hi", { tracers: [{ event: (event) => events.push(event) }] });
+
+  assertEquals(refusals.length, 1);
+  const [refusal] = refusals;
+  assertEquals(refusal.category, "bio");
+  assertEquals(refusal.model, "claude-opus-5-5");
+  assertEquals(result.outputText, "Accepted answer");
+  assertEquals(result.history.length, 1);
+  assertEquals(result.model, { provider: "fallback", model: "requested-backup" });
+
+  const models = events.filter((event) => event.type === "model");
+  assertEquals(models.length, 2);
+  assertEquals(models[0].errorObject, refusal);
+  assertEquals(models[0].content.model, "claude-opus-5-5");
+  assertEquals(models[0].content.stopReason, "refusal");
+  assertEquals(models[0].content.refusalCategory, "bio");
+  assertEquals(models[0].content.inputTokens, 3);
+  assertEquals(models[0].content.outputTokens, 4);
+  assertEquals(models[1].errorMessage, null);
+  assertEquals(models[1].content.model, "requested-backup");
+});
+
+for (const category of [null, "new-category"]) {
+  Deno.test(`Anthropic refusals preserve category ${category} and fail without an explicit retry`, async () => {
+    const agent = new Agent({
+      model: anthropicModel({ model: "claude-opus-5-5", client: createStreamingAnthropicClient("refusal", category) }),
+      instructions: "Answer the question.",
+    });
+    const error = await assertRejects(() => agent.run("hi"), ModelRefusalError);
+
+    assertEquals(error.category, category);
+    assertEquals(error.model, "claude-opus-5-5");
+  });
+}
 
 Deno.test({
   name: "AnthropicAdapter streams a parameterized tool call (claude-opus-5, adaptive)",
@@ -750,7 +873,11 @@ Deno.test("Anthropic ignores signature deltas when thinking display omits reason
               yield { type: "content_block_stop", index: 1 };
             },
             finalMessage() {
-              return { usage: { input_tokens: 0, output_tokens: 0 } };
+              return {
+                stop_reason: "end_turn",
+                stop_details: null,
+                usage: { input_tokens: 0, output_tokens: 0 },
+              };
             },
           };
         },
@@ -777,7 +904,14 @@ Deno.test("Anthropic ignores signature deltas when thinking display omits reason
     delta: "done",
     index: 1,
   }]);
-  assertEquals(metadata, { inputTokens: 0, outputTokens: 0, cacheReadTokens: null, cacheWriteTokens: null });
+  assertEquals(metadata, {
+    stopReason: "end_turn",
+    refusalCategory: null,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+  });
 });
 
 Deno.test("Anthropic attaches signatures after reasoning block completion", async () => {
@@ -955,6 +1089,8 @@ function createCapturingAnthropicClient(usage: Partial<Anthropic.Beta.BetaUsage>
             (async function* () {})(),
             {
               finalMessage: () => ({
+                stop_reason: "end_turn",
+                stop_details: null,
                 usage: {
                   input_tokens: 10,
                   output_tokens: 20,
@@ -1114,6 +1250,8 @@ Deno.test("Anthropic reports cache token usage separately from uncached input", 
   const { metadata } = await streamOnce(anthropicModel({ model: "claude-opus-4-8", cache: true, client }));
 
   assertEquals(metadata, {
+    stopReason: "end_turn",
+    refusalCategory: null,
     inputTokens: 10,
     outputTokens: 20,
     cacheReadTokens: 4096,

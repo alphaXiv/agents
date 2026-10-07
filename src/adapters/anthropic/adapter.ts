@@ -199,7 +199,13 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
 
       const parts: ChatItem[] = [];
       const reasoningSignatures = new Map<number, string>();
+      // finalMessage can drop stop_details emitted in message_delta.
+      let refusalCategory: string | null = null;
       for await (const part of response) {
+        if (part.type === "message_delta") {
+          refusalCategory = part.delta.stop_details?.category ?? refusalCategory;
+        }
+
         if (part.type === "content_block_delta") {
           const { delta } = part;
           if (delta.type === "text_delta") {
@@ -319,6 +325,8 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
 
       const final = await response.finalMessage();
       return {
+        stopReason: final.stop_reason,
+        refusalCategory: final.stop_details?.category ?? refusalCategory,
         outputTokens: final.usage.output_tokens,
         inputTokens: final.usage.input_tokens,
         cacheReadTokens: final.usage.cache_read_input_tokens ?? null,

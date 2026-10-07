@@ -14,6 +14,7 @@ export {
   ERROR_KINDS,
   FirstTokenTimeoutError,
   InvalidAttachmentError,
+  ModelRefusalError,
 } from "./src/errors.ts";
 export type { ClassifiedError, ErrorKind } from "./src/errors.ts";
 

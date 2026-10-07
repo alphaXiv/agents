@@ -18,6 +18,7 @@ Deno.test("Basic input out of agents works", async () => {
     instructions: "You are a friendly assistant",
   });
   const run = await agent.run("Hello!");
+  assertEquals(run.model, { provider: "deterministic", model: "deterministic" });
   assertEquals(run.history.length, 1);
   assertObjectMatch(run.history[0], {
     type: "output_text",

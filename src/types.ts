@@ -214,6 +214,8 @@ export type AgentStreamIterator<T = unknown> = AsyncGenerator<
 export type Awaitable<T> = T | Promise<T>;
 
 export interface ProviderStreamMetadata {
+  stopReason?: string | null;
+  refusalCategory?: string | null;
   /**
    * Count of input tokens billed at the full rate. Providers that report prompt
    * caching exclude cached tokens here, so the prompt size is
