@@ -105,6 +105,8 @@ export interface ModelTraceEvent extends BaseTraceEvent {
     provider: string;
     /** The model given to the provider */
     model: string;
+    stopReason?: string | null;
+    refusalCategory?: string | null;
     /**
      * The millisecond timestamp at which the adapter sent the request to the provider, after any preparation.
      * `null` if the adapter did not report it.

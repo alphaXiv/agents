@@ -5,7 +5,13 @@ import type { Adapter } from "./adapters/adapter.ts";
 import { type AdapterLike, resolveModel } from "./adapters/model_resolver.ts";
 import { addStreamItem } from "./client.ts";
 import { createStructuredOutputRetryFeedback } from "./constants.ts";
-import { type ClassifiedError, classifyError, createClassifiedError, FirstTokenTimeoutError } from "./errors.ts";
+import {
+  type ClassifiedError,
+  classifyError,
+  createClassifiedError,
+  FirstTokenTimeoutError,
+  ModelRefusalError,
+} from "./errors.ts";
 import {
   determineRetryBehavior,
   isDeterministicModelError,
@@ -60,6 +66,7 @@ export interface AgentRunResult<zO> {
   output: zO;
   history: WithTraceId<ChatItem>[];
   usage: TokenUsage;
+  model: ModelInfo;
   get outputText(): string;
 }
 
@@ -365,7 +372,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
         signal.throwIfAborted();
 
         // Phase 1: Stream from a model (dispatches tool calls eagerly)
-        const { turnItems, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, trace } = yield* this
+        const { turnItems, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, trace, model } = yield* this
           .#invokeModel({
             signal,
             initialHistory,
@@ -412,6 +419,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
               history: [...history, ...turnItems],
               output: modelOutput.output as ResolveAgentOutput<zO, Tools>,
               usage,
+              model,
             });
           }
 
@@ -442,6 +450,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
           history,
           output: result.output,
           usage,
+          model,
         });
       }
 
@@ -469,7 +478,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
     deadModels: Set<number>;
   }): AsyncGenerator<
     WithTraceId<StreamItem>,
-    ModelCallTokens & { turnItems: WithTraceId<ChatItem>[]; trace: string }
+    ModelCallTokens & { turnItems: WithTraceId<ChatItem>[]; trace: string; model: ModelInfo }
   > {
     const { signal, history, pendingTools, toolSignal, agentTrace, turn } = options;
     let { modelCallReason } = options;
@@ -591,7 +600,7 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             // summaries appear before the model's output in history (correct chronological order).
             turnItems.unshift(...compactionItems);
 
-            return { turnItems, ...result };
+            return { turnItems, ...result, model: currentModel };
           } catch (error) {
             messageTracer.cancel();
             modelTrace.error(error);
@@ -609,6 +618,8 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
             if (isDeterministicModelError(classified.kind)) {
               options.deadModels.add(currentModelIndex);
             }
+
+            if (classified.kind === "content_filtered") turnItems.length = 0;
 
             const behavior = determineRetryBehavior(classified, this.#retryStrategy, sameModelRetries);
 
@@ -732,12 +743,17 @@ export class Agent<zO = unknown, zI = unknown, const Tools extends AnyTool[] = [
       if (done) {
         disarmTimer();
         messageTracer.endMessageTraceIfStarted();
-        modelTrace.success({
+        modelTrace.update({
+          stopReason: part.stopReason,
+          refusalCategory: part.refusalCategory,
           inputTokens: part.inputTokens,
           outputTokens: part.outputTokens,
           cacheReadTokens: part.cacheReadTokens ?? null,
           cacheWriteTokens: part.cacheWriteTokens ?? null,
         });
+        if (part.stopReason === "refusal") throw new ModelRefusalError(part.refusalCategory ?? null, adapter.model);
+
+        modelTrace.success();
         return {
           inputTokens: part.inputTokens ?? 0,
           outputTokens: part.outputTokens ?? 0,
@@ -960,12 +976,14 @@ function createRunResult<T>(completion: {
   history: WithTraceId<ChatItem>[];
   usage: TokenUsage;
   output: T;
+  model: ModelInfo;
 }): AgentRunResult<T> {
-  const { output, history, usage } = completion;
+  const { output, history, usage, model } = completion;
   return {
     history,
     output,
     usage,
+    model,
     // using a getter so that if you console.log this object, you
     // don't see all the data twice.
     get outputText() {

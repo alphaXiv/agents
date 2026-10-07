@@ -201,6 +201,13 @@ export class FirstTokenTimeoutError extends Error {
   }
 }
 
+export class ModelRefusalError extends Error {
+  override readonly name = "ModelRefusalError";
+  constructor(readonly category: string | null = null, readonly model: string | null = null) {
+    super("Model refused the request");
+  }
+}
+
 export class InvalidAttachmentError extends Error {
   constructor(readonly url: string, message: string) {
     super(message);
@@ -236,7 +243,9 @@ export function classifyError(error: unknown, status?: number): ClassifiedError 
 
   let kind: ErrorKind = "unknown";
 
-  if (error instanceof InvalidAttachmentError) {
+  if (error instanceof ModelRefusalError) {
+    kind = "content_filtered";
+  } else if (error instanceof InvalidAttachmentError) {
     kind = "invalid_attachment";
   } else if (isLikelyAttachmentRejected(message)) {
     kind = "attachment_rejected";
