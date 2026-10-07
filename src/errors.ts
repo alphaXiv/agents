@@ -118,6 +118,7 @@ function isLikelyAttachmentRejected(text: string): boolean {
   const lower = text.toLowerCase();
   return (
     lower.includes("invalid pdf structure") ||
+    lower.includes("badly formatted or corrupted") ||
     lower.includes("does not represent a valid image") ||
     lower.includes("failed to decode image data")
   );

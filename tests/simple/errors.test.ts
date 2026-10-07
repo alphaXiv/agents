@@ -281,6 +281,14 @@ const testCases: ClassifyErrorTestCase[] = [
     expected: { kind: "attachment_rejected" },
   },
   {
+    name: "classifies OpenAI rejecting a corrupted file as attachment_rejected",
+    error: {
+      message: "400 The file you uploaded is badly formatted or corrupted. Please fix the file and try again.",
+      status: 400,
+    },
+    expected: { kind: "attachment_rejected" },
+  },
+  {
     name: "classifies a provider rejecting the image bytes as attachment_rejected",
     error: {
       message: "The image data you provided does not represent a valid image. Please check your input",
