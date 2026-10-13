@@ -185,7 +185,8 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
         messages: anthropicHistory,
         tools: normalizedTools.map(({ anthropic }) => anthropic),
 
-        max_tokens: 16001,
+        // Extended thinking needs max_tokens above its 16000 budget_tokens; adaptive thinking shares max_tokens with the answer.
+        max_tokens: streamConfig.thinking?.type === "adaptive" ? 128000 : 16001,
 
         betas: streamConfig.betas,
         thinking: streamConfig.thinking,
