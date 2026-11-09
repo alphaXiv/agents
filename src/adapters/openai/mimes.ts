@@ -9,11 +9,10 @@ export const OPENAI_IMAGE_INPUT_MIME_TYPES = [
 ] as const;
 
 /**
- * OpenAI and Azure reject a request with more images than this, counting the whole history.
- * OpenAI's vision guide documents 1,500, but its API enforces Azure's documented 50.
- * @see https://learn.microsoft.com/en-us/azure/foundry/openai/quotas-limits
+ * OpenAI rejects a request with more images than this, counting the whole history.
+ * @see https://developers.openai.com/api/docs/guides/images-vision
  */
-export const OPENAI_MAX_IMAGES = 50;
+export const OPENAI_MAX_IMAGES = 1500;
 
 export const OPENAI_VISION_INPUT_MIME_TYPES = [
   "application/pdf",

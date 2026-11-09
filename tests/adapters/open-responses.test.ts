@@ -4,8 +4,9 @@ import z from "zod";
 import { openResponsesModel } from "../../src/adapters/open_responses/adapter.ts";
 import { getOpenResponsesHistory } from "../../src/adapters/open_responses/history.ts";
 import { normalizeOpenResponsesTools } from "../../src/adapters/open_responses/tools.ts";
+import { azureOpenAIModel } from "../../src/adapters/azure_openai/adapter.ts";
 import { openAIModel } from "../../src/adapters/openai/adapter.ts";
-import { getOpenAISupportedMimeTypes, OPENAI_MAX_IMAGES } from "../../src/adapters/openai/mimes.ts";
+import { getOpenAISupportedMimeTypes } from "../../src/adapters/openai/mimes.ts";
 import { getModelModalities } from "../../src/adapters/openai/models.ts";
 import { OMITTED_IMAGE_TEXT } from "../../src/adapters/shared/media.ts";
 import { Tool } from "../../src/tool.ts";
@@ -1247,9 +1248,9 @@ Deno.test("Open Responses does not share replay ids between adapter instances", 
   assert(getItemId(input[0]) !== "fc_leaked");
 });
 
-Deno.test("OpenAIModel replaces the oldest images once the request passes OpenAI's image limit", async () => {
+Deno.test("Azure OpenAI replaces the oldest images once the request passes 50 images", async () => {
   let capturedRequest: unknown;
-  const model = openAIModel({
+  const model = azureOpenAIModel({
     model: "gpt-6-luna",
     client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
       capturedRequest = request;
@@ -1257,7 +1258,7 @@ Deno.test("OpenAIModel replaces the oldest images once the request passes OpenAI
   });
 
   const newestImageUrls = Array.from(
-    { length: OPENAI_MAX_IMAGES },
+    { length: 50 },
     (_, index) => `https://example.com/${index + 1}.png`,
   );
   const history: ChatItem[] = [
@@ -1278,6 +1279,6 @@ Deno.test("OpenAIModel replaces the oldest images once the request passes OpenAI
     status: "completed",
     output: [{ type: "input_text", text: OMITTED_IMAGE_TEXT }],
   });
-  assert(sentImageUrls.length <= OPENAI_MAX_IMAGES);
+  assert(sentImageUrls.length <= 50);
   assertEquals(sentImageUrls, newestImageUrls.slice(-sentImageUrls.length));
 });
