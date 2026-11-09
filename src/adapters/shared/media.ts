@@ -78,7 +78,7 @@ export function getOmittedImages(history: ChatItem[], maxImages: number): Set<Ch
   const excess = images.length - maxImages;
   if (excess <= 0) return new Set();
 
-  const batchSize = Math.ceil(maxImages / 5);
+  const batchSize = Math.max(1, Math.ceil(maxImages / 5));
   return new Set(images.slice(0, Math.ceil(excess / batchSize) * batchSize));
 }
 

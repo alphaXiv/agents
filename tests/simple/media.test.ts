@@ -20,6 +20,12 @@ Deno.test("getOmittedImages() keeps a request within the cap by omitting the old
   }
 });
 
+Deno.test("getOmittedImages() omits every image when the cap is zero", () => {
+  const images = createImages(3);
+
+  assertEquals(getOmittedImages(images, 0), new Set(images));
+});
+
 Deno.test("getOmittedImages() keeps earlier omissions as new images arrive, so the prompt prefix stays cached", () => {
   const images = createImages(52);
 

@@ -1279,6 +1279,5 @@ Deno.test("Azure OpenAI replaces the oldest images once the request passes 50 im
     status: "completed",
     output: [{ type: "input_text", text: OMITTED_IMAGE_TEXT }],
   });
-  assert(sentImageUrls.length <= 50);
-  assertEquals(sentImageUrls, newestImageUrls.slice(-sentImageUrls.length));
+  assertEquals(sentImageUrls, newestImageUrls.slice(-41));
 });
