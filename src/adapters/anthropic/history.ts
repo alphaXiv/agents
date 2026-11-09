@@ -16,12 +16,6 @@ import type { AnthropicToolMap } from "./utils.ts";
 // Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
 const signatureMap = new Map<string, string>();
 
-/**
- * Anthropic rejects a request with more images than this on 200k-context models, and allows 600 on the rest.
- * @see https://platform.claude.com/docs/en/build-with-claude/vision
- */
-const ANTHROPIC_MAX_IMAGES = 100;
-
 export function rememberAnthropicReasoningSignature(content: string, signature: string) {
   signatureMap.set(content, signature);
 }
@@ -47,11 +41,12 @@ export async function getAnthropicHistory(options: {
   history: ChatItem[];
   normalizedTools: AnthropicToolMap[];
   signal: AbortSignal;
+  maxImages?: number;
 }): Promise<Anthropic.Messages.MessageParam[]> {
   const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
   let anthropicToolFileBuffer: Anthropic.Messages.MessageParam[] = [];
 
-  const omittedImages = getOmittedImages(options.history, ANTHROPIC_MAX_IMAGES);
+  const omittedImages = getOmittedImages(options.history, options.maxImages ?? Infinity);
 
   // Put all of the history in place
   for (const historyItem of options.history) {

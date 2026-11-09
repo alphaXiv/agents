@@ -66,12 +66,20 @@ export const OMITTED_IMAGE_TEXT = "[Image omitted: the request reached the provi
 /**
  * The images a request cannot carry when it is capped at `maxImages`.
  * The most recent images are kept, since the latest turns are the ones the model is answering.
+ *
+ * Images are omitted in batches of a fifth of the cap.
+ * Omitting one more image per new one would change the prompt prefix every turn and miss the provider's cache.
  */
 export function getOmittedImages(history: ChatItem[], maxImages: number): Set<ChatItem> {
   const images = history.filter((item) =>
     (item.type === "input_file" || item.type === "tool_result_file") && isImageMimeType(item.kind)
   );
-  return new Set(images.slice(0, Math.max(0, images.length - maxImages)));
+
+  const excess = images.length - maxImages;
+  if (excess <= 0) return new Set();
+
+  const batchSize = Math.ceil(maxImages / 5);
+  return new Set(images.slice(0, Math.ceil(excess / batchSize) * batchSize));
 }
 
 export function getFileNameFromUrl(url: string): string | undefined {

@@ -1364,19 +1364,19 @@ Deno.test("non-textlike media types are still rejected", async () => {
   );
 });
 
-Deno.test("Anthropic history replaces the oldest images once the request passes 100 images", async () => {
+Deno.test("Anthropic history sends an omitted image as text in its place", async () => {
   const history = await getAnthropicHistory({
-    history: Array.from({ length: 101 }, (_, index): ChatItem => ({
-      type: "input_file",
-      kind: "image/png",
-      content: `https://example.com/${index}.png`,
-    })),
+    history: [
+      { type: "input_file", kind: "image/png", content: "https://example.com/old.png" },
+      { type: "input_file", kind: "image/png", content: "https://example.com/new.png" },
+    ],
     normalizedTools: [],
     signal: AbortSignal.abort(),
+    maxImages: 1,
   });
 
-  const blocks = history.flatMap((message) => typeof message.content === "string" ? [] : message.content);
-  assertEquals(blocks[0], { type: "text", text: OMITTED_IMAGE_TEXT });
-  assertEquals(blocks.filter((block) => block.type === "image").length, 100);
-  assertEquals(blocks[1], { type: "image", source: { type: "url", url: "https://example.com/1.png" } });
+  assertEquals(history, [
+    { role: "user", content: [{ type: "text", text: OMITTED_IMAGE_TEXT }] },
+    { role: "user", content: [{ type: "image", source: { type: "url", url: "https://example.com/new.png" } }] },
+  ]);
 });

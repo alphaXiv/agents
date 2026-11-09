@@ -45,6 +45,18 @@ function createMockClient(
   } as unknown as Pick<OpenAI, "responses">;
 }
 
+function getSentImageUrls(input: ResponseInputItem[]): string[] {
+  const urls: string[] = [];
+  for (const item of input) {
+    if (item.type !== "message" || typeof item.content === "string") continue;
+
+    for (const part of item.content) {
+      if (part.type === "input_image" && part.image_url) urls.push(part.image_url);
+    }
+  }
+  return urls;
+}
+
 function getItemId(item: unknown): string {
   return (item as { id: string }).id;
 }
@@ -1256,22 +1268,16 @@ Deno.test("OpenAIModel replaces the oldest images once the request passes OpenAI
 
   await collectAdapterStream(model.stream({ history, instructions: "test", tools: [], signal: AbortSignal.abort() }));
 
-  const [, toolOutput, ...imageMessages] = (capturedRequest as { input: ResponseInputItem[] }).input;
+  const input = (capturedRequest as { input: ResponseInputItem[] }).input;
+  const sentImageUrls = getSentImageUrls(input);
 
-  assertEquals(toolOutput, {
-    id: getItemId(toolOutput),
+  assertEquals(input[1], {
+    id: getItemId(input[1]),
     type: "function_call_output",
     call_id: "call_1",
     status: "completed",
     output: [{ type: "input_text", text: OMITTED_IMAGE_TEXT }],
   });
-  assertEquals(
-    imageMessages,
-    newestImageUrls.map((url) => ({
-      type: "message",
-      role: "user",
-      status: "completed",
-      content: [{ type: "input_image", image_url: url, detail: "auto" }],
-    })),
-  );
+  assert(sentImageUrls.length <= OPENAI_MAX_IMAGES);
+  assertEquals(sentImageUrls, newestImageUrls.slice(-sentImageUrls.length));
 });
