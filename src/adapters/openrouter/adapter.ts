@@ -69,6 +69,8 @@ export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options
   appName?: string;
   extraRequestBody?: Record<string, unknown>;
   pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
+  /** OpenRouter has no image limit of its own, so set the strictest limit among the providers it may route to. */
+  maxImages?: number;
 }): Adapter<zO, zI> {
   const adapter = openAICompletionsModel<zO, zI, TModel>({
     provider: "OpenRouter",
@@ -82,6 +84,7 @@ export function openrouterModel<zO, zI, TModel extends OpenRouterModels>(options
     pdfSupport: options.pdfSupport ??
       ((model) =>
         getOpenRouterNativePdfSupport(model) ? { mode: "native", maxSize: 4 * 1024 * 1024 } : { mode: "text" }),
+    maxImages: options.maxImages,
     extraRequestBody: () => ({
       ...(options.reasoning ? { reasoning: options.reasoning } : {}),
       ...(options.plugins?.length ? { plugins: options.plugins } : {}),

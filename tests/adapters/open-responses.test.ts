@@ -5,8 +5,9 @@ import { openResponsesModel } from "../../src/adapters/open_responses/adapter.ts
 import { getOpenResponsesHistory } from "../../src/adapters/open_responses/history.ts";
 import { normalizeOpenResponsesTools } from "../../src/adapters/open_responses/tools.ts";
 import { openAIModel } from "../../src/adapters/openai/adapter.ts";
-import { getOpenAISupportedMimeTypes } from "../../src/adapters/openai/mimes.ts";
+import { getOpenAISupportedMimeTypes, OPENAI_MAX_IMAGES } from "../../src/adapters/openai/mimes.ts";
 import { getModelModalities } from "../../src/adapters/openai/models.ts";
+import { OMITTED_IMAGE_TEXT } from "../../src/adapters/shared/media.ts";
 import { Tool } from "../../src/tool.ts";
 import { addStreamItem } from "../../src/client.ts";
 import type { ChatItem } from "../../src/types.ts";
@@ -1232,4 +1233,45 @@ Deno.test("Open Responses does not share replay ids between adapter instances", 
   const input = (capturedRequest as { input: ResponseInputItem[] }).input;
   assertEquals(input.filter((item) => item.type === "reasoning"), []);
   assert(getItemId(input[0]) !== "fc_leaked");
+});
+
+Deno.test("OpenAIModel replaces the oldest images once the request passes OpenAI's image limit", async () => {
+  let capturedRequest: unknown;
+  const model = openAIModel({
+    model: "gpt-6-luna",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+      capturedRequest = request;
+    }),
+  });
+
+  const newestImageUrls = Array.from(
+    { length: OPENAI_MAX_IMAGES },
+    (_, index) => `https://example.com/${index + 1}.png`,
+  );
+  const history: ChatItem[] = [
+    { type: "tool_use", tool_use_id: "call_1", kind: "screenshot" },
+    { type: "tool_result_file", tool_use_id: "call_1", kind: "image/png", content: "https://example.com/0.png" },
+    ...newestImageUrls.map((url): ChatItem => ({ type: "input_file", kind: "image/png", content: url })),
+  ];
+
+  await collectAdapterStream(model.stream({ history, instructions: "test", tools: [], signal: AbortSignal.abort() }));
+
+  const [, toolOutput, ...imageMessages] = (capturedRequest as { input: ResponseInputItem[] }).input;
+
+  assertEquals(toolOutput, {
+    id: getItemId(toolOutput),
+    type: "function_call_output",
+    call_id: "call_1",
+    status: "completed",
+    output: [{ type: "input_text", text: OMITTED_IMAGE_TEXT }],
+  });
+  assertEquals(
+    imageMessages,
+    newestImageUrls.map((url) => ({
+      type: "message",
+      role: "user",
+      status: "completed",
+      content: [{ type: "input_image", image_url: url, detail: "auto" }],
+    })),
+  );
 });

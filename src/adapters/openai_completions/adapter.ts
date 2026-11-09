@@ -51,6 +51,8 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
   extraRequestBody?: OpenAICompletionsExtraRequestBody<TModel>;
   openAIOptions?: ClientOptions;
   client?: OpenAICompletionsClient;
+  /** Most images one request may carry. Past it, the oldest are sent as a text placeholder. */
+  maxImages?: number;
 }): Adapter<zO, zI> {
   const supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
   if (options.pdfSupport && !supportsMimeType("application/pdf", supportedMimeTypes)) {
@@ -83,6 +85,7 @@ export function openAICompletionsModel<zO, zI, TModel extends string>(options: {
         signal,
         supportedMimeTypes,
         pdfSupport: options.pdfSupport,
+        maxImages: options.maxImages,
       });
 
       const extraRequestBody = resolveOpenAICompletionsExtraRequestBody(options.extraRequestBody, {

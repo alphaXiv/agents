@@ -62,6 +62,8 @@ export function openResponsesModel<zO, zI>(options: {
   supportedMimeTypes?: string[];
   client?: OpenResponsesClient;
   files?: OpenResponsesFilesConfig;
+  /** Most images one request may carry. Past it, the oldest are sent as a text placeholder. */
+  maxImages?: number;
 }): Adapter<zO, zI> {
   const client = options.client ?? new OpenAI(options.openAIOptions);
   if (options.files && !client.files) {
@@ -109,6 +111,7 @@ export function openResponsesModel<zO, zI>(options: {
           supportedMimeTypes,
           toolCallReplays,
           files: files && { ...files, sent: sentFileIds, uploaded: uploadedFileIds },
+          maxImages: options.maxImages,
         });
         const pendingToolCallsByOutputIndex: PendingToolCall[] = [];
         const pendingToolCallsByItemId: Record<string, PendingToolCall> = {};

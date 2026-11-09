@@ -5,7 +5,7 @@ import {
   type OpenResponsesServiceTier,
 } from "../open_responses/adapter.ts";
 import type { Adapter } from "../adapter.ts";
-import { getOpenAISupportedMimeTypes } from "../openai/mimes.ts";
+import { getOpenAISupportedMimeTypes, OPENAI_MAX_IMAGES } from "../openai/mimes.ts";
 import {
   getModelModalities,
   type OpenAIModels,
@@ -44,6 +44,7 @@ export function azureOpenAIModel<zO, zI, TModel extends OpenAIModels>(options: {
     reasoning: resolveOpenAIReasoning(options.model, options.effort),
     parallelToolCalls: options.parallelToolCalls,
     serviceTier: options.serviceTier,
+    maxImages: OPENAI_MAX_IMAGES,
     // Responses on Azure only reads ids uploaded with this purpose, and Azure rejects `expires_after`.
     files: options.fileStore ? { purpose: "assistants", store: options.fileStore } : undefined,
   });

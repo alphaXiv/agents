@@ -2,13 +2,25 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem } from "../../types.ts";
-import { fetchAttachmentText, IMAGE_MIME_TYPES, isTextLikeMimeType } from "../shared/media.ts";
+import {
+  fetchAttachmentText,
+  getOmittedImages,
+  isImageMimeType,
+  isTextLikeMimeType,
+  OMITTED_IMAGE_TEXT,
+} from "../shared/media.ts";
 import { ensureToolInputObject } from "../shared/tools.ts";
 import type { AnthropicToolMap } from "./utils.ts";
 
 // TODO: drop signature after 10 minutes or whatever
 // Mapping between thinking response and signature since signature is meaningless cross-provider and we technically only need to include thinking for the one step
 const signatureMap = new Map<string, string>();
+
+/**
+ * Anthropic rejects a request with more images than this on 200k-context models, and allows 600 on the rest.
+ * @see https://platform.claude.com/docs/en/build-with-claude/vision
+ */
+const ANTHROPIC_MAX_IMAGES = 100;
 
 export function rememberAnthropicReasoningSignature(content: string, signature: string) {
   signatureMap.set(content, signature);
@@ -38,6 +50,8 @@ export async function getAnthropicHistory(options: {
 }): Promise<Anthropic.Messages.MessageParam[]> {
   const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
   let anthropicToolFileBuffer: Anthropic.Messages.MessageParam[] = [];
+
+  const omittedImages = getOmittedImages(options.history, ANTHROPIC_MAX_IMAGES);
 
   // Put all of the history in place
   for (const historyItem of options.history) {
@@ -134,7 +148,9 @@ export async function getAnthropicHistory(options: {
       case "input_file":
       case "tool_result_file": {
         const pushBuffer = historyItem.type === "input_file" ? anthropicHistory : anthropicToolFileBuffer;
-        if ((IMAGE_MIME_TYPES as readonly string[]).includes(historyItem.kind)) {
+        if (omittedImages.has(historyItem)) {
+          pushBuffer.push({ role: "user", content: [{ type: "text", text: OMITTED_IMAGE_TEXT }] });
+        } else if (isImageMimeType(historyItem.kind)) {
           pushBuffer.push({
             role: "user",
             content: [{
