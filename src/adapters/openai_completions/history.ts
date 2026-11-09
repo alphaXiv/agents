@@ -9,8 +9,10 @@ import {
   fetchTextLikeFileAsTaggedText,
   getContentLength,
   getFileNameFromUrl,
-  IMAGE_MIME_TYPES,
+  getOmittedImages,
+  isImageMimeType,
   isTextLikeMimeType,
+  OMITTED_IMAGE_TEXT,
   PDF_MIME_TYPE,
   supportsMimeType,
   unsupportedMediaTypeError,
@@ -45,7 +47,7 @@ async function getOpenAICompletionsFileMessage<TModel extends string>(
     throw unsupportedMediaTypeError(model, item.kind);
   }
 
-  if (IMAGE_MIME_TYPES.some((mimeType) => mimeType === item.kind)) {
+  if (isImageMimeType(item.kind)) {
     return {
       role: "user",
       content: [{
@@ -109,6 +111,7 @@ export async function getOpenAICompletionsHistory<TModel extends string>(options
   signal: AbortSignal;
   supportedMimeTypes?: string[];
   pdfSupport?: OpenAICompletionsPdfSupport<TModel>;
+  maxImages?: number;
 }): Promise<ChatCompletionMessageParam[]> {
   const supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
   const messages: ChatCompletionMessageParam[] = [{
@@ -153,6 +156,22 @@ export async function getOpenAICompletionsHistory<TModel extends string>(options
     messages.push(...toolTurn.files);
     toolTurn = null;
     turnReasoning = "";
+  }
+
+  const omittedImages = getOmittedImages(options.history, options.maxImages ?? Infinity);
+
+  async function getFileMessage(item: FileHistoryItem): Promise<ChatCompletionMessageParam> {
+    if (omittedImages.has(item)) {
+      return { role: "user", content: OMITTED_IMAGE_TEXT };
+    }
+
+    return await getOpenAICompletionsFileMessage(
+      options.model,
+      item,
+      supportedMimeTypes,
+      options.pdfSupport,
+      options.signal,
+    );
   }
 
   for (const historyItem of options.history) {
@@ -216,29 +235,13 @@ export async function getOpenAICompletionsHistory<TModel extends string>(options
         if (!toolTurn.results.has(historyItem.tool_use_id)) {
           toolTurn.results.set(historyItem.tool_use_id, "");
         }
-        toolTurn.files.push(
-          await getOpenAICompletionsFileMessage(
-            options.model,
-            historyItem,
-            supportedMimeTypes,
-            options.pdfSupport,
-            options.signal,
-          ),
-        );
+        toolTurn.files.push(await getFileMessage(historyItem));
         break;
       }
       case "input_file":
         flushToolTurn();
         turnReasoning = "";
-        messages.push(
-          await getOpenAICompletionsFileMessage(
-            options.model,
-            historyItem,
-            supportedMimeTypes,
-            options.pdfSupport,
-            options.signal,
-          ),
-        );
+        messages.push(await getFileMessage(historyItem));
         break;
       default:
         historyItem satisfies never;

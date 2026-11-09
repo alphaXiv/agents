@@ -5,6 +5,7 @@ import z from "zod";
 import { openAICompletionsModel } from "../../src/adapters/openai_completions/adapter.ts";
 import { getOpenAICompletionsHistory } from "../../src/adapters/openai_completions/history.ts";
 import { normalizeOpenAICompletionsTools } from "../../src/adapters/openai_completions/tools.ts";
+import { OMITTED_IMAGE_TEXT } from "../../src/adapters/shared/media.ts";
 import { RETRY_RESUMABILITY_PROMPT } from "../../src/constants.ts";
 import { Tool } from "../../src/tool.ts";
 import { collectAdapterStream } from "./shared.ts";
@@ -569,4 +570,38 @@ Deno.test("OpenAI Completions reports an uncached call with no cache bucket", as
     assertEquals(next.value, { inputTokens: 1500, outputTokens: 7, cacheReadTokens: 0, cacheWriteTokens: 0 });
     break;
   }
+});
+
+Deno.test("Completions history keeps a tool turn intact when it replaces an image over the limit", async () => {
+  const searchTool = new Tool({
+    name: "Search",
+    description: "Search for documents",
+    parameters: z.string(),
+    execute: () => "unused",
+  });
+
+  const history = await getOpenAICompletionsHistory({
+    model: "test-model",
+    maxImages: 1,
+    history: [
+      { type: "tool_use", tool_use_id: "call_1", kind: searchTool.name, content: '"cats"' },
+      { type: "tool_use", tool_use_id: "call_2", kind: searchTool.name, content: '"dogs"' },
+      { type: "tool_result_file", tool_use_id: "call_1", kind: "image/png", content: "https://example.com/cat.png" },
+      { type: "tool_result_text", tool_use_id: "call_2", content: "found a dog" },
+      { type: "input_file", kind: "image/png", content: "https://example.com/dog.png" },
+    ],
+    instructions: "Be useful",
+    normalizedTools: normalizeOpenAICompletionsTools([searchTool]),
+    signal: AbortSignal.abort(),
+  });
+
+  assertEquals(history.slice(2), [
+    { role: "tool", tool_call_id: "call_1", content: "" },
+    { role: "tool", tool_call_id: "call_2", content: "found a dog" },
+    { role: "user", content: OMITTED_IMAGE_TEXT },
+    {
+      role: "user",
+      content: [{ type: "image_url", image_url: { url: "https://example.com/dog.png", detail: "auto" } }],
+    },
+  ]);
 });

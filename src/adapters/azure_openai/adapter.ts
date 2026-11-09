@@ -15,6 +15,13 @@ import {
 import type { ProviderFileStore } from "../../types.ts";
 
 /**
+ * Azure rejects a request with more images than this, counting the whole history.
+ * Pages of attached PDFs do not count.
+ * @see https://learn.microsoft.com/en-us/azure/foundry/openai/quotas-limits
+ */
+const AZURE_OPENAI_MAX_IMAGES = 50;
+
+/**
  * OpenAI models on Azure Foundry, addressed by model name rather than by deployment name.
  * A deployment named after a model id takes that name over, so never create one.
  *
@@ -44,6 +51,7 @@ export function azureOpenAIModel<zO, zI, TModel extends OpenAIModels>(options: {
     reasoning: resolveOpenAIReasoning(options.model, options.effort),
     parallelToolCalls: options.parallelToolCalls,
     serviceTier: options.serviceTier,
+    maxImages: AZURE_OPENAI_MAX_IMAGES,
     // Responses on Azure only reads ids uploaded with this purpose, and Azure rejects `expires_after`.
     files: options.fileStore ? { purpose: "assistants", store: options.fileStore } : undefined,
   });

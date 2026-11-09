@@ -4,9 +4,11 @@ import z from "zod";
 import { openResponsesModel } from "../../src/adapters/open_responses/adapter.ts";
 import { getOpenResponsesHistory } from "../../src/adapters/open_responses/history.ts";
 import { normalizeOpenResponsesTools } from "../../src/adapters/open_responses/tools.ts";
+import { azureOpenAIModel } from "../../src/adapters/azure_openai/adapter.ts";
 import { openAIModel } from "../../src/adapters/openai/adapter.ts";
 import { getOpenAISupportedMimeTypes } from "../../src/adapters/openai/mimes.ts";
 import { getModelModalities } from "../../src/adapters/openai/models.ts";
+import { OMITTED_IMAGE_TEXT } from "../../src/adapters/shared/media.ts";
 import { Tool } from "../../src/tool.ts";
 import { addStreamItem } from "../../src/client.ts";
 import type { ChatItem } from "../../src/types.ts";
@@ -42,6 +44,18 @@ function createMockClient(
       },
     },
   } as unknown as Pick<OpenAI, "responses">;
+}
+
+function getSentImageUrls(input: ResponseInputItem[]): string[] {
+  const urls: string[] = [];
+  for (const item of input) {
+    if (item.type !== "message" || typeof item.content === "string") continue;
+
+    for (const part of item.content) {
+      if (part.type === "input_image" && part.image_url) urls.push(part.image_url);
+    }
+  }
+  return urls;
 }
 
 function getItemId(item: unknown): string {
@@ -1232,4 +1246,38 @@ Deno.test("Open Responses does not share replay ids between adapter instances", 
   const input = (capturedRequest as { input: ResponseInputItem[] }).input;
   assertEquals(input.filter((item) => item.type === "reasoning"), []);
   assert(getItemId(input[0]) !== "fc_leaked");
+});
+
+Deno.test("Azure OpenAI replaces the oldest images once the request passes 50 images", async () => {
+  let capturedRequest: unknown;
+  const model = azureOpenAIModel({
+    model: "gpt-6-luna",
+    client: createMockClient([], { usage: { input_tokens: 0, output_tokens: 0 } }, (request) => {
+      capturedRequest = request;
+    }),
+  });
+
+  const newestImageUrls = Array.from(
+    { length: 50 },
+    (_, index) => `https://example.com/${index + 1}.png`,
+  );
+  const history: ChatItem[] = [
+    { type: "tool_use", tool_use_id: "call_1", kind: "screenshot" },
+    { type: "tool_result_file", tool_use_id: "call_1", kind: "image/png", content: "https://example.com/0.png" },
+    ...newestImageUrls.map((url): ChatItem => ({ type: "input_file", kind: "image/png", content: url })),
+  ];
+
+  await collectAdapterStream(model.stream({ history, instructions: "test", tools: [], signal: AbortSignal.abort() }));
+
+  const input = (capturedRequest as { input: ResponseInputItem[] }).input;
+  const sentImageUrls = getSentImageUrls(input);
+
+  assertEquals(input[1], {
+    id: getItemId(input[1]),
+    type: "function_call_output",
+    call_id: "call_1",
+    status: "completed",
+    output: [{ type: "input_text", text: OMITTED_IMAGE_TEXT }],
+  });
+  assertEquals(sentImageUrls, newestImageUrls.slice(-41));
 });

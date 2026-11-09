@@ -2,7 +2,13 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { isStructuredOutputRetryFeedback } from "../../constants.ts";
 import { normalizeToolName } from "../../tool.ts";
 import type { ChatItem } from "../../types.ts";
-import { fetchAttachmentText, IMAGE_MIME_TYPES, isTextLikeMimeType } from "../shared/media.ts";
+import {
+  fetchAttachmentText,
+  getOmittedImages,
+  isImageMimeType,
+  isTextLikeMimeType,
+  OMITTED_IMAGE_TEXT,
+} from "../shared/media.ts";
 import { ensureToolInputObject } from "../shared/tools.ts";
 import type { AnthropicToolMap } from "./utils.ts";
 
@@ -35,9 +41,12 @@ export async function getAnthropicHistory(options: {
   history: ChatItem[];
   normalizedTools: AnthropicToolMap[];
   signal: AbortSignal;
+  maxImages?: number;
 }): Promise<Anthropic.Messages.MessageParam[]> {
   const anthropicHistory: Anthropic.Messages.MessageParam[] = [];
   let anthropicToolFileBuffer: Anthropic.Messages.MessageParam[] = [];
+
+  const omittedImages = getOmittedImages(options.history, options.maxImages ?? Infinity);
 
   // Put all of the history in place
   for (const historyItem of options.history) {
@@ -134,7 +143,9 @@ export async function getAnthropicHistory(options: {
       case "input_file":
       case "tool_result_file": {
         const pushBuffer = historyItem.type === "input_file" ? anthropicHistory : anthropicToolFileBuffer;
-        if ((IMAGE_MIME_TYPES as readonly string[]).includes(historyItem.kind)) {
+        if (omittedImages.has(historyItem)) {
+          pushBuffer.push({ role: "user", content: [{ type: "text", text: OMITTED_IMAGE_TEXT }] });
+        } else if (isImageMimeType(historyItem.kind)) {
           pushBuffer.push({
             role: "user",
             content: [{

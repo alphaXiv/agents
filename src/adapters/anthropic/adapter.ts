@@ -9,6 +9,7 @@ import {
   anthropicModelStructuredOutputSupport,
   anthropicModelThinkingSupport,
   type EffortLevel,
+  getAnthropicMaxImages,
   getAnthropicMessagesStreamConfig,
   type SupportedEffortLevel,
   type SupportedThinkingLevel,
@@ -99,6 +100,7 @@ export function anthropicModel<zO, zI, TModel extends AnthropicModels | (string 
     ? (options.effort ?? modelConfig.effortSchema.parse(undefined))
     : options.effort;
   const thinkingDisplay = options.thinkingDisplay ?? "summarized";
+  const maxImages = getAnthropicMaxImages(options.model);
   const interleaved = options.interleaved;
   const streamConfig = modelConfig
     ? getAnthropicMessagesStreamConfig({
@@ -154,7 +156,7 @@ ${JSON.stringify(structuredOutput.originalJsonSchema, null, 2)}
       { history, instructions, tools, signal, output, cache: cacheDefault }: AdapterStreamOptions<zO, zI>,
     ): AdapterStreamIterator {
       const normalizedTools = normalizeAnthropicTools(tools);
-      const anthropicHistory = await getAnthropicHistory({ history, normalizedTools, signal });
+      const anthropicHistory = await getAnthropicHistory({ history, normalizedTools, signal, maxImages });
 
       // Tools mean an agent loop, which rereads its prefix every turn and profits from caching.
       // Without them a run is usually a single call, which would only pay the write premium.

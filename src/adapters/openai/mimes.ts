@@ -8,6 +8,12 @@ export const OPENAI_IMAGE_INPUT_MIME_TYPES = [
   "image/gif",
 ] as const;
 
+/**
+ * OpenAI rejects a request with more images than this, counting the whole history.
+ * @see https://developers.openai.com/api/docs/guides/images-vision
+ */
+export const OPENAI_MAX_IMAGES = 1500;
+
 export const OPENAI_VISION_INPUT_MIME_TYPES = [
   "application/pdf",
 ] as const;

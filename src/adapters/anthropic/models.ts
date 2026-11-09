@@ -211,6 +211,31 @@ export const anthropicModelStructuredOutputSupport = {
   "claude-sonnet-4-20250514": false,
 };
 
+/**
+ * Anthropic caps a request at 100 images on models with a 200k-token context window, and at 600 on the rest.
+ * @see https://platform.claude.com/docs/en/build-with-claude/vision
+ */
+const SMALL_CONTEXT_MODELS = new Set<string>(
+  [
+    "claude-opus-4-5",
+    "claude-opus-4-5-20251101",
+    "claude-sonnet-4-5",
+    "claude-sonnet-4-5-20250929",
+    "claude-haiku-4-5",
+    "claude-haiku-4-5-20251001",
+    "claude-opus-4-1",
+    "claude-opus-4-1-20250805",
+    "claude-opus-4-0",
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-0",
+    "claude-sonnet-4-20250514",
+  ] satisfies AnthropicModels[],
+);
+
+export function getAnthropicMaxImages(model: string): number {
+  return SMALL_CONTEXT_MODELS.has(model) ? 100 : 600;
+}
+
 const thinkingBudgets: Record<Exclude<ThinkingLevel, "adaptive">, number> = {
   minimal: 1024,
   low: 2048,

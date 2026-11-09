@@ -1,5 +1,6 @@
 import { encodeBase64 } from "@std/encoding";
 import { InvalidAttachmentError } from "../../errors.ts";
+import type { ChatItem } from "../../types.ts";
 import { errMessage } from "../../util.ts";
 
 const textDecoder = new TextDecoder();
@@ -47,12 +48,38 @@ export function supportsMimeType(mimeType: string, supportedMimeTypes: string[])
   return supportedMimeTypes.some((pattern) => mimeTypeMatches(pattern, mimeType));
 }
 
+export function isImageMimeType(mimeType: string) {
+  return (IMAGE_MIME_TYPES as readonly string[]).includes(mimeType);
+}
+
 export function isTextLikeMimeType(mimeType: string) {
   return TEXTLIKE_MIME_TYPES.some((pattern) => mimeTypeMatches(pattern, mimeType));
 }
 
 export function unsupportedMediaTypeError(model: string, mimeType: string) {
   return new Error(`Model ${JSON.stringify(model)} does not support media type ${JSON.stringify(mimeType)}`);
+}
+
+/** Sent where an image used to be, so the model knows the conversation had one there. */
+export const OMITTED_IMAGE_TEXT = "[Image omitted: the request reached the provider's image limit]";
+
+/**
+ * The images a request cannot carry when it is capped at `maxImages`.
+ * The most recent images are kept, since the latest turns are the ones the model is answering.
+ *
+ * Images are omitted in batches of a fifth of the cap.
+ * Omitting one more image per new one would change the prompt prefix every turn and miss the provider's cache.
+ */
+export function getOmittedImages(history: ChatItem[], maxImages: number): Set<ChatItem> {
+  const images = history.filter((item) =>
+    (item.type === "input_file" || item.type === "tool_result_file") && isImageMimeType(item.kind)
+  );
+
+  const excess = images.length - maxImages;
+  if (excess <= 0) return new Set();
+
+  const batchSize = Math.max(1, Math.ceil(maxImages / 5));
+  return new Set(images.slice(0, Math.ceil(excess / batchSize) * batchSize));
 }
 
 export function getFileNameFromUrl(url: string): string | undefined {

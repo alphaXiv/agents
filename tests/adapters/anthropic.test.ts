@@ -14,6 +14,7 @@ import { anthropicModel } from "../../src/adapters/anthropic/adapter.ts";
 import { applyAnthropicCacheBreakpoint, getAnthropicHistory } from "../../src/adapters/anthropic/history.ts";
 import { getAnthropicMessagesStreamConfig } from "../../src/adapters/anthropic/models.ts";
 import { createAnthropicCompatibleSchema, normalizeAnthropicTools } from "../../src/adapters/anthropic/utils.ts";
+import { OMITTED_IMAGE_TEXT } from "../../src/adapters/shared/media.ts";
 import {
   collectAdapterStream,
   createToolFixtures,
@@ -1361,4 +1362,21 @@ Deno.test("non-textlike media types are still rejected", async () => {
     Error,
     "video/mp2t",
   );
+});
+
+Deno.test("Anthropic history sends an omitted image as text in its place", async () => {
+  const history = await getAnthropicHistory({
+    history: [
+      { type: "input_file", kind: "image/png", content: "https://example.com/old.png" },
+      { type: "input_file", kind: "image/png", content: "https://example.com/new.png" },
+    ],
+    normalizedTools: [],
+    signal: AbortSignal.abort(),
+    maxImages: 1,
+  });
+
+  assertEquals(history, [
+    { role: "user", content: [{ type: "text", text: OMITTED_IMAGE_TEXT }] },
+    { role: "user", content: [{ type: "image", source: { type: "url", url: "https://example.com/new.png" } }] },
+  ]);
 });

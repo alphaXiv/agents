@@ -17,8 +17,10 @@ import {
   fetchRemoteFileAsDataUrl,
   fetchTextLikeFileAsTaggedText,
   getFileNameFromUrl,
-  IMAGE_MIME_TYPES,
+  getOmittedImages,
+  isImageMimeType,
   isTextLikeMimeType,
+  OMITTED_IMAGE_TEXT,
   PDF_MIME_TYPE,
   supportsMimeType,
   unsupportedMediaTypeError,
@@ -164,7 +166,7 @@ async function getOpenResponsesFileInput(
     throw unsupportedMediaTypeError(model, historyItem.kind);
   }
 
-  if (IMAGE_MIME_TYPES.some((mimeType) => mimeType === historyItem.kind)) {
+  if (isImageMimeType(historyItem.kind)) {
     if (files) {
       return {
         type: "input_image",
@@ -217,11 +219,29 @@ export async function getOpenResponsesHistory(options: {
   supportedMimeTypes?: string[];
   toolCallReplays?: Map<string, ToolCallReplay>;
   files?: OpenResponsesFiles;
+  maxImages?: number;
 }): Promise<ResponseInputItem[]> {
   const supportedMimeTypes = options.supportedMimeTypes ?? DEFAULT_SUPPORTED_MIME_TYPES;
   const responseHistory: ResponseInputItem[] = [];
   const calledToolUseIds = new Set<string>();
   const replayedReasoningItemIds = new Set<string>();
+  const omittedImages = getOmittedImages(options.history, options.maxImages ?? Infinity);
+
+  async function getFileInput(
+    historyItem: FileHistoryItem,
+  ): Promise<ResponseInputText | ResponseInputImage | ResponseInputFile> {
+    if (omittedImages.has(historyItem)) {
+      return { type: "input_text", text: OMITTED_IMAGE_TEXT };
+    }
+
+    return await getOpenResponsesFileInput(
+      options.model,
+      historyItem,
+      supportedMimeTypes,
+      options.signal,
+      options.files,
+    );
+  }
 
   for (const historyItem of options.history) {
     switch (historyItem.type) {
@@ -285,15 +305,7 @@ export async function getOpenResponsesHistory(options: {
         if (!calledToolUseIds.has(historyItem.tool_use_id)) break;
         const output = getOrCreateFunctionCallOutput(responseHistory, historyItem.tool_use_id);
         assert(typeof output.output !== "string");
-        output.output.push(
-          await getOpenResponsesFileInput(
-            options.model,
-            historyItem,
-            supportedMimeTypes,
-            options.signal,
-            options.files,
-          ),
-        );
+        output.output.push(await getFileInput(historyItem));
         break;
       }
       case "input_file":
@@ -301,15 +313,7 @@ export async function getOpenResponsesHistory(options: {
           type: "message",
           role: "user",
           status: "completed",
-          content: [
-            await getOpenResponsesFileInput(
-              options.model,
-              historyItem,
-              supportedMimeTypes,
-              options.signal,
-              options.files,
-            ),
-          ],
+          content: [await getFileInput(historyItem)],
         });
         break;
       default:

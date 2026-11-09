@@ -5,7 +5,7 @@ import {
   type OpenResponsesServiceTier,
 } from "../open_responses/adapter.ts";
 import type { Adapter } from "../adapter.ts";
-import { getOpenAISupportedMimeTypes } from "./mimes.ts";
+import { getOpenAISupportedMimeTypes, OPENAI_MAX_IMAGES } from "./mimes.ts";
 import {
   type OpenAIModelModality,
   openAiModelReasoningSupport,
@@ -46,6 +46,7 @@ export function openAIModel<zO, zI, TModel extends OpenAIModels | (string & Reco
     reasoning: resolveOpenAIReasoning(options.model, options.effort),
     parallelToolCalls: options.parallelToolCalls,
     serviceTier: options.serviceTier,
+    maxImages: OPENAI_MAX_IMAGES,
     files: options.fileStore
       ? {
         purpose: "user_data",
