@@ -83,7 +83,7 @@ import { Agent } from "jsr:@alphaxiv/agents";
 import { geminiModel } from "jsr:@alphaxiv/agents/gemini";
 
 const paperExtractor = new Agent({
-  model: geminiModel({ model: "gemini-2.0-flash" }),
+  model: geminiModel({ model: "gemini-3.5-flash-lite" }),
   instructions: "Extract the paper title and abstract from the raw text.",
   output: z.object({
     title: z.string(),

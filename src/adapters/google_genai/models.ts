@@ -13,6 +13,7 @@ type GoogleThinkingLevel =
   | "low"
   | "medium"
   | "high"
+  | "xhigh"
   | "dynamic";
 
 type ThinkingLevelOptions<T extends readonly GoogleThinkingLevel[]> = {
@@ -44,6 +45,18 @@ function thinkingLevel<const T extends readonly [GoogleThinkingLevel, ...GoogleT
 }
 
 const googleModelSupportedThinkingLevelsDefinition = {
+  "gemini-4-hydrogen": thinkingLevel({
+    levels: ["low", "medium", "high", "xhigh"],
+    default: "high",
+  }),
+  "gemini-4-carbon": thinkingLevel({
+    levels: ["low", "medium", "high"],
+    default: "medium",
+  }),
+  "gemini-4-argon": thinkingLevel({
+    levels: ["low", "medium", "high"],
+    default: "medium",
+  }),
   "gemini-3.8-flash": thinkingLevel({
     levels: ["low", "medium", "high"],
     default: "medium",
@@ -89,11 +102,6 @@ const googleModelSupportedThinkingLevelsDefinition = {
   "gemini-2.5-flash-lite": legacyThinkingBudget(),
   "gemini-2.5-flash-lite-preview-09-2025": legacyThinkingBudget(),
   "gemini-2.5-flash-native-audio-preview-12-2025": legacyThinkingBudget(),
-  // No thinking support
-  "gemini-2.0-flash": thinkingUnsupported(),
-  "gemini-2.0-flash-001": thinkingUnsupported(),
-  "gemini-2.0-flash-lite": thinkingUnsupported(),
-  "gemini-2.0-flash-lite-001": thinkingUnsupported(),
 } as const satisfies GoogleModelSupportedThinkingLevelsMap;
 
 export const googleModelSupportedThinkingLevels: GoogleModelSupportedThinkingLevelsMap =
@@ -110,6 +118,8 @@ const legacyThinkingBudgets: Record<GoogleThinkingLevel, number> = {
   low: 1024,
   medium: 8192,
   high: 24576,
+  // No legacy-budget model accepts xhigh; the entry only satisfies the Record type.
+  xhigh: 24576,
   dynamic: -1,
 } as const;
 
@@ -131,6 +141,8 @@ export function getGenAiThinkingLevel(thinkingLevel: SupportedThinkingLevel<Goog
       return GenAiThinkingLevel.MEDIUM;
     case "high":
       return GenAiThinkingLevel.HIGH;
+    case "xhigh":
+      return GenAiThinkingLevel.XHIGH;
     case "dynamic":
     case "off":
       console.warn(

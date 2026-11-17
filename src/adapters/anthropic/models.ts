@@ -70,6 +70,29 @@ function extended<const T extends readonly [ThinkingLevel, ...ThinkingLevel[]]>(
 
 const anthropicModelThinkingSupportDefinition = {
   // Adaptive thinking only (effort controls thinking intensity)
+  "claude-fable-5-2": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
+  "claude-fable-5-1": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
+  "claude-fable-5": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
+
+  // Verified organizations only
+  "claude-mythos-5-2": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
+  "claude-mythos-5-1": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
+
   "claude-opus-5-5": adaptive({
     levels: ["low", "medium", "high", "xhigh", "max"],
     default: "medium",
@@ -90,9 +113,17 @@ const anthropicModelThinkingSupportDefinition = {
     levels: ["low", "medium", "high", "max"],
     default: "high",
   }),
+  "claude-sonnet-5-5": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "high",
+  }),
   "claude-sonnet-5": adaptive({
     levels: ["low", "medium", "high", "xhigh", "max"],
     default: "high",
+  }),
+  "claude-haiku-5-5": adaptive({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
   }),
 
   // Both adaptive thinking (default) and extended thinking (opt-in via thinkingLevel)
@@ -187,12 +218,19 @@ export type SupportsInterleaved<TModel extends AnthropicModels> = ModelConfig<TM
  * Model support for native structured ouput.
  */
 export const anthropicModelStructuredOutputSupport = {
+  "claude-fable-5-2": true,
+  "claude-fable-5-1": true,
+  "claude-fable-5": true,
+  "claude-mythos-5-2": true,
+  "claude-mythos-5-1": true,
   "claude-opus-5-5": true,
   "claude-opus-5": true,
   "claude-opus-4-8": true,
   "claude-opus-4-7": true,
   "claude-opus-4-6": true,
+  "claude-sonnet-5-5": true,
   "claude-sonnet-5": true,
+  "claude-haiku-5-5": true,
   "claude-sonnet-4-6": true,
 
   "claude-opus-4-5": true,

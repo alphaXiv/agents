@@ -15,6 +15,8 @@ export function geminiModel<zO, zI, TModel extends GoogleModels>(options: {
       apiKey: options.apiKey ?? requireEnv("GEMINI_API_KEY"),
       httpOptions: {
         baseUrl: options.baseUrl,
+        // @google/genai 3.x defaults to v1, which lacks some preview models and features.
+        apiVersion: "v1beta",
       },
     },
     thinkingConfig: getThinkingConfig(options.model, options.thinkingLevel),

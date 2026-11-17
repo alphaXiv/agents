@@ -17,7 +17,10 @@ export interface ReasoningModelSupport<T extends readonly [string, ...string[]]>
 }
 
 export interface OpenAiModelsMap {
+  "gpt-6.2-astra": ReasoningModelSupport<["low", "medium", "high", "xhigh", "max"]>;
+  "gpt-6.2-sol": ReasoningModelSupport<["low", "medium", "high", "xhigh", "max"]>;
   "gpt-6.1-sol": ReasoningModelSupport<["low", "medium", "high", "xhigh", "max"]>;
+  "gpt-6.1-terra": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
   "gpt-6-astra": ReasoningModelSupport<["low", "medium", "high", "xhigh", "max"]>;
   "gpt-6-sol": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
   "gpt-6-luna": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh", "max"]>;
@@ -33,27 +36,16 @@ export interface OpenAiModelsMap {
   "gpt-5.4-nano": ReasoningModelSupport<["none", "low", "medium", "high"]>;
   "gpt-5.3-codex": ReasoningModelSupport<["low", "medium", "high", "xhigh"]>;
   "gpt-5.2": ReasoningModelSupport<["none", "low", "medium", "high", "xhigh"]>;
-  "gpt-5.2-codex": ReasoningModelSupport<["low", "medium", "high", "xhigh"]>;
   "gpt-5.2-pro": ReasoningModelSupport<["medium", "high", "xhigh"]>;
   "gpt-5.1": ReasoningModelSupport<["none", "low", "medium", "high"]>;
-  "gpt-5.1-codex": ReasoningModelSupport<["none", "low", "medium", "high"]>;
-  "gpt-5.1-codex-max": ReasoningModelSupport<["none", "low", "medium", "high"]>;
-  "gpt-5.1-codex-mini": ReasoningModelSupport<["none", "low", "medium", "high"]>;
   "gpt-5": ReasoningModelSupport<["minimal", "low", "medium", "high"]>;
   "gpt-5-pro": ReasoningModelSupport<["high"]>;
   "gpt-5-mini": ReasoningModelSupport<["minimal", "low", "medium", "high"]>;
   "gpt-5-nano": ReasoningModelSupport<["minimal", "low", "medium", "high"]>;
-  "gpt-5-codex": ReasoningModelSupport<["minimal", "low", "medium", "high"]>;
   "gpt-4.1": NonReasoningModelSupport;
   "gpt-4.1-mini": NonReasoningModelSupport;
-  "gpt-4.1-nano": NonReasoningModelSupport;
   "gpt-oss-120b": ReasoningModelSupport<["low", "medium", "high"]>;
   "gpt-oss-20b": ReasoningModelSupport<["low", "medium", "high"]>;
-  "o4-mini-deep-research": ReasoningModelSupport<["low", "medium", "high"]>;
-  "o4-mini": ReasoningModelSupport<["low", "medium", "high"]>;
-  "o1": ReasoningModelSupport<["low", "medium", "high"]>;
   "gpt-4o": NonReasoningModelSupport;
   "gpt-4o-mini": NonReasoningModelSupport;
-  "gpt-4-turbo": NonReasoningModelSupport;
-  "gpt-4": NonReasoningModelSupport;
 }

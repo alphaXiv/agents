@@ -75,13 +75,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "TributaryModel keeps a 5-turn calculator conversation (openai:gpt-4.1-nano)",
+  name: "TributaryModel keeps a 5-turn calculator conversation (openai:gpt-4.1-mini)",
   ignore: !HAS_TRIBUTARY_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runBackAndForthCalculatorConversationTest(t, {
-      model: tributaryModel({ model: "openai:gpt-4.1-nano" }),
+      model: tributaryModel({ model: "openai:gpt-4.1-mini" }),
     });
   },
 });
