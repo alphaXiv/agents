@@ -34,8 +34,23 @@ function reasoning<const T extends readonly [OpenAIReasoningEffort, ...OpenAIRea
 
 const openAiModelsDefinition = {
   // Frontier
+  "gpt-6.2-astra": reasoning({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-6.2-sol": reasoning({
+    levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
   "gpt-6.1-sol": reasoning({
     levels: ["low", "medium", "high", "xhigh", "max"],
+    default: "medium",
+    modalities: ["text", "image"],
+  }),
+  "gpt-6.1-terra": reasoning({
+    levels: ["none", "low", "medium", "high", "xhigh", "max"],
     default: "medium",
     modalities: ["text", "image"],
   }),
@@ -121,11 +136,6 @@ const openAiModelsDefinition = {
     default: "none",
     modalities: ["text", "image"],
   }),
-  "gpt-5.2-codex": reasoning({
-    levels: ["low", "medium", "high", "xhigh"],
-    default: "medium",
-    modalities: ["text", "image"],
-  }),
   "gpt-5.2-pro": reasoning({
     levels: ["medium", "high", "xhigh"],
     default: "medium",
@@ -133,21 +143,6 @@ const openAiModelsDefinition = {
   }),
 
   "gpt-5.1": reasoning({
-    levels: ["none", "low", "medium", "high"],
-    default: "none",
-    modalities: ["text", "image"],
-  }),
-  "gpt-5.1-codex": reasoning({
-    levels: ["none", "low", "medium", "high"],
-    default: "none",
-    modalities: ["text", "image"],
-  }),
-  "gpt-5.1-codex-max": reasoning({
-    levels: ["none", "low", "medium", "high"],
-    default: "none",
-    modalities: ["text", "image"],
-  }),
-  "gpt-5.1-codex-mini": reasoning({
     levels: ["none", "low", "medium", "high"],
     default: "none",
     modalities: ["text", "image"],
@@ -173,15 +168,9 @@ const openAiModelsDefinition = {
     default: "medium",
     modalities: ["text", "image"],
   }),
-  "gpt-5-codex": reasoning({
-    levels: ["minimal", "low", "medium", "high"],
-    default: "medium",
-    modalities: ["text", "image"],
-  }),
 
   "gpt-4.1": nonReasoning({ modalities: ["text", "image"] }),
   "gpt-4.1-mini": nonReasoning({ modalities: ["text", "image"] }),
-  "gpt-4.1-nano": nonReasoning({ modalities: ["text", "image"] }),
 
   // Open-weight
   "gpt-oss-120b": reasoning({
@@ -196,25 +185,8 @@ const openAiModelsDefinition = {
   }),
 
   // Other currently listed text models that support streaming
-  "o4-mini-deep-research": reasoning({
-    levels: ["low", "medium", "high"],
-    default: "medium",
-    modalities: ["text", "image"],
-  }),
-  "o4-mini": reasoning({
-    levels: ["low", "medium", "high"],
-    default: "medium",
-    modalities: ["text", "image"],
-  }),
-  "o1": reasoning({
-    levels: ["low", "medium", "high"],
-    default: "medium",
-    modalities: ["text", "image"],
-  }),
   "gpt-4o": nonReasoning({ modalities: ["text", "image"] }),
   "gpt-4o-mini": nonReasoning({ modalities: ["text", "image"] }),
-  "gpt-4-turbo": nonReasoning({ modalities: ["text", "image"] }),
-  "gpt-4": nonReasoning({ modalities: ["text"] }),
 } as const satisfies OpenAiModelsMap;
 
 export const openAiModels: OpenAiModelsMap = openAiModelsDefinition;

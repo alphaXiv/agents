@@ -189,14 +189,14 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiAdapter streams a parameterized tool call (gemini-2.0-flash-lite, no thinking)",
+  name: "GeminiAdapter streams a parameterized tool call (gemini-2.5-flash-lite, no thinking)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     const fixtures = createToolFixtures();
     const adapter = googleGenerateContentAPIModel({
-      model: "gemini-2.0-flash-lite",
+      model: "gemini-2.5-flash-lite",
       thinkingConfig: { includeThoughts: false, thinkingBudget: 0 } as never,
     });
 
@@ -289,13 +289,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "GeminiModel streams tools and results (gemini-2.0-flash-lite, no thinking)",
+  name: "GeminiModel streams tools and results (gemini-2.5-flash-lite)",
   ignore: !HAS_GEMINI_KEY,
   sanitizeOps: false,
   sanitizeResources: false,
   async fn(t) {
     await runAgentToolStreamingTest(t, {
-      model: geminiModel({ model: "gemini-2.0-flash-lite" }),
+      model: geminiModel({ model: "gemini-2.5-flash-lite" }),
     });
   },
 });
@@ -662,7 +662,7 @@ Deno.test("getThinkingConfig maps levels for legacy-budget and unsupported model
   });
   // Vertex AI rejects includeThoughts when thinking is disabled, so the
   // unsupported branch must keep emitting includeThoughts: false.
-  assertEquals(getThinkingConfig("gemini-2.0-flash-lite"), {
+  assertEquals(getThinkingConfig("gemini-2.5-flash-image"), {
     includeThoughts: false,
     thinkingBudget: 0,
   });

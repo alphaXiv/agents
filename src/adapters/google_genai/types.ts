@@ -19,6 +19,9 @@ export interface GoogleThinkingLevelSupport<T extends string> {
 }
 
 export interface GoogleModelSupportedThinkingLevelsMap {
+  "gemini-4-hydrogen": GoogleThinkingLevelSupport<"low" | "medium" | "high" | "xhigh">;
+  "gemini-4-carbon": GoogleThinkingLevelSupport<"low" | "medium" | "high">;
+  "gemini-4-argon": GoogleThinkingLevelSupport<"low" | "medium" | "high">;
   "gemini-3.8-flash": GoogleThinkingLevelSupport<"low" | "medium" | "high">;
   "gemini-3.7-flash": GoogleThinkingLevelSupport<"low" | "medium" | "high">;
   "gemini-3.6-flash": GoogleThinkingLevelSupport<"minimal" | "low" | "medium" | "high">;
@@ -35,8 +38,4 @@ export interface GoogleModelSupportedThinkingLevelsMap {
   "gemini-2.5-flash-lite": LegacyGoogleThinkingSupport;
   "gemini-2.5-flash-lite-preview-09-2025": LegacyGoogleThinkingSupport;
   "gemini-2.5-flash-native-audio-preview-12-2025": LegacyGoogleThinkingSupport;
-  "gemini-2.0-flash": UnsupportedGoogleThinkingSupport;
-  "gemini-2.0-flash-001": UnsupportedGoogleThinkingSupport;
-  "gemini-2.0-flash-lite": UnsupportedGoogleThinkingSupport;
-  "gemini-2.0-flash-lite-001": UnsupportedGoogleThinkingSupport;
 }
